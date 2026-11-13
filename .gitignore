@@ -1,0 +1,13 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+.idea/
+.kotlin/
+*.iml
+captures/
+
+# 工具缓存
+.blurt/
+.agentlens/
+.claude/

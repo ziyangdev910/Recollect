@@ -1,0 +1,48 @@
+# 设置规格（feature/settings + data/repository）
+
+关联决策：D-04、D-05、D-11
+关联规格：`app.md`、`planning.md`、`backup.md`
+
+## 设置数据
+
+```kotlin
+data class AppSettings(
+    val dailyAvailableMinutes: Map<DayOfWeek, Int>, // 周一..周日，默认 60
+    val planStartDay: DayOfWeek = DayOfWeek.MONDAY,
+    val scanWindowStartOffsetDays: Int = 1,          // planEnd + 1
+    val scanWindowEndOffsetDays: Int = 7,            // planEnd + 7
+    val keepPlanPagesWeeks: Int = 26,                // 旧 PlanPage 保留 26 周
+    val cleanupPlanPagesAfterExport: Boolean = false  // 仅清理旧 PlanPage；历史反馈不自动删除
+)
+```
+
+- 存储：`SettingsRepository` 使用 SharedPreferences（不引入 DataStore/Hilt 等新依赖）；对外暴露 `Flow<AppSettings>`。
+- 默认每日 60 分钟；用户可按星期调整，范围 0～240 分钟。
+- `planStartDay` 默认周一；允许改为任意星期，计划周仍为连续 7 天。
+- 扫描窗口默认 `planEnd+1..planEnd+7`；超出窗口标 `LATE_BATCH`。
+- `keepPlanPagesWeeks` 默认 26 周；旧 `PlanPage` 可按此清理，`ReviewFeedback`/`ConfirmationDecisionLog` 不自动删除。
+- `cleanupPlanPagesAfterExport` 默认 false；开启后仅在用户手动“导出后清理旧 PlanPage”时执行，不自动删除 `ReviewFeedback`/`ConfirmationDecisionLog`。
+
+## 设置页
+
+| 分组 | 项 | 交互 |
+|---|---|---|
+| 学习量 | 周一～周日每日可用分钟 | 数字输入/滑杆，0～240；非法值禁用保存 |
+| 计划 | 计划周起始日 | 星期选择，默认周一 |
+| 扫描 | 扫描窗口起止偏移 | 1～14 天；结束 ≥ 开始 |
+| 数据 | 保留 PlanPage 周数 | 4～104 周，默认 26 |
+| 数据 | 导出后清理旧 PlanPage | 开关，默认关；开启时二次确认；`ReviewFeedback`/`ConfirmationDecisionLog` 永不自动删除 |
+| 关于 | 版本、备份格式版本 | 只读 |
+
+## 变更生效
+
+- 每日分钟/计划起始日：下一份计划生效，不回溯已生成计划。
+- 扫描窗口：下一次扫描生效。
+- 保留周数：下一次清理任务生效；清理前必须提示“旧打印稿将无法手动回退”。
+- 不在本页修改 D-01～D-13 的冻结规则（冷却 7 天、DHP 90% 等）。
+
+## 验收
+
+- 修改每日分钟 → 下一份计划的 `dailyAvailableMinutes` 使用新值；已生成计划不变。
+- 修改扫描窗口 → 确认页的 `LATE_BATCH` 判定使用新值。
+- 清理 PlanPage 不影响 `ReviewFeedback`/`ConfirmationDecisionLog` 查询。

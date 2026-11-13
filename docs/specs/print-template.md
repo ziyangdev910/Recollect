@@ -1,0 +1,92 @@
+# 打印模板规格（feature/print）
+
+关联决策：D-07、D-08、D-09
+关联裁决：C-013、C-014、C-015、C-016、C-020、C-026、C-027、C-029、C-051
+
+## 冻结决策（D-07～D-09）
+
+- **D-07**：左侧约 40%、右上约 60%、右下约 60%；图例仅首页一次；只打印 printable 知识点；左侧名称限一行、超 8–10 字截断；右上保留全称，按编号以「 / 」拼接并允许换行。
+- **D-08**：按日强制分页，条目不得跨页；整条移至下页，绝不拆分；每移一条加一个「续下页」标记，按题目顺序堆叠。
+- **D-09**：回读顺序 ArUco → 透视 → QR → OMR → OCR → 确认；QR 含版本/planId/pageId/questionId/校验码，不含知识点 ID；页码即 pageId；QR 失败走手动输入 pageId + 题号。
+
+## 页面几何（A4 纵向 210×297mm）
+
+- `TemplateGeometry` 的具体默认值见 `pagination.md`。
+- 页首：图例"A—掌握　B—较熟悉　C—不会"，**仅文档首页出现一次，后续页不重复**（D-07、C-001）。
+- 左侧填涂区：约 40% 宽；表头"序号 | 知识点 | A | B | C"；**每知识点一行，按 `KnowledgePoint.number` 升序稳定排列**（C-015）；仅打印 printable 知识点（`!dormant && activeQuestionCount > 0`）；名称限一行，**仅在左侧**超 10 个 Unicode 码点截断为前 9 字 + "…"（C-013）；三框水平等距，边长 3.5–4mm；行距 ≥ 组内框间距 2 倍。
+- 右上题目信息区：约 60% 宽：
+  - 第一行：`页码 {pageId}　题号 {questionNumber}` 加粗；`pageId` 直接显示完整值（如 `K7M2Q9-03`），保证 QR 失败时用户可从纸面手动回退（C-014）；
+  - 第二行起：**知识点全称**，与左侧同一 printable 集合、按 `number` 升序以 `" / "` 拼接成一个长文本，允许自动换行；不套用左侧的 8–10 字截断规则（C-013）；
+  - 换行与高度：行高 = `rowHeightMm`；最多 4 个视觉行；超过 4 行时字号从 3.2mm 逐级降到下限 2.8mm；仍超出则末行以省略号截断，并在计划生成结果中给出 `KNOWLEDGE_TEXT_OVERFLOW` 警告（正常 1–4 个知识点不应触发）；
+  - 换行后的视觉行数 `knowledgeLineCount` 传给 `PagePlanner`，作为 `rightTop` 高度计算输入；
+  - 不预留作答空白。
+- 右下笔记区：约 60% 宽；标题"复习笔记"+横线书写区（默认 3–4 行高）；若开启附加历史笔记，在书写区上方加最多 3 条 × 2 行摘要（来源 `NoteAttachmentItem` 最近 3 条，文本取 `correctedText`，C-026），附加区总高 ≤ 单页可用高度 30%（C-027）。
+- 页脚：每题一个 QR，载荷为 `版本|planId|pageId|questionId|校验码`，不含知识点 ID（D-09、C-030）。
+- 页面四角：ArUco 定位标记（四角各一个；页脚只放 QR）。
+- 留白区域：不放置任何方框，不参与 OMR。
+
+## 文本测量与换行
+
+- 统一按 300 DPI：`mm→px = 11.811`。
+- `feature/print` 实现 `KnowledgeTextMeasurer`，供 `feature/planning` 在分页前计算 `knowledgeLineCount`。
+- 右上全称使用 `Paint` + `Typeface.DEFAULT`（中文回退系统 Noto Sans CJK），字号 3.2mm ≈ 37.8px，行高 = `rowHeightMm`。
+- 用 `Paint.breakText` 按 `rightTextWidthMm` 逐行折行；`knowledgeLineCount` 为实际视觉行数，传给 `PagePlanner`。
+- 超过 4 行：字号从 3.2mm 逐级降到 2.8mm（3.2→3.0→2.8）；仍超过 4 行则末行 `…` 截断并产生 `KNOWLEDGE_TEXT_OVERFLOW` 警告。
+- 左侧名称只在渲染层截断为 10 个 Unicode 码点（前 9 字 + `…`），不改 `KnowledgePoint.name`。
+
+## ArUco 与 QR 几何
+
+- ArUco：`DICT_4X4_50`，ID 0/1/2/3 = 左上/右上/右下/左下；内码 10mm，外加 4mm 白边，距页边 12mm。
+- QR：每题一个，版本 5、纠错 M、边长 18mm、quiet zone 4 modules；放在题块底部 `qrFooterHeightMm=21mm` 预留区右侧。
+- 载荷：`version|planId|pageId|questionId|CRC32`；当前约 64 字节，版本 5/M 的 84 字节容量足够。
+- 一页多题时每题块各自带 QR；QR 中心 y 坐标用于归属题块。
+
+## PrintJob
+
+打印层只消费 `PrintJob`，不在 `onLayout` 查库或分页：
+
+```kotlin
+data class PrintJob(
+    val planId: String,
+    val pages: List<PlannedPage>,
+    val questions: Map<String, RenderableQuestion>,
+    val notes: Map<String, List<NoteAttachmentItem>>,
+    val template: TemplateGeometry
+)
+```
+
+## PrintDocumentAdapter 职责边界
+
+- `onLayout`：`pageCount = PrintJob.pages.size`；用 `PrintAttributes` 固定 A4、300 DPI、页边距 0（边距由 Canvas 内部处理）；不重新分页（R-02）。
+- `onWrite`：按 `PrintJob.pages` 逐页 Canvas 绘制；左侧一行一组、组内三框、右上信息、右下笔记、题块底部 QR、四角 ArUco。
+- **条目整条移至下页时**，当页留白底部绘制"续下页"文本，不画框；一条被移走生成一个标记，按题目顺序从上到下堆叠（C-016）。
+- 渲染器不得在 `onLayout`/`onWrite` 中临时压缩行高来"塞下"条目；放不下就是放不下，由 `PagePlanner` 决定移页或溢出。
+- 打印前由计划层把本页的 `PlanPage.questionIds` 与 `PlanPage.knowledgeRows`（行快照 + trigger 标记）写入数据库，并把每道题的 `Question.lastScheduledDate` 写为该题的目标日；没有快照的旧稿在回读时按当前关联重算并警告（C-009/C-015/C-033 方案一）。
+- 打印成功后由打印层写 `Question.pageId` 与 `Question.qrPayload`（最近一次打印快照）；打印失败不写（C-033 方案一）。
+- `PlanPage` 已在 `feature/planning` 持久化；打印层不重复写。
+
+## 验收（C-029 方案一：真机/模拟器上的 OpenScanVision 回读）
+
+1. 用 `PrintedPdfDocument` 生成 A4 PDF；保存到 `evidence/print/`。
+2. 在**模拟器或真机**的 instrumented test（`androidTest`）中用 Android `PdfRenderer` 按 300 DPI 渲染每页为 Bitmap（A4 约 2480×3508 px，`mm → px = 300 / 25.4 ≈ 11.811`）。
+3. 把渲染图喂给 **OpenScanVision**（与 `feature/scan` 相同版本、相同 OMR 参数）执行实际图像回读；这是硬门禁（C-003、R-01）。
+   - C-051 方案 A：使用 JitPack 根坐标 `com.github.MatiwosKebede:openscanvision:1.0.0` 的适配层；库输出 850×540，需映射到 2480×3508。适配后的 OMR 精度以真实打印稿判断；不达标时按方案 B fork，不得用降采样结果代替 R-01。
+4. 断言：
+   - 左侧按行分组正确，A/B/C 三框采样不被跨行合并；
+   - 左侧名称截断不影响框位；右上全称换行不产生气泡组；
+   - 右侧题目信息区文字与笔记横线不被误采样为气泡组；
+   - 留白区与"续下页"文本不产生气泡判定；
+   - QR 解码成功，payload 含正确 `questionId`，CRC 通过；
+   - 首页图例出现 1 次，后续页 0 次；
+   - 附加笔记区高度**超过**可用高度 30% 的条目不被打印（进入 overflow）。
+5. 证据存 `evidence/print/`：PDF、每页 PNG、OpenScanVision 原始输出、测试报告。
+6. 人工比对几何仅作辅助记录，**不能单独作为验收依据**（C-003）。
+7. 不合格时优先调整几何参数（比例、行高、框间距、名称截断、字号），不回退 D-07 整体布局。
+8. 不允许只在桌面 JVM 上用 `pdftoppm` 回读就宣称通过 R-01；`pdftoppm` 仅可用于人工目视辅助，不作为门禁。
+
+## 明确不做的事
+
+- 不引入 iText/PDFBox；使用 `PrintedPdfDocument` + Canvas。
+- 不做 Letter/其他纸张规格。
+- 不在本模块做二维码生成逻辑之外的内容排版决策。
+- 不在渲染层做「压缩到放得下」的兜底；溢出由 `core/pagination` 判定。

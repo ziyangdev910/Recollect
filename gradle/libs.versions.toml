@@ -1,0 +1,38 @@
+[versions]
+agp = "8.13.2"
+kotlin = "2.2.21"
+ksp = "2.2.21-2.0.5"
+composeBom = "2025.12.01"
+room = "2.7.2"
+junitJupiter = "5.13.4"
+junitPlatform = "1.13.4"
+junit5Android = "1.13.4.0"
+mlkitTextRecognitionChinese = "16.0.0"
+mlkitVisionCommon = "17.3.0"
+mlkitBarcode = "17.2.0"
+# C-051 方案 A：JitPack 根坐标，不是 openscanvision-core。
+openscanvision = "1.0.0"
+
+[libraries]
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitJupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
+
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+
+mlkit-text-recognition-chinese = { module = "com.google.mlkit:text-recognition-chinese", version.ref = "mlkitTextRecognitionChinese" }
+mlkit-vision-common = { module = "com.google.mlkit:vision-common", version.ref = "mlkitVisionCommon" }
+mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
+openscanvision = { module = "com.github.MatiwosKebede:openscanvision", version.ref = "openscanvision" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+android-junit5 = { id = "de.mannodermaus.android-junit5", version.ref = "junit5Android" }
