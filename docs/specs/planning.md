@@ -29,7 +29,7 @@ data class PlanningSettings(
     val planStartDate: LocalDate,          // 默认：生成日所在周末后的下一个周一
     val planEndDate: LocalDate,            // 默认：planStartDate + 6
     val dailyAvailableMinutes: Map<LocalDate, Int>, // 缺失默认 60
-    val coolingPeriodDays: Int = 7,
+    val coolingPeriodDays: Int = 7,      // >= 0；0 = 关闭冷却（内部/测试），负数非法（C-057 方案 D）
     val template: TemplateGeometry = TemplateGeometry()
 )
 

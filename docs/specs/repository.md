@@ -135,6 +135,7 @@ fun PlannedPage.toPlanPageRows(): PlanPageRows
 
 - `KnowledgePoint.difficulty/halfLifeDays` 直接映射到 `KnowledgeState`。
 - `Question` 实体没有 `linkedKnowledgeIds` 列；`data/room` 从 `QuestionKnowledgeCrossRef` 读取并按 `KnowledgePoint.number` 升序构造该列表。scheduler 不依赖输入列表顺序（C-049）。
+- `data/room` 构造调度 DTO 时保证 `knowledgeStates` 与 `questions` 的 id 唯一、每条 `linkedKnowledgeIds` 内无重复，并在正常情况下保证每个关联 id 都能解析到知识点（C-056 方案 A）；备份导入/数据损坏导致的悬空关联由 scheduler 按 C-055 方案 C 跳过并留下 `UNRESOLVED_KNOWLEDGE` 记录。
 - `PlannedQuestion` 没有 `questionNumber`；映射时由 `data/room` 从 `Question.questionNumber` 补齐。
 - `Question.coolingPeriodOverrideDays` 已删除；调度只通过 `coolingOverrides` 接收一次性事件。
 - `PlanPage.knowledgeRows` 的 JSON 编解码集中在 `core:model` 的 `KnowledgeRowsCodec`，Print/Scan 共用；`core:model` 不依赖 Room 或 Android。

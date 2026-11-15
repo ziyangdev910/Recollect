@@ -1,7 +1,7 @@
 # 调度器规格（core/scheduler）
 
 关联决策：D-01、D-02、D-03、D-04、D-05、D-11、D-12
-关联裁决：C-006、C-007、C-009、C-017、C-019、C-020、C-021、C-046、C-049、C-050
+关联裁决：C-006、C-007、C-009、C-017、C-019、C-020、C-021、C-046、C-049、C-050、C-054、C-055、C-056、C-057、C-058、C-059
 
 ## 冻结决策（D-01～D-05）
 
@@ -67,12 +67,12 @@ data class PlannedQuestion(
 
 data class DeferredItem(
     val questionId: String,
-    val reason: DeferReason,                      // COOLING / TIME_OVERFLOW
+    val reason: DeferReason,                      // COOLING / TIME_OVERFLOW / UNRESOLVED_KNOWLEDGE
     val knowledgePointIds: List<String> = emptyList(),
     val targetNextDueDates: Map<String, LocalDate> = emptyMap()  // 仅 COOLING 非空
 )
 
-enum class DeferReason { COOLING, TIME_OVERFLOW }
+enum class DeferReason { COOLING, TIME_OVERFLOW, UNRESOLVED_KNOWLEDGE }  // C-055 方案 C
 ```
 
 - `SchedulerQuestion` 是 `core:model` 的纯 DTO（C-046 方案 A）；Room `@Entity Question` 不直接进入 scheduler，由 `data:room` 通过 cross-ref 映射得到 `linkedKnowledgeIds`。
@@ -81,10 +81,15 @@ enum class DeferReason { COOLING, TIME_OVERFLOW }
 ## 确定性与边界输入（C-049）
 
 - **id 列表顺序**：`triggeredKnowledgeIds`、`nonTriggeredKnowledgeIds`、`DeferredItem.knowledgePointIds` 一律按字符串字典序升序；`PlanResult.dailyAssignments` 的题目顺序按第 2 层排序键确定。
-- **deferred 顺序**：先按 `reason`（`COOLING` 在 `TIME_OVERFLOW` 前），同 reason 内按 `questionId` 字典序升序。
+- **deferred 顺序**：先按 `reason`（`COOLING` → `TIME_OVERFLOW` → `UNRESOLVED_KNOWLEDGE`），同 reason 内按 `questionId` 字典序升序。
 - **TIME_OVERFLOW**：`knowledgePointIds = emptyList()`、`targetNextDueDates = emptyMap()`；冷却顺延只属于 `COOLING`。
+- **UNRESOLVED_KNOWLEDGE**：`knowledgePointIds` = 未解析的关联 id（字典序升序）、`targetNextDueDates = emptyMap()`（C-055 方案 C）。
 - **关联数量**：`linkedKnowledgeIds` 为空时该题跳过，不进入候选；数量 > 4 时抛 `IllegalArgumentException`（D-12）。
-- **hasTierGap**：比较 triggered 知识点与所有 printable 关联知识点（含其它 triggered；`!dormant && activeQuestionCount > 0`）；只要存在档位差 ≥ 1 即为 `true`；没有可比较对象时为 `false`。
+- **输入唯一性（C-056 方案 A）**：`knowledgeStates` 的 `id`、`questions` 的 `id`、每条 `linkedKnowledgeIds` 内的 `id` 均必须唯一，由 `data:room` 在构造 DTO 时保证（见 `repository.md`）；重复输入的调度行为不在本规格定义范围内，scheduler 不做去重/合并。
+- **关联完整性（C-055 方案 C）**：未归档题目的 `linkedKnowledgeIds` 中只要有任一 id 在 `knowledgeStates` 中找不到，整题跳过，不进入候选，并生成 `DeferredItem(q.id, UNRESOLVED_KNOWLEDGE, knowledgePointIds = 未解析 id 字典序升序, targetNextDueDates = emptyMap())`；该记录必须出现在 `PlanResult.deferred` 中，供规划层展示。
+- **校验优先级（C-058 方案 A）**：先校验 `coolingPeriodDays` 非负；空日期范围随后短路为全空 `PlanResult`；每道题先跳过 `archived`，再对未归档题校验关联数量 > 4（抛 `IllegalArgumentException`）与关联完整性。归档题与空范围不触发关联校验。
+- **冷却天数（C-057 方案 D）**：`coolingPeriodDays = 0` 表示关闭冷却（正常参与排程）；负数非法，抛 `IllegalArgumentException`。默认 7 天，设置页不开放用户修改（见 `settings.md`）。
+- **hasTierGap**：比较 triggered 知识点与所有**非 triggered 的 printable 关联知识点**（`!dormant && activeQuestionCount > 0`）；只要存在档位差 ≥ 1 即为 `true`；没有可比较对象（不存在非 triggered 的 printable 关联知识点）时为 `false`。同一题内多个 triggered 知识点之间的档位差不计入（C-054 方案 A），由 `groupTier` 与组内分数体现。
 - **日期范围**：`dateRange.start > dateRange.endInclusive` 时返回空 `PlanResult`（`dailyAssignments` 与 `deferred` 都为空），不抛异常。
 - **容量与时长**：`dailyAvailableMinutes` 缺失按 0，负值也按 0；`estimatedReviewMinutes` 缺失或 <= 0 按 15。
 - **输出稳定性**：相同输入（无论 List/Map 迭代顺序）必须产生相同输出；不得依赖输入顺序作为 tie-break。
@@ -109,7 +114,7 @@ enum class DeferReason { COOLING, TIME_OVERFLOW }
 ### 1. 到期/冷却判定层
 
 - 到期对象是知识点，载体是题目；`dueInRange(q)` 非空才继续。
-- 题目在冷却期内：`q.id !in coolingOverrides && lastReviewedDate != null && lastReviewedDate + coolingPeriodDays > targetDate(q)`。`lastScheduledDate` 只作审计/展示，不参与冷却（C-039）。
+- 题目在冷却期内：`coolingPeriodDays > 0 && q.id !in coolingOverrides && lastReviewedDate != null && lastReviewedDate + coolingPeriodDays > targetDate(q)`。`coolingPeriodDays = 0` 时无条件不冷却（C-057 方案 D）；`lastScheduledDate` 只作审计/展示，不参与冷却（C-039）。
 - `coolingOverrides` 是 C-008 方案二的一次性事件集合：命中的题目本次跳过冷却，但只在本次 `plan()` 生效；调用方（feature/planning）负责在题目实际排入计划后消费事件。
 - 冷却期优先于到期触发（D-04）：题目不排入，生成
   `DeferredItem(q.id, COOLING, triggeredKnowledgeIds, targetNextDueDates)`。
@@ -121,8 +126,8 @@ enum class DeferReason { COOLING, TIME_OVERFLOW }
 
 按以下键升序（逐级比较，全部为确定性排序）：
 
-1. `hasTierGap(q)`：触发知识点与任一关联知识点存在档位差 ≥ 1 档时为 `true`，排在 `false` 之前（D-02：只作排序权重，不淘汰）。
-2. `groupTier(q)`：触发知识点中的**最高档位**（`MASTERED > FAMILIAR > UNKNOWN`）在前；这样低档位高连续分不会排到高档位低连续分之前（S-05）。
+1. `groupTier(q)`：触发知识点中的**最高档位**（`MASTERED > FAMILIAR > UNKNOWN`）在前；高档位组不得被低档位题以任何理由越过（S-05、C-059 方案 B）。
+2. `hasTierGap(q)`：在同一 `groupTier(q)` 组内，触发知识点与任一**非触发**的 printable 关联知识点存在档位差 ≥ 1 档时为 `true`，排在 `false` 之前（D-02：只作排序权重，不淘汰；C-054 方案 A）。
 3. `groupScore(q)`：仅在该 `groupTier(q)` 组内，取触发知识点 `continuousScore` 的最小值升序；不得把其它档位知识点的分数混入该组。
 4. `targetDate(q)` 升序。
 5. `questionId` 字典序升序（最终稳定 tie-break）。
@@ -160,7 +165,7 @@ enum class DeferReason { COOLING, TIME_OVERFLOW }
 | S-01 | 知识点到期，关联题目不在冷却期 | 排入 `targetDate`，`triggeredKnowledgeIds` 含该知识点 |
 | S-02 | 知识点到期，关联题目在冷却期 | 不排入；`Deferred(COOLING)`；`knowledgePointIds` 含全部触发知识点；`targetNextDueDates` 每个 +1 天 |
 | S-03 | 一题关联 A（到期）、B（未到期） | 只排入一次；`triggered=[A]`，`nonTriggered=[B]`；状态更新断言见 U-03 |
-| S-04 | 两候选，一有档位差、一无档位差 | 有档位差在前；无档位差不淘汰 |
+| S-04 | 同档位组内两候选，一有档位差、一无档位差 | 有档位差在前；无档位差不淘汰（C-059 方案 B：档位差只在同档位组内作第二键） |
 | S-05 | 每日时间超额；跨档位连续分反例 | 按第 2 层排序 first-fit；低档位高连续分不得排到高档位低连续分之前；未排入记 `TIME_OVERFLOW` |
 | S-08 | 归档条目 | 不进入候选 |
 | S-09 | 知识点休眠（activeQuestionCount=0） | 不调度；取消归档后恢复 |
@@ -174,6 +179,9 @@ enum class DeferReason { COOLING, TIME_OVERFLOW }
 | S-17 | 第 1 天候选溢出、第 2 天仍有候选 | 第 1 天溢出的候选记 `TIME_OVERFLOW`，不占用第 2 天容量；第 2 天候选不填补第 1 天剩余容量 |
 | S-18 | Q1 同时触发 MASTERED 0.9 与 UNKNOWN 0.1，Q2 触发 MASTERED 0.5 | Q1 的组内分数只能取 MASTERED 的 0.9；Q2（0.5）在前。不得用 UNKNOWN 的 0.1 把 Q1 排到 Q2 之前 |
 | S-19 | 题目在冷却期，但 `coolingOverrides` 含其 id | 本次跳过冷却并正常排入；未命中/已消费的 id 不生效；下一份计划不再自动跳过 |
+| S-20 | 关联知识点 id 失效（任一 id 不在输入知识点集合内） | 整题跳过；`Deferred(UNRESOLVED_KNOWLEDGE)`；`knowledgePointIds` 为未解析 id 字典序；不进入 `dailyAssignments`（C-055 方案 C） |
+| S-21 | 归档题/空日期范围与 >4 关联同时出现 | 空范围返回全空且不抛异常；归档题跳过、不校验 >4、不产生 deferred；未归档的 >4 仍抛异常（C-058 方案 A） |
+| S-22 | 冷却天数为 0 / 负数 | 0 = 关闭冷却并正常排程；负数抛 `IllegalArgumentException`（C-057 方案 D） |
 
 > `S-06`、`S-07` 的冷启动/切换断言已迁移至 `feedback-usecase.md` 的 `U-06`、`U-07`；本模块只测计划，不测状态更新（C-019）。
 

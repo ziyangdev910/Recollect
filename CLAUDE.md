@@ -56,6 +56,8 @@ R-06 不得为适配实现而修改架构决策；冲突写入 docs/conflicts.md
 ## 冲突处理
 发现规格与代码不一致时，不改规格、不自行"修正"设计；写入 docs/conflicts.md（哪条决策、现象、可选方案、建议），等待人类裁决。
 
+冲突条目还必须包含"对用户的实际影响"：写清用户在复习顺序、当天能排入哪些题、哪些知识点被推迟、打印稿内容或顺序等方面会感知到什么差异。每个条目都要给出简短的选型参考，且理由必须建立在这些实际影响上，而不是架构偏好。描述尽量使用用户能感知的语言，少提内部变量名、类名和排序键；确需技术定位时，可在括号内附注。
+
 ## 文档索引
 规格：docs/specs/scheduler.md、feedback-usecase.md、pagination.md、data-model.md、entry.md、planning.md、repository.md、app.md、settings.md、print-template.md、scan-pipeline.md、confirm-flow.md、backup.md
 决策摘要：本文件 D-01～D-13；可执行定义见 docs/specs/ 各规格
