@@ -69,11 +69,11 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 3. 调用 `Scheduler.plan(..., dateRange = planStartDate..planEndDate, coolingOverrides = 未消费事件 questionId 集合)`。
 4. 对每个 `PlannedQuestion`：
    - 按 `KnowledgePoint.number` 升序生成 `knowledgeRows` 行快照（含 `triggeredKnowledgePointIds`）；
-   - 用 `KnowledgeTextMeasurer`（`feature/print` 实现，Paint 测量）计算 `knowledgeLineCount`，构建 `RenderableQuestion`；
+   - 用 `KnowledgeTextMeasurer`（`feature/print` 实现，Paint 测量）计算 `knowledgeLineCount`，构建 `RenderableQuestion`；`knowledgeNames` 必须与左侧同一 printable 集合、按 `number` 升序，且数量等于 `knowledgeCount`（C-067，分页器不校验、不补齐）；
    - 调用 `PagePlanner.plan(planId, dateGroups, template)` 得到 `PaginationResult`：
-     - `Success`：取 `pages`、`overflowItems`、`warnings` 继续；
+     - `Success`：取 `pages`、`overflowItems`、`warnings` 继续；计划层把文本测量产生的 `KNOWLEDGE_TEXT_OVERFLOW` 警告合并进该 `warnings`（C-064 方案 A）：按 `questionId + code` 去重（同一题同一 code 至多一条；不同 code 可并存，例如整题过高与文字溢出），按 `questionId` 字典序、同 `questionId` 按 `code` 枚举序排序；分页器不产出该警告，也不猜文本换行；
      - `Failure(code, message)`：抛 `PlanGenerationException(code, message)`，**不进入事务**，由 App 映射为可重试 UI 错误；
-   - 生成 `PlanPage` 行（`pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers`）。
+   - 生成 `PlanPage` 行（`pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers`）；`continuationMarkers` 仅作内部移页元数据，不在纸上绘制“续下页”（C-063）。
 5. 在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`：
    - 写全部 `PlanPage`；
    - 对每个已排入题目写 `Question.lastScheduledDate = targetDate`；
@@ -85,7 +85,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## ID、时区与默认设置
 
-- `planId`：6 位 Crockford Base32（去掉 I/L/O/U），由 `PlanIdGenerator` 生成；与 `PlanPage.planId` 冲突时重试 3 次，仍冲突则失败。
+- `planId`：6 位 Crockford Base32（去掉 I/L/O/U），由 `PlanIdGenerator` 生成；与 `PlanPage.planId` 冲突时重试 3 次，仍冲突则失败。该格式与全局唯一性是 `PagePlanner` 的前置条件，分页器只拼接、不校验（C-069 方案 A）。
 - `pageId`：`"{planId}-{pageNumber:02d}"`，`pageNumber` 由 `PagePlanner` 从 1 连续分配；超过 99 时 `PagePlanner` 返回 `PaginationResult.Failure(PaginationFailureCode.PLAN_TOO_LONG, ...)`，`GeneratePlanUseCase` 转 `PlanGenerationException`，不写库。
 - 业务日期用 `LocalDate`（设备本地时区）；审计/事件时间用 `Instant`（UTC）。生成计划时记录当时的本地日期；跨时区不自动改写已生成计划。
 - 默认每日可用 60 分钟；用户可按星期调整。`planStartDate` 默认下一个周一，`planEndDate = planStartDate + 6`（周一到周日），允许用户改选任意连续 1～7 天。

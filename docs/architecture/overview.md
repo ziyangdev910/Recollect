@@ -1,6 +1,6 @@
 # 架构总览（数据结构）
 
-> 口径：本文件按 `docs/specs/` 的规范口径编写。截至 2026-11-13，Gradle 骨架已建立，但 `app/`、`core/`、`data/`、`feature/` 下仍没有业务 Kotlin 源文件（见 `docs/conflicts.md` C-032，部分落地），无法做代码级字段核对；实现落地后必须按代码复核。
+> 口径：本文件按 `docs/specs/` 的规范口径编写。截至 2026-11-17，`core:model` 已落地调度 DTO（C-053）与 `KnowledgeRowsCodec`（阶段 3.1，C-070），`core:scheduler` 已覆盖 S-01～S-22，`core:pagination` 已覆盖 P-01～P-20 与验收门禁（`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG`、P-20 非法计数；进度见 `docs/conflicts.md` C-032）；`data/`、`feature/`、`app/` 仍无业务 Kotlin，`data/room` 落地前无法对字段产权做完整代码级核对，已落地模块须按代码复核。
 > 范围：只讲数据结构、字段产权与生命周期，不重复调度/打印算法细节。
 
 ## 1. 字段产权表
@@ -37,7 +37,7 @@
 | createdAt | 审计 | 录入 | 审计、备份 |
 | archivedAt | 审计 | 归档 UseCase | 审计、备份 |
 
-> 只有标“状态”的字段参与调度；其余是标识、展示、审计或快照。注：`effectiveFeedbackCount`、`difficulty`、`halfLifeDays` 仅状态更新 UseCase 读取；本地无业务 Kotlin 代码见 C-032。
+> 只有标“状态”的字段参与调度；其余是标识、展示、审计或快照。注：`effectiveFeedbackCount`、`difficulty`、`halfLifeDays` 仅状态更新 UseCase 读取；业务代码落地进度见 C-032。
 > `continuousScore` 持久化 `Float`；`ApplyFeedbackUseCase` 内部用 `Double` 计算，写入 Room / 构造 Scheduler DTO 时转 `Float`（C-050）。
 
 ## 2. 图 1：核心实体与附属表
@@ -94,8 +94,8 @@ flowchart TD
 | 阶段 | 读什么 | 写什么 | 字段变化 |
 |---|---|---|---|
 | 录入 | 表单、已有知识点/题目 | KnowledgePoint、Question、CrossRef、NoteAttachmentItem | 分配 `number`；写入初始 tier/score/count/nextDueDate/activeQuestionCount/dormant；题目写入 `estimatedReviewMinutes` |
-| 规划 | KnowledgePoint 状态、Question 状态、未消费 CoolingOverrideEvent、CrossRef、每日分钟 | PlanResult、PlanPage（pageId/pageNumber/date/questionIds/knowledgeRows/markers）、Question.lastScheduledDate | 冷却顺延 `nextDueDate` +1；`lastScheduledDate = targetDate`；命中 `coolingOverrides` 的题目跳过冷却 |
-| 打印 | PlanPage、RenderableQuestion、NoteAttachmentItem | PDF、evidence、Question.pageId/qrPayload | 打印成功后写最近一次 pageId/QR；不改调度状态 |
+| 规划 | KnowledgePoint 状态、Question 状态、未消费 CoolingOverrideEvent、CrossRef、每日分钟 | PlanResult、PlanPage（pageId/pageNumber/date/questionIds/knowledgeRows/markers；markers 仅内部元数据，C-063）、Question.lastScheduledDate | 冷却顺延 `nextDueDate` +1；`lastScheduledDate = targetDate`；命中 `coolingOverrides` 的题目跳过冷却 |
+| 打印 | PlanPage、RenderableQuestion、NoteAttachmentItem | PDF（含日期大标题与「本日共需复习 X 题」）、evidence、Question.pageId/qrPayload | 打印成功后写最近一次 pageId/QR；不改调度状态；X = 该日期实际打印的题目数，不含 overflow（C-063） |
 | 回读 | 打印稿图像 | ScanSession、PendingFeedback | `planId/pageId/plannedDate`；`detectedTier/detectionStatus/conflict/detectedRawOcr`；`userDecision=UNMARKED` |
 | 确认 | ScanSession、PendingFeedback、归属校验结果 | ReviewFeedback（**只此一次**）、ConfirmationDecisionLog、KnowledgePoint 状态、Question.lastReviewedDate、CoolingOverrideEvent（如点「本次提前复习」）；删除 PendingFeedback | 触发行全量更新 tier/score/count/nextDueDate/difficulty/halfLifeDays；非触发行只改 score ×0.3；`NOT_REVIEWED` 不写 ReviewFeedback、不改状态；`lastReviewedDate=actualReviewDate` |
 | 再规划 | 更新后的 KnowledgePoint/Question | 新 PlanPage、DeferredItem | 依据新 `nextDueDate` 与 `lastScheduledDate` 重排；冷却期继续顺延 |
@@ -107,16 +107,17 @@ flowchart TD
 | 层 | 形态（类名） | 只保留哪些字段 | 为什么这么设计 |
 |---|---|---|---|
 | Room | KnowledgePoint | 全部 12 个字段 | 全集：状态、展示、标识、审计都落库 |
-| Scheduler | KnowledgeState | id、number、currentTier、continuousScore、nextDueDate、effectiveFeedbackCount、dormant、activeQuestionCount、difficulty、halfLifeDays、createdAt | 纯 Kotlin；去掉 name 等展示字段 |
+| Scheduler | KnowledgeState（core:model，C-053） | id、number、currentTier、continuousScore、nextDueDate、effectiveFeedbackCount、dormant、activeQuestionCount、difficulty、halfLifeDays、createdAt | 纯 Kotlin；去掉 name 等展示字段 |
 | Room | Question | 全部 10 个字段 | 全集：含打印快照与审计 |
-| Scheduler | SchedulerQuestion | id、linkedKnowledgeIds、archived、lastReviewedDate、estimatedReviewMinutes | 只保留排程所需；去掉 pageId/qrPayload/时间戳；`linkedKnowledgeIds` 由 data/room 从 cross-ref 映射（C-046） |
+| Scheduler | SchedulerQuestion（core:model，C-053） | id、linkedKnowledgeIds、archived、lastReviewedDate、estimatedReviewMinutes | 只保留排程所需；去掉 pageId/qrPayload/时间戳；`linkedKnowledgeIds` 由 data/room 从 cross-ref 映射（C-046），id 唯一由 data/room 保证（C-056） |
 | Pagination | RenderableQuestion（由 Room 的 Question/KnowledgePoint/NoteAttachmentItem 投影） | questionId、questionNumber、knowledgeCount、knowledgeNames、knowledgeLineCount、attachmentCount、hasNoteArea | 打印投影；不含任何调度状态 |
-| Pagination / Print | PlannedPage / PlacedItem / ContinuationMarker | 页、位置、高度、续下页顺序 | Print 只消费映射，不自行分页（R-02） |
+| Room ↔ core:model | `PlanPage.knowledgeRows` ↔ PlanPageRows | questionId、rows（knowledgePointId、number）、triggeredKnowledgePointIds | 打印行快照；行序冻结、不按 number 重排（C-015/C-070）；JSON 编解码在 core:model（C-046） |
+| Pagination / Print | PlannedPage / PlacedItem / ContinuationMarker | 页、位置、高度、内部移页元数据（不渲染续下页，C-063） | Print 只消费映射，不自行分页（R-02）；每日总题数由打印层按 `PlannedPage.items` 统计 |
 | Pagination | `PaginationResult.Success` / `PaginationResult.Failure` | Success：pages/overflowItems/warnings；Failure：code/message | 分页失败不混入 pages/warnings（C-047） |
 | Planning | PlanDraft / PrintJob | PlanDraft：planId/pages/scheduledDates/coolingEventIds/deferred；PrintJob：planId/pages/questions/notes/template | 编排层持久化与打印输入；不进入调度 |
 | Room | PendingFeedback → ConfirmedDecision（UseCase）→ ReviewFeedback | 逐行决策字段；ReviewFeedback 保留 tier/triggered/OCR/权重/时间 | 临时态只活到确认；历史只增不改 |
 
-> Room 是全集，其余是子集；转换函数在 `data/room`，`core/model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（C-046 方案 A）；Print 消费 `PrintJob`，Confirm 消费 `PendingFeedback`/`ConfirmedDecision`，不自行查库分页。
+> Room 是全集，其余是子集；转换函数在 `data/room`，`core/model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含调度 DTO，C-046 方案 A、C-053）；id 唯一与关联完整由 `data/room` 保证（C-056）。Print 消费 `PrintJob`，Confirm 消费 `PendingFeedback`/`ConfirmedDecision`，不自行查库分页。
 
 ## 5. 最小状态集
 

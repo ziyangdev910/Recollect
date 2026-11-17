@@ -381,7 +381,7 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 2.3 移页与续下页：P-03（C-048）
+### 2.3 移页（C-048；C-063 后不再渲染续下页）：P-03【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -412,7 +412,7 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 2.4 跨日与首页差异：P-08 / P-10 / P-13
+### 2.4 跨日与首页差异：P-08 / P-10 / P-13【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -444,7 +444,7 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 2.5 溢出边界：P-14 / P-18
+### 2.5 溢出边界：P-14 / P-18【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -475,7 +475,7 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 2.6 附件上限：P-05 / P-11
+### 2.6 附件上限：P-05 / P-11【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -506,18 +506,22 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 2.7 其余边界 + 属性测试
+### 2.7 其余边界 + 属性测试【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/pagination.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 2（core:pagination），规格 docs/specs/pagination.md；C-047、C-048 已裁决。本轮补齐 P-02/P-12/P-15/P-16/P-19 与 P-09 属性测试。
+【本轮背景】阶段 2（core:pagination），规格 docs/specs/pagination.md；C-047、C-048、C-060、C-061、C-062 已裁决。本轮补齐 P-02/P-12/P-15/P-16/P-19 与 P-09 属性测试；模板校验、PLAN_TOO_LONG 与 P-20 非法计数留到 2.8 收尾。
 
 【本轮任务】
-- P-02 恰好填满；P-12 输入 Map 乱序；P-15 hasNoteArea=false；P-16 knowledgeLineCount 1..4；P-19 QR 预留区。
-- P-09：@RepeatedTest(100) + Random(20261113)，断言无条目跨页/重叠、marker 与被移条目一一对应、overflow 不在 pages、pageNumber 连续、pageId 唯一。
+- P-02：一日多条恰好填满内容区 → 无 overflow、无跨页、无续下页元数据（C-063 起标签不再渲染）。
+- P-12：输入 Map 乱序 → 输出按日期升序，与输入迭代顺序无关；P-08 已覆盖大半，仍须单独命名并锁定。
+- P-15：hasNoteArea=false → rightBottom=0，附加数量不计入高度；附加上限也不判定（C-062 方案 B），附加数量不得被静默清零。默认模板下同一题 68.5→38.5mm 已可区分，无需自定义 template；若要同时覆盖“无笔记区 + 附件超限不判”的边界，显式传自定义 template（参考 C-062 锁定测试）。
+- P-16：knowledgeLineCount 1..4 → rightTop 按行数递增，不按 knowledgeCount 递增。
+- P-19：itemHeight 包含 qrFooterHeightMm（= qrSizeMm + qrPaddingMm），QR 不挤占笔记书写区。
+- P-09：@RepeatedTest(100) + Random(20261113)，断言无条目跨页/重叠、marker 与被移条目一一对应、overflow 不在 pages、pageNumber 连续、pageId 唯一；生成器同时覆盖 C-060（全溢出日期不建页）、C-061（两条件同时成立时只输出一条 ITEM_TOO_TALL）、C-062（无笔记区不判附加上限）。
 - 跑 ./gradlew :core:pagination:test 与 ./gradlew verifyCorePurity。
 
 【固定循环（本轮只走一遍）】
@@ -537,21 +541,22 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 2.8 模块收尾 + 规格审计
+### 2.8 模块收尾 + 规格审计【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/pagination.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 2（core:pagination）收尾，不写新功能。C-047（sealed Failure）与 C-048（放置语义）已裁决。
+【本轮背景】阶段 2（core:pagination）收尾，不写新功能。C-047（sealed Failure：`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG`）、C-048（放置语义）、C-060（全溢出日期不建页）、C-061（两条 overflow 同时成立归为 `ITEM_TOO_TALL`）、C-062（附加上限仅在 `hasNoteArea=true` 时判定）均已裁决。
 
 【本轮任务：收尾】
-1) 逐条核对 pagination.md 的 P-01～P-19，列出测试方法映射；
-2) 确认 C-047 与 C-048 已反映在实现与测试里；不要假装通过；
-3) 运行 ./gradlew :core:pagination:test 与 ./gradlew verifyCorePurity；
-4) 更新 docs/changelog.md（文件、意图、关联决策）与 docs/agent-log/YYYY-MM-DD.md（目标、改动、验证命令与结果、未决问题、下轮建议），列出下一轮建议的单个用例编号；
-5) 不要 git commit，除非我明确要求。
+1) 逐条核对 pagination.md 的 P-01～P-20，列出测试方法映射；缺哪个补哪个（先红后绿），不得用删除断言或 `@Ignore` 凑绿；
+2) 确认 C-047、C-048、C-060、C-061、C-062 已反映在实现与测试里；不要假装通过；
+3) 补齐验收门禁：模板非法返回 `Failure(INVALID_TEMPLATE_GEOMETRY)`；`pageNumber` 超过 99 返回 `Failure(PLAN_TOO_LONG)`；P-20 非法计数抛 `IllegalArgumentException`；P-09 属性测试 `@RepeatedTest(100)` + `Random(20261113)` 覆盖 C-060/C-061/C-062；
+4) 运行 ./gradlew :core:pagination:test 与 ./gradlew verifyCorePurity；
+5) 更新 docs/changelog.md（文件、意图、关联决策）与 docs/agent-log/YYYY-MM-DD.md（目标、改动、验证命令与结果、未决问题、下轮建议），列出下一轮建议的单个用例编号；
+6) 不要 git commit，除非我明确要求。
 
 【本轮任务：规格审计（只读，另起任务）】
 读 docs/specs/pagination.md 与当前实现/测试，逐条列出：
@@ -585,20 +590,20 @@
 
 > 规格：docs/specs/repository.md、docs/specs/data-model.md。C-046 方案 A：`core:model` 只做纯 DTO/枚举与 `KnowledgeRowsCodec`；Room ↔ DTO 映射在 `data:room`。
 
-### 3.1 只做 Codec
+### 3.1 只做 Codec【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 3（core:model），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A：core:model 只做纯 DTO/枚举与 KnowledgeRowsCodec，Room ↔ DTO 映射在 data:room。本轮只做 KnowledgeRowsCodec。
+【本轮背景】阶段 3（core:model），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A：core:model 只做纯 DTO/枚举与 KnowledgeRowsCodec，Room ↔ DTO 映射在 data:room。C-053 方案 A：`Tier`、`KnowledgeState`、`SchedulerQuestion` 已放在 `core:model`，不得另建同名 DTO 或反向依赖。C-070 方案 A（2026-11-17 已裁决）：行快照每条记录携带题目标识，rows 顺序冻结、不按 number 重排（C-015）。本轮只做 KnowledgeRowsCodec。
 
 【本轮任务】
 - 用 data-model.md 的 JSON 示例做 decode→encode 往返；
 - 断言 rows 数量/顺序、triggeredKnowledgePointIds 原样保留；
 - 断言 rows=[number5,number3] 解码后仍是 [5,3]，不按 number 重排（C-015 冻结）；
-- 不写任何 Room 映射；不引入 androidx。
+- 行快照记录含题目标识（C-070）；不重新定义 C-053 已迁移到 core:model 的三个 DTO；不写任何 Room 映射；不引入 androidx。
 
 【固定循环（本轮只走一遍）】
 1. Observe：用 3～5 行说明本轮涉及的模块现状、要改的文件、用例编号与决策编号。
@@ -624,15 +629,15 @@
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 3（core:model → data:room），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A：core:model 只做纯 DTO/枚举与 KnowledgeRowsCodec，Room ↔ DTO 映射在 data:room。本轮只做映射。
+【本轮背景】阶段 3（core:model → data:room），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A：core:model 只做纯 DTO/枚举与 KnowledgeRowsCodec，Room ↔ DTO 映射在 data:room。C-050：`continuousScore` 内部 `Double`、落库/构造 DTO 转 `Float`。C-053：`Tier`/`KnowledgeState`/`SchedulerQuestion` 来自 `core:model`。C-056 方案 A：id 唯一性与关联完整性由 `data:room` 保证，调度器不做去重/合并。C-067 方案 B：`knowledgeNames` 与左侧同一 printable 集合、按 number 升序、数量 = `knowledgeCount`，由 data/room 映射保证，分页器不校验。C-070 方案 A：`PlanPageRows` 含 `questionId`，行快照顺序冻结（C-015）。本轮只做映射。
 
 【本轮任务】
 在 data:room 实现 Room Entity ↔ 纯 DTO 映射，不改 core:model 的纯度：
-- KnowledgePoint.toKnowledgeState()；
-- Question.toSchedulerQuestion(linkedKnowledgeIds)：linkedKnowledgeIds 从 QuestionKnowledgeCrossRef 读取，按 KnowledgePoint.number 升序构造；
-- PlannedQuestion.toRenderableQuestion(questionNumber, knowledgeNames, knowledgeLineCount, attachmentCount)：questionNumber 从 Question 实体补齐；
-- PlannedPage.toPlanPageRows()。
-先写 ModelMappingTest（字段一一对应、difficulty/halfLifeDays=null、estimatedReviewMinutes<=0→15），再实现。
+- KnowledgePoint.toKnowledgeState()：`continuousScore` 按 C-050 转 `Float`；
+- Question.toSchedulerQuestion(linkedKnowledgeIds)：linkedKnowledgeIds 从 QuestionKnowledgeCrossRef 读取，按 KnowledgePoint.number 升序构造；构造结果须满足 id 唯一前置条件（C-056），不补不存在的知识点、不静默去重/合并（C-055）；
+- PlannedQuestion.toRenderableQuestion(questionNumber, knowledgeNames, knowledgeLineCount, attachmentCount)：questionNumber 从 Question 实体补齐；knowledgeNames 与左侧同一 printable 集合、按 number 升序、数量 = knowledgeCount（C-067）；
+- PlannedPage.toPlanPageRows()：每题记录带 `questionId`（C-070）；rows 保持打印快照顺序，不按 number 重排（C-015）。
+先写 ModelMappingTest（字段一一对应、difficulty/halfLifeDays=null、estimatedReviewMinutes<=0→15、continuousScore 为 Float、linkedKnowledgeIds 唯一且按 number 升序、knowledgeNames 数量 = knowledgeCount、questionId 与 rows 顺序保真），再实现。
 core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.* / androidx.*。
 
 【固定循环（本轮只走一遍）】
@@ -659,11 +664,12 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 3（core:model），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A。本轮只做一个跨模块纵切测试（不写 UI）。
+【本轮背景】阶段 3（core:model），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A、C-053 方案 A（DTO 在 core:model）。本轮只做一个跨模块纵切测试（不写 UI）。
 
 【本轮任务】
 - 2 个知识点、2 道题 → Scheduler.plan → RenderableQuestion → PagePlanner.plan；
 - 断言 1 页 2 条、pageId 格式、D-01（同一题只出现一次）与 D-08（按日分页）；
+- 若 `PagePlanner` 返回 `PaginationResult.Failure`，按 C-047 记录 code/message 并停下，不得吞掉或改成 `Success`；
 - 先写失败测试；如果失败原因是规格没有覆盖，停下来写 docs/conflicts.md，不要绕过。
 
 【固定循环（本轮只走一遍）】
@@ -696,11 +702,12 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（data/room），规格 docs/specs/repository.md、docs/specs/data-model.md；C-052 方案 C：Android 单元测试用 JUnit 5（de.mannodermaus.android-junit5），androidTest 用 JUnit 4。本轮只做实体与 DAO。
+【本轮背景】阶段 4（data/room），规格 docs/specs/repository.md、docs/specs/data-model.md；C-052 方案 C：Android 单元测试用 JUnit 5（de.mannodermaus.android-junit5），androidTest 用 JUnit 4。C-050：`continuousScore`/`effectiveFeedbackCount` 落库为 `Float`。C-056 方案 A：知识点/题目/关联 id 唯一与关联完整性由 `data:room` 保证。本轮只做实体与 DAO。
 
 【本轮任务】
-- 按 data-model.md 建 13 个实体；先只做 KnowledgePoint、Question、QuestionKnowledgeCrossRef、ReviewFeedback、ConfirmationDecisionLog、PendingFeedback、ScanSession、CoolingOverrideEvent、PlanPage；
-- 写 schema 测试：字段名/类型/主键/外键/索引与 data-model.md 一一对应；
+- 按 data-model.md 建 13 个实体；先做 KnowledgePoint、Question、QuestionKnowledgeCrossRef、ReviewFeedback、ConfirmationDecisionLog、PendingFeedback、ScanSession、CoolingOverrideEvent、PlanPage，另 4 个（NoteAttachment、NoteAttachmentItem、KnowledgePointTombstone、KnowledgeNumberSequence）随对应 UseCase 补齐；
+- 写 schema 测试：字段名/类型/主键/外键/索引与 data-model.md 一一对应，至少锁定 `knowledge_point.number` 与 `plan_page.pageId` 唯一索引、交叉表复合主键、`continuousScore`/`effectiveFeedbackCount` 为 Float 列（C-050、C-056）；
+- 迁移脚本遇到重复 `number`/`pageId` 必须失败并提示，不得静默重编号；
 - 不写业务 UseCase；不写 UI。
 - 运行 ./gradlew :data:room:test。
 
@@ -728,11 +735,13 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（data/room），规格 docs/specs/repository.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。本轮只做 Repository 事务。
+【本轮背景】阶段 4（data/room），规格 docs/specs/repository.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-047：`PaginationResult.Failure` 转 `PlanGenerationException`，不进入事务、不写库。C-055：关联 id 失效时整题跳过并留可见记录，不由 Repository 补默认知识点。C-056：id 唯一与关联完整是 `data:room` 的前置条件。C-057：冷却天数固定 7 天，0 仅内部/测试使用、负数非法。本轮只做 Repository 事务。
 
 【本轮任务】
-- PlanRepository.savePlan：PlanPage + lastScheduledDate + 消费 CoolingOverrideEvent + 冷却顺延，同一事务；
-- FeedbackRepository.saveDecisions：ReviewFeedback + ConfirmationDecisionLog + KnowledgePoint + NoteAttachmentItem + 删除 PendingFeedback，同一事务；
+- PlanRepository.savePlan：PlanPage + lastScheduledDate + 消费 CoolingOverrideEvent + 冷却顺延，同一事务；只接收成功的分页结果，`Failure` 在进入事务前抛 `PlanGenerationException`（C-047）；
+- 落库的冷却顺延结果须符合 C-057 口径（设置页固定 7 天、0 关闭冷却、负数非法），Repository 不得自行改写天数或静默夹取；
+- FeedbackRepository.saveDecisions：ReviewFeedback + ConfirmationDecisionLog + KnowledgePoint + NoteAttachmentItem + 删除 PendingFeedback，同一事务；`continuousScore` 落库转 `Float`（C-050）；
+- 构造 DTO/写库前保证 id 唯一与关联完整（C-056）；关联失效按 C-055 的整题跳过记录处理，不得补默认知识点；
 - 先写“任一步失败全部回滚”的测试，再实现；
 - 不 mock 识别结果；用内存 Room 或 fake repository。
 
@@ -760,11 +769,11 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/feedback-usecase.md、docs/specs/repository.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。本轮只做 U-01～U-05。
+【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050：`continuousScore` 算术用 `Double`，落库/断言转 `Float`；`effectiveFeedbackCount` 精确 `>= 3.0f`，不做 epsilon。本轮只做 U-01～U-05。
 
 【本轮任务】
 - 触发行 ACCEPT/CORRECTED；非触发行 ×0.3；NOT_REVIEWED 不写 ReviewFeedback、只写 ConfirmationDecisionLog；
-- 先红后绿；每完成一条用例单独跑测试；
+- 先红后绿；每完成一条用例单独跑测试；写入路径按 C-050 在边界处转 `Float`；
 - 不要一次实现 U-06～U-19。
 
 【固定循环（本轮只走一遍）】
@@ -821,10 +830,11 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/feedback-usecase.md、docs/specs/repository.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。本轮只做 U-13～U-19。
+【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050：内部 `Double`、落库/断言 `Float`，阈值精确 `>= 3.0f`。C-057：冷却天数固定 7 天，0 关闭、负数非法。本轮只做 U-13～U-19。
 
 【本轮任务】
 - 同一 session 多行、冷却顺延、ACCEPT 但 detectedTier=null、历史只有非触发行、第 3 条后初始化记忆状态、批量扫描晚复习、全部 NOT_REVIEWED；
+- U-18/U-19 的 `nextDueDate`/`lastReviewedDate` 按实际复习日计算，冷却顺延遵守 C-057；
 - 先红后绿；事务失败必须回滚。
 
 【固定循环（本轮只走一遍）】
@@ -851,13 +861,14 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/feedback-usecase.md、docs/specs/repository.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（UseCase）收尾，不写新功能。C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。
+【本轮背景】阶段 4（UseCase）收尾，不写新功能。C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050 已裁决但待验证：`continuousScore` 内部 `Double`、落库/断言 `Float`，`effectiveFeedbackCount` 精确 `>= 3.0f`。
 
 【本轮任务：收尾】
-1) 逐条核对 feedback-usecase.md 的 U-01～U-19；
-2) 跑 ./gradlew :data:test；
-3) 更新 docs/changelog.md（文件、意图、关联决策）与 docs/agent-log/YYYY-MM-DD.md（目标、改动、验证命令与结果、未决问题、下轮建议），列出下一轮建议的单个用例编号；
-4) 不要 git commit，除非我明确要求。
+1) 逐条核对 feedback-usecase.md 的 U-01～U-19，缺哪个补哪个（先红后绿）；
+2) 用 U-01～U-19 验证 C-050 的 Double/Float 边界与精确阈值，不得用 epsilon 容差迁就浮点误差；
+3) 跑 ./gradlew :data:test；
+4) 更新 docs/changelog.md（文件、意图、关联决策）与 docs/agent-log/YYYY-MM-DD.md（目标、改动、验证命令与结果、未决问题、下轮建议），列出下一轮建议的单个用例编号；
+5) 不要 git commit，除非我明确要求。
 
 【本轮任务：规格审计（只读，另起任务）】
 读 docs/specs/feedback-usecase.md、docs/specs/repository.md 与当前实现/测试，逐条列出：
@@ -898,13 +909,14 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/app.md、docs/specs/entry.md、docs/specs/planning.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 5（App 纵切），规格 docs/specs/app.md、entry.md、planning.md；实体机验证，不装模拟器。本轮只做 app 壳。
+【本轮背景】阶段 5（App 纵切），规格 docs/specs/app.md、entry.md、planning.md；实体机验证，不装模拟器。C-047：`PaginationResult.Failure` 由计划层转 `PlanGenerationException` 并映射为可重试 UI 错误。C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-053：调度 DTO 来自 `core:model`。本轮只做 app 壳。
 
 【本轮任务】
-- 手写 AppContainer（Repository、UseCase、Scheduler、PagePlanner 单例），不引入 Hilt/Koin；
+- 手写 AppContainer（Repository、UseCase、Scheduler、PagePlanner 单例），只依赖 `core:model` 的 DTO（C-053），不引入 Hilt/Koin、不复制 DTO；
 - 手写 AppNavigator（mutableStateOf + ArrayDeque + BackHandler），不引入 navigation-compose；
 - MainActivity 只创建 AppContainer/AppNavigator/AppRoot，不直接访问 Room/CameraX/PrintManager/ML Kit；
-- 先写导航返回栈的单测，再写 Compose 壳。
+- `PagePlanner` 的 `Failure` 不得被吞掉或改成空计划，按 C-047 抛 `PlanGenerationException`；
+- 先写导航返回栈的单测（JUnit 5），再写 Compose 壳。
 
 【固定循环（本轮只走一遍）】
 1. Observe：用 3～5 行说明本轮涉及的模块现状、要改的文件、用例编号与决策编号。
@@ -929,11 +941,13 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/app.md、docs/specs/entry.md、docs/specs/planning.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 5（App 纵切），规格 docs/specs/app.md、entry.md、planning.md；实体机验证，不装模拟器。本轮只做首个可跑纵切。
+【本轮背景】阶段 5（App 纵切），规格 docs/specs/app.md、entry.md、planning.md；实体机验证，不装模拟器。C-047：分页失败转 `PlanGenerationException`，不写库。C-060：整份计划无可打印题目时由计划层给出空态或提示，分页器不生成空白页。C-061/C-062：overflow 提示必须原样呈现（含原因与题目），不得静默丢弃。本轮只做首个可跑纵切。
 
 【本轮任务】
 - Entry 空态 → 新建 1 题 1 知识点 → 生成计划 → PlanPreview 显示 1 页 1 条；
-- ViewModel 不持有 Context；错误映射为 UiError(code, message, retryable)；
+- ViewModel 不持有 Context；错误映射为 UiError(code, message, retryable)；`PaginationResult.Failure` 与 `PlanGenerationException` 走该通道（C-047）；
+- 空计划（C-060）与 overflow warnings（C-061/C-062）分别映射为可读空态/提示，不得只保留 pages；提示文案按 C-066（减少关联知识点/缩短描述，不拆分题目）；
+- 计划层把 `KNOWLEDGE_TEXT_OVERFLOW` 与分页警告合并（按 questionId + code 去重、按 questionId 排序，C-064 方案 A）；PlanPreview 只展示中文标签与 message，不展示内部代码（C-065 方案 B）；映射保证 knowledgeNames 数量 = 知识点数量（C-067）；
 - 先写 UseCase/状态测试，再写 Compose；
 - 在实体机上安装并截图到 evidence/screens/（无设备就停下来报告“无设备”，不要伪造截图）。
 
@@ -1000,12 +1014,16 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/print-template.md、docs/specs/pagination.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。本轮只做打印布局，不做回读。
+【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。C-047：分页失败不进入打印；C-060：全溢出日期没有页面，打印层不得补空白页；C-061：两种 overflow 同时成立时归为 `ITEM_TOO_TALL`；C-066：整题过高提示减少关联知识点或缩短描述，不再建议拆分题目；C-062：附加上限仅在 `hasNoteArea=true` 时生效，不得截断附件区。C-063：不绘制“续下页”，每个日期第一页标注“本日共需复习 X 题”（X = 实际打印题目数），总题数字号/高度为日期标题的一半。C-051 方案 A：打印验收以适配层回读为准。本轮只做打印布局，不做回读。
 
 【本轮任务】
 - 按 print-template.md 实现 A4 几何、左侧填涂区、右上信息、右下笔记、QR 预留、四角 ArUco；
+- 只消费 `PagePlanner` 的 `PlannedPage`/`PlacedItem` 映射，不在 `onLayout` 重算高度或重分页（R-02）；
 - 用 PrintedPdfDocument 生成 PDF，保存到 evidence/print/；
-- 断言几何参数与 TemplateGeometry 一致；不在 onLayout 重新分页（R-02）。
+- 断言几何参数与 TemplateGeometry 一致；`hasNoteArea=false` 的条目按 `rightBottom=0` 绘制，附件不截断、不补画（C-062）；
+- overflow 条目只输出 warnings，不生成占位行或空白页（C-060/C-061）；
+- 不绘制“续下页”；每个日期的第一页绘制日期大标题（默认 `dateHeadingFontMm=5mm` / `dateHeadingHeightMm=7mm`），并在其下标注“本日共需复习 X 题”（字号/高度各为日期标题的一半：2.5mm / 3.5mm；合计 10.5mm 绘制在默认 12mm 上边距内，不占用内容区），X = 该日期实际打印的题目数，不含 overflow（C-063）；不得在 onLayout 临时压缩行高；
+- 警告只渲染中文文案/映射标签，不展示内部代码（C-065）；`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并合并（C-064）；overflow 提示文案按 C-066：整题过高提示减少关联知识点/缩短描述，附加超限提示减少附加笔记，不得建议拆分题目。
 
 【固定循环（本轮只走一遍）】
 1. Observe：用 3～5 行说明本轮涉及的模块现状、要改的文件、用例编号与决策编号。
@@ -1036,7 +1054,8 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 用 Android PdfRenderer 把打印 PDF 渲染成 2480×3508 Bitmap；
 - 喂给 OpenScanVision 1.0.0（根坐标 com.github.MatiwosKebede:openscanvision:1.0.0），记录 ArUco 定位、透视矫正、QR 解码、OMR 三档识别的原始输出；
 - 人工比对只作辅助记录；把 PDF、PNG、原始输出、测试报告存 evidence/print/；
-- 如果 850×540 的 OMR 精度不达标，停下来在 docs/conflicts.md 新开一条 spike 结论，建议转方案 B；不要在未验证的情况下改 specs 或声称通过。
+- 如果 850×540 的 OMR 精度不达标，停下来在 docs/conflicts.md 新开一条 spike 结论，建议转方案 B；不要在未验证的情况下改 specs 或声称通过；
+- 在 docs/dependency-proposals.md 记录本 spike 结论与 16KB 页面对齐风险（C-051）。
 
 【固定循环（本轮只走一遍）】
 1. Observe：用 3～5 行说明本轮涉及的模块现状、spike 目标与决策编号。
@@ -1059,13 +1078,13 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/scan-pipeline.md、docs/specs/print-template.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Scan），规格 docs/specs/scan-pipeline.md；C-051 方案 A 已裁决。本轮只做 ScanEngine 适配层。
+【本轮背景】阶段 6（Scan），规格 docs/specs/scan-pipeline.md；C-051 方案 A 已裁决（OpenScanVision 根坐标 + `ScanEngine` 适配层）。C-038～C-041：批次实际复习日期、`ScanSession` 多页追加/去重、提前/晚扫描标记。C-052 方案 C：单元测试 JUnit 5、androidTest JUnit 4。R-04：回读只写 `PendingFeedback`，人工确认后才写 `ReviewFeedback`。本轮只做 ScanEngine 适配层。
 
 【本轮任务】
-- 按 scan-pipeline.md 的顺序：ArUco → 透视 → 每题 QR → OMR → OCR → PendingFeedback；
-- QR 校验失败/归属失败不进入确认页；
-- OCR 只写 detectedRawOcr，不写 ReviewFeedback；
-- 先写 QR 载荷/CRC/归属校验的单测，再写图像管线。
+- 按 scan-pipeline.md 的顺序：ArUco → 透视 → 每题 QR → OMR → OCR → `PendingFeedback`；
+- QR 校验失败/归属失败不进入确认页；多页扫描按 `ScanSession` 追加并去重，记录提前/晚扫描（C-038～C-041）；
+- OCR 只写 detectedRawOcr，不写 ReviewFeedback；本阶段任何路径都不得直接改知识点状态（R-04）；
+- 先写 QR 载荷/CRC/归属校验的单测（JUnit 5），再写图像管线；`androidTest` 保持 JUnit 4。
 
 【固定循环（本轮只走一遍）】
 1. Observe：用 3～5 行说明本轮涉及的模块现状、要改的文件、用例编号与决策编号。
@@ -1090,12 +1109,12 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/confirm-flow.md、docs/specs/feedback-usecase.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Confirm），规格 docs/specs/confirm-flow.md；实体机验证，不装模拟器。本轮只做 Confirm。
+【本轮背景】阶段 6（Confirm），规格 docs/specs/confirm-flow.md；实体机验证，不装模拟器。C-050：确认后的状态更新内部 `Double`、落库 `Float`，`effectiveFeedbackCount` 精确 `>= 3.0f`。C-052 方案 C：单元测试 JUnit 5，androidTest JUnit 4。R-04/D-13：逐项确认，NOT_REVIEWED 只写决定日志。本轮只做 Confirm。
 
 【本轮任务】
 - 逐项标记 ACCEPT/CORRECTED/NOT_REVIEWED/SUPPLEMENTED，禁止一键全部接受；
-- NOT_REVIEWED 只写 ConfirmationDecisionLog；
-- 先写状态机测试，再写 Compose；
+- NOT_REVIEWED 只写 ConfirmationDecisionLog；写入知识点状态时按 C-050 在边界转 `Float`；
+- 先写状态机测试（JUnit 5），再写 Compose；
 - 实体机跑一遍并留截图到 evidence/screens/：adb devices -l → 安装 → 启动 → 操作 → screencap；无设备就停下来报告“无设备”，不要伪造截图。
 
 【固定循环（本轮只走一遍）】
@@ -1121,14 +1140,15 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/scan-pipeline.md、docs/specs/print-template.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（R-01 硬门禁）验收，不写新功能。没有真实图像证据，不得声称通过。
+【本轮背景】阶段 6（R-01 硬门禁）验收，不写新功能。C-051 方案 A 已裁决；没有真实图像证据，不得声称通过。
 
 【本轮任务：验收】
 1) 5 张不同光照/角度的真实打印稿跑完整管线；
 2) 证据存 evidence/scan/；
 3) 断言 OMR 分组与人工核对一致（允许 <=1 组误判）；
 4) 如果失败，先修几何/参数，不回退 D-07；仍失败就写 docs/conflicts.md；
-5) 没有真实图像证据，不得在 agent-log 写“通过”。
+5) 按 C-051 记录适配层精度结论；不达标时在冲突条目中建议转方案 B，等人类确认后才能换实现，不得自行 fork 或替换库；
+6) 没有真实图像证据，不得在 agent-log 写“通过”。
 
 【本轮任务：收尾】
 - 更新 docs/changelog.md（文件、意图、关联决策）与 docs/agent-log/YYYY-MM-DD.md（目标、验证步骤与结果、未决问题、下轮建议）；

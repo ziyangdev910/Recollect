@@ -13,21 +13,21 @@
 
 ## 模块结构与依赖方向
 app → feature → data → core
-core/common、core/model、core/scheduler、core/pagination 为纯 Kotlin，禁止 import android.*/androidx.*，只允许 Kotlin 标准库与 java.*（含 java.time）。`core:model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`；Room Entity ↔ DTO 的映射放在 `data:room`（C-046 方案 A）。
+core/common、core/model、core/scheduler、core/pagination 为纯 Kotlin，禁止 import android.*/androidx.*，只允许 Kotlin 标准库与 java.*（含 java.time）。`core:model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含 `Tier`、`KnowledgeState`、`SchedulerQuestion`，C-053）；Room Entity ↔ DTO 的映射放在 `data:room`（C-046 方案 A）。
 
 ## 冻结的架构决策（不得"优化"或"简化"）
 D-01 调度单元是知识点；同一题目被多知识点触发只打印一次，触发知识点正常更新；非触发关联知识点按 0.3 权重更新连续掌握度增量，档位与下次到期日不变。非触发知识点也各占一行并独立填涂；有填涂时按该行自己的档位计算 ×0.3，未填涂（本次未复习）则不更新。
-D-02 档位差至少一档仅作为排序权重，不淘汰候选；所有到期题目都进入候选池。
+D-02 档位差至少一档仅作为同档位组内的排序权重（只比较本期到期点与非触发的、仍会打印的关联点之间的档位差，C-054；最高档位分组优先于档位差，C-059），不淘汰候选；所有到期题目都进入候选池。
 D-03 连续掌握度仅用于同档位内排序与时间装箱；更新规则：掌握 +0.3、较熟悉 −0.1、不会 −0.3，夹在 [0,1]；不得替代档位比较。C-050：算术在 UseCase 内部用 `Double`，对外/落库转 `Float`；`effectiveFeedbackCount` 阈值精确 `>= 3.0f`，不做 epsilon。
-D-04 冷却期优先于到期触发；默认 7 天，期间知识点顺延并标记"因冷却顺延"；用户手动覆盖后才可突破。覆盖采用确认页创建的一次性 CoolingOverrideEvent，plan() 通过 coolingOverrides 接收。
+D-04 冷却期优先于到期触发；固定 7 天（设置页不可修改；0 仅内部/测试表示关闭，负数非法，C-057），期间知识点顺延并标记"因冷却顺延"；用户手动覆盖后才可突破。覆盖采用确认页创建的一次性 CoolingOverrideEvent，plan() 通过 coolingOverrides 接收。
 D-05 冷启动固定阶梯 1/3/7 天；三档任意填涂均计有效反馈，"较熟悉"按 0.5 次计入；累计有效反馈 ≥ 3.0 后从下一次反馈起切换到墨墨背单词 DHP 简化模型：FAMILIAR 半强度、90% 保持率 + 30 天上限、新增 difficulty/halfLifeDays 字段；D-01～D-04 的排序/权重/冷却仍生效。
 D-06 手写笔记 OCR 只存储和展示，不参与调度更新；原始 OCR 只读、修正文本可编辑，导出两者都含。
-D-07 打印模板：左侧填涂区约 40%（一行一个知识点组，A/B/C 三框水平），右上题目信息区约 60%（页码、题号、知识点全称，不预留作答空白），右下笔记区约 60%（书写区+可选附加摘要）。图例"A—掌握 B—较熟悉 C—不会"仅文档首页出现一次，后续页不重复。知识点名称限一行；8–10 字截断只作用于左侧填涂区，右上保留全称并以" / "拼接、允许换行。左上/右上均按知识点编号升序。
-D-08 按日强制分页，条目不得跨页；条目整条移至下页，绝不拆分；每移一条在当页留白区底部加一个"续下页"标记，按题目顺序从上到下堆叠，不画填涂框；分页公式见 docs/specs/pagination.md。
-D-09 回读顺序：ArUco 定位 → 透视矫正 → 每题 QR 解码 → 左侧填涂区 OMR 按行分组 → ML Kit 中文 OCR（仅笔记）→ 人工确认页。QR 含版本、planId、pageId、questionId、校验码，不含知识点 ID。QR 失败走"手动输入页面 ID + 题号"，确认页校验归属。页码即 pageId（格式 `{planId}-{pageNumber:02d}`，全局唯一）；校验码算法与解码/校验失败分支见 docs/specs/scan-pipeline.md。C-051 方案 A：OpenScanVision 根坐标 + `ScanEngine` 适配层；850×540 → 2480×3508 的精度以真实打印稿 R-01 为准，不达标转方案 B。
+D-07 打印模板：左侧填涂区约 40%（一行一个知识点组，A/B/C 三框水平），右上题目信息区约 60%（页码、题号、知识点全称，不预留作答空白），右下笔记区约 60%（书写区+可选附加摘要）。图例"A—掌握 B—较熟悉 C—不会"仅文档首页出现一次，后续页不重复。知识点名称限一行；8–10 字截断只作用于左侧填涂区，右上保留全称并以" / "拼接、允许换行。左上/右上均按知识点编号升序；右上名称与左侧同一 printable 集合，数量等于知识点数量（由计划/数据层保证，C-067）。
+D-08 按日强制分页，条目不得跨页；条目整条移至下页，绝不拆分；不再绘制"续下页"标签，分页结果中的续下页元数据只在内部使用。每个日期的第一页在日期大标题下方标注"本日共需复习 X 题"（X = 该日期实际打印的题目数，不含 overflow，C-063）；分页公式见 docs/specs/pagination.md。
+D-09 回读顺序：ArUco 定位 → 透视矫正 → 每题 QR 解码 → 左侧填涂区 OMR 按行分组 → ML Kit 中文 OCR（仅笔记）→ 人工确认页。QR 含版本、planId、pageId、questionId、校验码，不含知识点 ID。QR 失败走"手动输入页面 ID + 题号"，确认页校验归属。页码即 pageId（格式 `{planId}-{pageNumber:02d}`，全局唯一）；planId 由计划层保证 6 位 Crockford Base32 且全局唯一，分页器只拼接、不校验（C-069）；校验码算法与解码/校验失败分支见 docs/specs/scan-pipeline.md。C-051 方案 A：OpenScanVision 根坐标 + `ScanEngine` 适配层；850×540 → 2480×3508 的精度以真实打印稿 R-01 为准，不达标转方案 B。
 D-10 端侧推理；依赖固定；不引入云端 SDK。
 D-11 归档条目退出调度，历史反馈保留为知识点背景数据；活跃题目计数为 0 时知识点休眠；取消归档重新激活。
-D-12 单题关联知识点 ≤ 4；知识点编号全局唯一不复用。
+D-12 单题关联知识点 ≤ 4；知识点编号全局唯一不复用；知识点、题目与关联 id 的唯一性由 `data:room` 保证，调度器不做去重/合并（C-056）。
 D-13 回读确认页必须逐项标记：接受 / 修正 / 本次未复习 / 补填；"补填"计入有效反馈，"本次未复习"不计入。不得提供一键全部接受。
 
 D-01～D-13 是本项目的冻结决策摘要；可执行定义分散在 `docs/specs/` 的对应规格（scheduler、feedback-usecase、data-model、print-template、pagination、scan-pipeline、confirm-flow、backup、entry、planning、repository、app、settings）。摘要与规格不一致时，以对应规格为准，并回写本摘要；修改决策需人类确认。独立约束 B-01 见 `docs/specs/backup.md`。
@@ -58,6 +58,18 @@ R-06 不得为适配实现而修改架构决策；冲突写入 docs/conflicts.md
 
 冲突条目还必须包含"对用户的实际影响"：写清用户在复习顺序、当天能排入哪些题、哪些知识点被推迟、打印稿内容或顺序等方面会感知到什么差异。每个条目都要给出简短的选型参考，且理由必须建立在这些实际影响上，而不是架构偏好。描述尽量使用用户能感知的语言，少提内部变量名、类名和排序键；确需技术定位时，可在括号内附注。
 
+## 决策落地后的文档同步（每完成一个决策必做）
+
+每当人类完成一个决策（在 docs/conflicts.md 或对话中明确选定方案），当轮除实现与测试外，必须同步完成：
+
+1) 归档与关闭：在 `docs/conflicts-archive.md` 记录裁决、落地位置、测试与规格同步状态；从 `docs/conflicts.md` 移除该未决条目。
+2) `docs/prompts.md`：修订受影响小阶段的【本轮背景】与【本轮任务】，使后续轮次直接按新决策执行，不保留与裁决冲突的旧任务描述。
+3) 本文件（`CLAUDE.md`）与 `docs/architecture/overview.md`：修订 D-01～D-13 摘要、红线、模块约束、字段产权/多形态表或文档索引中与新决策相关的表述；摘要只保留可执行结论，细节仍指向 `docs/specs/`。
+4) `docs/specs/`：仅在人类明确授权后回写；未获授权时在归档中注明“规格同步待授权”，不得自行修改规格。
+5) `docs/changelog.md` 与 `docs/agent-log/YYYY-MM-DD.md`：记录本轮代码、`prompts.md`、`CLAUDE.md`、`overview.md` 与规格的改动。
+
+不得只改代码或只改其中一份文档；代码、`prompts.md`、`CLAUDE.md` 与 `overview.md` 的表述必须与本轮裁决一致。
+
 ## 文档索引
 规格：docs/specs/scheduler.md、feedback-usecase.md、pagination.md、data-model.md、entry.md、planning.md、repository.md、app.md、settings.md、print-template.md、scan-pipeline.md、confirm-flow.md、backup.md
 决策摘要：本文件 D-01～D-13；可执行定义见 docs/specs/ 各规格
@@ -65,4 +77,4 @@ R-06 不得为适配实现而修改架构决策；冲突写入 docs/conflicts.md
 研究稿：docs/research/maimemo-model.md（C-018，已确认）
 TDD Prompts：docs/prompts.md
 依赖提案：docs/dependency-proposals.md
-前置验证报告：docs/preflight-report.md
+前置验证报告：docs/preflight-report.md（尚未创建；见 docs/conflicts.md 的未决文档缺口）

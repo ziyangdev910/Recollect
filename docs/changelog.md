@@ -154,3 +154,89 @@
 | 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 P-03：四条 68.5mm 条目，第 4 条整条移第 2 页，第 1 页恰一个 `order=0` marker 且 from/to pageId 正确；不拆分、不压缩高度（先红后绿） | P-03、C-048 |
 | 2026-11-15 | `docs/conflicts.md` | C-032 状态/影响行更新为 pagination 3 个测试、P-03 已落地（仅进度事实，不改裁决） | C-032、P-03 |
 | 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加阶段 2 P-03 轮次记录：目标、Observe、红绿证据、验证结果、未决问题与下轮建议 | 工作循环、P-03 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | P-08：按日期升序迭代 `dailyGroups`，输出与输入 Map 顺序无关；P-13：首页扣图例后放不下、但空白后续页放得下时，保留空首页并在下一页放置；类注释同步；单题高度公式未改 | P-08、P-13、D-08、C-025、C-048 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 P-08（日期升序、每日本页起、页号全文档连续、同日多页 date 相同）、P-10（自定义模板 65/75mm、12 条 11mm：首页 5 条、后续页 6 条、第 3 页 1 条，同时锁定首页图例+表头与后续页表头扣除）、P-13（70mm 条目进不了首页 65mm、进得了后续页 75mm，首页保留为空且恰一个 marker）；P-10 首跑即绿，用三种临时变异取得红证据并全部还原 | P-08、P-10、P-13、D-07、D-08、C-001、C-025、C-048 |
+| 2026-11-15 | `docs/conflicts.md` | C-032 状态/影响行更新：pagination 现有 6 个测试方法（P-01/P-03/P-08/P-10/P-13 + 模板几何），仅进度事实 | C-032、P-08、P-10、P-13 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加阶段 2 P-08/P-10/P-13 轮次记录：目标、Observe、红绿证据、独立复核、验证结果、未决问题与下轮建议 | 工作循环 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | P-14/P-18：单题高于 `contentHeightMm` 时整条进入 `overflowItems(ITEM_TOO_TALL)`，不打印、不拆分/压缩、不生成 `ContinuationMarker`；剩余条目继续按 C-048 分页；`warnings` 由 overflow 按 `questionId` 字典序派生（`code` 取原因名）；判定改用 `partition` 一次求值 | P-14、P-18、D-07、D-08、C-016、C-025、C-027、C-048 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 P-14（105mm 过高条目进 overflow、正常条目照常放置、无 marker）与 P-18（95mm 恰等于 `contentHeightMm` 可放后续页、100mm 恰等于 `usableHeightMm` 必须进 overflow）；抽出 `smallPageTemplate` 共用模板并修正注释中的 QR/间距算式 | P-14、P-18、C-016、C-025、C-048 |
+| 2026-11-15 | `docs/conflicts.md` | C-032 进度更新为 pagination 8 个测试方法、P-14/P-18 已落地；新增 C-060（整日/整份计划条目全部过高时是否保留空白首页）待裁决 | C-032、C-060、D-07、D-08 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加阶段 2 P-14/P-18 轮次记录：目标、Observe、红绿证据（含临时变异）、独立复核、验证结果、未决问题与下轮建议 | 工作循环 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | C-060 方案 B：新增锁定测试——全部条目过高的日期不建页、不占页号，也不输出仅含图例的空白页，只返回 overflow；正常日期仍是文档第 1 页并扣图例 | C-060、D-07、D-08、C-048 |
+| 2026-11-15 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-060 移出未决并按方案 B 归档裁决、落地、测试与规格回写待授权事项；未决仅剩 C-032，pagination 进度更新为 9 个测试方法 | C-060、C-032 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 C-060 裁决落地记录：行为核对、测试、验证结果与规格回写待授权事项 | 工作循环、C-060 |
+| 2026-11-15 | `docs/specs/pagination.md` | C-060 方案 B 回写（获授权）：关联裁决加入 C-060；分页规则补充「全溢出日期不建页、整份计划无可打印条目时由计划层提示」；放置语义把“有任意条目”改为“有可打印条目”并补充全溢出规则 | C-060、D-07、D-08、C-048 |
+| 2026-11-15 | `docs/conflicts-archive.md` | C-060 的“规格同步”由待授权更新为已回写，并注明改动位置 | C-060 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 C-060 规格回写记录：改动位置、与锁定测试的一致性、验证结果 | 工作循环、C-060 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | P-05/P-11：overflow 判定拆为「附件面积 > `usableHeightMm × 30%` → `ATTACHMENT_OVER_LIMIT`」与「单题高度 > `contentHeightMm` → `ITEM_TOO_TALL`」；溢出条目保持公式原值（不截断附件区），不打印、无 marker；抽出 `attachmentAreaMm` 供高度公式与上限判定共用；两条同时成立时的原因顺序未裁决（C-061），代码注释标明不得视为定案 | P-05、P-11、D-07、D-08、C-016、C-025、C-027、C-048、C-061 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 P-05（自定义模板 usable=230、上限 69、每条附件 24：1/2 条打印且高度 84→108 递增，3 条 72 超限整条进入 `ATTACHMENT_OVER_LIMIT`，`heightMm=132` 不截断）与 P-11（自定义模板 usable=100、上限 30：2 条×15=30 恰好通过并完整打印 80mm；2 条×15.5=31 超 1mm 进入 overflow，`heightMm=81` 保留全额附加区，全溢出日期不建页）；P-11 首跑即绿，用两次临时变异取得红证据后还原 | P-05、P-11、C-027、C-060、C-048 |
+| 2026-11-15 | `docs/conflicts.md` | 新增 C-061：附加笔记超限与整题过高同时成立时提示归属未定义，记录用户影响、三种方案、选型参考与裁决前禁止事项；C-032 进度更新为 pagination 11 个测试方法、附件上限已落地（仅进度事实，不改裁决） | C-061、C-032、C-027 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加阶段 2 P-05/P-11 轮次记录：目标、Observe、红绿证据（含临时变异）、验证结果、未决问题与下轮建议 | 工作循环、P-05、P-11 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | C-061 方案 B 落地：`overflowReasonOf` 改为先判整题高度、再判附件面积；两条同时成立时归为 `ITEM_TOO_TALL`；类注释与判定注释同步裁决 | C-061、C-027、P-05、P-11、P-14、P-18 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 `C-061 item both too tall and over attachment limit is reported as ITEM_TOO_TALL`：3 条附件 45mm 超限且整题 105mm 过高，断言归为 `ITEM_TOO_TALL`、`heightMm=105`、该日不建页；先红后绿 | C-061、P-14、P-18、C-060 |
+| 2026-11-15 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-061 移出未决，按方案 B 归档裁决、落地、测试与规格回写待授权事项；未决仅剩 C-032，pagination 进度更新为 12 个测试方法 | C-061、C-032 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 C-061 裁决落地记录：红绿证据、验证结果、未决问题与下轮建议 | 工作循环、C-061 |
+| 2026-11-15 | `docs/specs/pagination.md` | C-061 方案 B 回写（获授权）：头部关联裁决加入 C-061；「单题高度公式」段新增「两条同时成立时按 `ITEM_TOO_TALL` 处理、只输出一条 overflow 记录、附加上限只在整题高度未超时判定」 | C-061、D-07、D-08、C-027 |
+| 2026-11-15 | `docs/conflicts-archive.md` | C-061 的「规格同步」由待授权更新为已回写，注明改动位置 | C-061 |
+| 2026-11-15 | `docs/conflicts.md` | 新增 C-062：不打印笔记书写区的题目是否仍受附加笔记上限约束；记录用户影响、三种方案、选型参考与裁决前禁止事项 | C-062、C-027、P-11、P-15 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 C-061 规格回写与 `hasNoteArea=false` 现状分析记录 | 工作循环、C-061、C-062 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | C-062 方案 B 落地：附加上限判定增加 `hasNoteArea` 前置；不打印笔记区时附加数量既不参与高度也不参与上限判定，且不被静默清零；类注释与判定注释同步 | C-062、C-027、P-05、P-11、P-15 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 `C-062 attachment limit applies only when the note area is printed`：同一模板下打印笔记区的 81mm 题目因附件超限移出，不打印笔记区的 40mm 题目正常建页；先红后绿 | C-062、C-060、P-15 |
+| 2026-11-15 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-062 移出未决，按方案 B 归档裁决、落地、测试与规格回写待授权事项；未决仅剩 C-032，pagination 进度更新为 13 个测试方法 | C-062、C-032 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 C-062 裁决落地记录：红绿证据、验证结果、未决问题与下轮建议 | 工作循环、C-062 |
+| 2026-11-15 | `docs/specs/pagination.md` | C-062 方案 B 回写（获授权）：头部关联裁决加入 C-062；「单题高度公式」段把附加上限改为仅在 `hasNoteArea=true` 时判定，`hasNoteArea=false` 时附加数量不参与上限判定且不得被静默清零 | C-062、C-027、D-07、D-08 |
+| 2026-11-15 | `docs/conflicts-archive.md` | C-062 的「规格同步」由待授权更新为已回写，注明改动位置 | C-062 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 C-062 规格回写记录 | 工作循环、C-062 |
+| 2026-11-15 | `docs/prompts.md` | 修正 2.7「其余边界 + 属性测试」描述：背景补 C-060/C-061/C-062 已裁决；P-12/P-15/P-16/P-19 断言写清；P-15 明确 `hasNoteArea=false` 时附加上限不判定且附加数量不得清零；P-09 生成器覆盖 C-060/C-061/C-062；注明模板校验、`PLAN_TOO_LONG`、P-20 留到 2.8 | C-060、C-061、C-062、P-02、P-12、P-15、P-16、P-19、P-09 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 prompts.md 2.7 条目修正记录 | 工作循环 |
+| 2026-11-15 | `docs/prompts.md` | 依据 `conflicts-archive.md` 修正 2.8 及后续阶段的任务描述：2.8 覆盖 C-060/C-061/C-062、P-20、模板校验与 `PLAN_TOO_LONG`；3.x 补 C-050/C-053/C-055/C-056 与 `Failure` 处理；4.x 补 C-047/C-050/C-055/C-056/C-057 与唯一性/Float 验收；5.x 补 C-047/C-053/C-060/C-061/C-062 的映射与提示；6.x 补 C-038～C-041、C-050、C-052、C-060～C-062 与 C-051 回退门禁 | C-038～C-041、C-047、C-050、C-052、C-053、C-055～C-057、C-060～C-062 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 prompts.md 2.8 及后续阶段修正记录 | 工作循环 |
+| 2026-11-15 | `CLAUDE.md` | 按已裁决修正不符表述：D-02 补 C-054/C-059 的同档位组内排序与高低档顺序；D-04 由“默认 7 天”改为“固定 7 天（0 关闭、负数非法，C-057）”；D-12 补 C-056 的 id 唯一性归属；模块结构补 C-053 的 DTO 位置；文档索引标注 `preflight-report.md` 尚未创建；新增「决策落地后的文档同步」规则 | D-02、D-04、D-12、C-046、C-053、C-054、C-056、C-057、C-059 |
+| 2026-11-15 | `docs/conflicts.md` | 未决文档缺口：`preflight-report.md` 条目改为“尚未创建，索引已标注” | 工作循环 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 CLAUDE.md 一致性检查与同步规则记录 | 工作循环 |
+| 2026-11-15 | `CLAUDE.md` | 决策同步规则补充 `docs/architecture/overview.md`：裁决后同时修订字段产权/多形态表，并在 changelog/agent-log 记录 | 工作循环 |
+| 2026-11-15 | `docs/architecture/overview.md` | 修正过期状态与裁决口径：头部实现进度更新为 scheduler/pagination 已落地、data/feature/app 未落地；业务代码进度指向 C-032；`KnowledgeState`/`SchedulerQuestion` 标注 core:model（C-053）；`linkedKnowledgeIds` 与 id 唯一性标注 C-046/C-056 | C-032、C-046、C-053、C-056 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加 overview.md 一致性修正与规则补充记录 | 工作循环 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 新增 P-02（三条 76/83.5/98.5mm 恰好填满首页 258mm，最后一条底边落在下页边距 285mm）、P-12（逆序插入的三日输入与升序输入规划结果整体相等）、P-15（无笔记区 88.5→38.5mm、附件 31mm 超限不判定且条目照常打印）、P-16（行数 1..4 高度每行 +7.5mm、知识点数 2..4 高度不变）、P-19（QR 底栏 21→28mm 时高度精确 +7mm、笔记区仍为 30mm）；五个用例首跑即绿，均以临时变异取得红证据后全部还原 | P-02、P-12、P-15、P-16、P-19、D-07、D-08、C-016、C-025、C-027、C-048、C-062 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerPropertyTest.kt`（新增） | P-09 属性测试：`@RepeatedTest(100)` + 固定种子 `20261113 + 序号`，断言条目不跨页/不重叠/不越界、marker 与被移条目一一对应、overflow 不在 pages、每题恰好处理一次、`pageNumber` 连续、`pageId` 唯一、日期升序、warnings 一一对应；生成器按 repetition 轮换模板并显式构造 C-060/C-061/C-062 场景，`@AfterAll` 断言三类分支均被覆盖；以两个临时变异取得红证据（78/100、34/100 次失败）后还原 | P-09、D-08、C-048、C-060、C-061、C-062 |
+| 2026-11-15 | `docs/conflicts.md` | C-032 状态/影响行更新：pagination 已有 17 个 `PagePlannerTest` 方法与 1 个属性测试（100 次重复），P-02/P-09/P-12/P-15/P-16/P-19 已落地；剩余模板校验、`PLAN_TOO_LONG` 与 P-20（仅进度事实，不改裁决） | C-032、P-02、P-09、P-12、P-15、P-16、P-19 |
+| 2026-11-15 | `docs/prompts.md` | 2.7「其余边界 + 属性测试」标记 【done】 | 工作循环 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加阶段 2 P-02/P-12/P-15/P-16/P-19/P-09 轮次记录：目标、Observe、红绿证据（含临时变异）、验证结果、未决问题与下轮建议 | 工作循环 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | 收尾验收门禁：模板几何非法返回 `Failure(INVALID_TEMPLATE_GEOMETRY)`（`usableHeightMm` 或 `firstPageContentHeightMm` 非正）；`P-20` 三类计数越界抛 `IllegalArgumentException`；页数超过 99 返回 `Failure(PLAN_TOO_LONG)`；KDoc 同步 | C-047、C-048、P-20、P-14、P-18 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 收尾补测：P-04（左侧行高随知识点数递增、表头只扣一次）、P-06（左侧更高取左侧）、P-07（右侧更高取右侧和）、P-17（重复规划稳定、分页器不读取/重排名称）、P-20（六种越界计数）、模板非法（零/负/NaN）与 >99 页两条验收门禁、默认模板守卫、C-048（空输入/空日期不建页）；P-04/P-06/P-07/P-17/C-048/默认模板守卫首跑即绿并用临时变异取得红证据，均还原；P-20/模板/`PLAN_TOO_LONG` 先红后绿 | P-04、P-06、P-07、P-17、P-20、C-047、C-048 |
+| 2026-11-15 | `docs/conflicts.md` | C-032 更新为 pagination 收尾完成（26 个 `PagePlannerTest` + P-09 属性测试 + 模板几何，P-01～P-20 与验收门禁全覆盖）；新增收尾审计待裁决 C-063～C-069 与低影响观察 | C-032、C-047、C-048、C-060、C-061、C-062 |
+| 2026-11-15 | `docs/prompts.md` | 2.8「模块收尾 + 规格审计」标记 【done】 | 工作循环 |
+| 2026-11-15 | `docs/architecture/overview.md` | 头部实现进度由“pagination 已落地部分 P-01～P-20”改为“已覆盖 P-01～P-20 与验收门禁” | C-032、C-047、C-048 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加阶段 2 收尾轮次记录：P-01～P-20 映射、红绿证据（含临时变异）、审计与代码审查结论、验证命令与结果、未决问题、下轮建议 | 工作循环 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/PaginationResult.kt` | C-065 方案 B：新增稳定枚举 `PaginationWarningCode`（分页器两类 + 计划层预留 `KNOWLEDGE_TEXT_OVERFLOW`），`PaginationWarning.code` 改为枚举；C-063：`ContinuationMarker`/`continuationMarkers` 注明仅内部元数据、不再渲染“续下页” | C-063、C-064、C-065 |
+| 2026-11-15 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | C-065：warning 代码由内部原因名改为稳定枚举映射；warnings 排序补 `code` 枚举序次键 | C-064、C-065 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | 警告代码断言改为枚举；C-068 方案 A：新增“模板+计数同时非法”与“模板非法+空输入”断言，锁定模板校验优先 | C-065、C-068 |
+| 2026-11-15 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerPropertyTest.kt` | P-09 的 warning code 断言改为 `code.name`，与枚举映射一致 | C-065 |
+| 2026-11-15 | `docs/specs/pagination.md` | 回写 C-063（marker 仅内部元数据）、C-064（`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出）、C-065（警告代码枚举与角色）、C-067（名称集合/数量由计划与数据层保证）、C-068（校验顺序）、C-069（`planId` 前置条件） | C-063～C-065、C-067～C-069 |
+| 2026-11-15 | `docs/specs/print-template.md` | 回写 C-063：移除“续下页”，新增日期大标题与“本日共需复习 X 题”；C-064/C-067：文字溢出警告来源与名称数量一致性 | C-063、C-064、C-067 |
+| 2026-11-15 | `docs/specs/planning.md` | 回写 C-064（合并文字溢出警告、去重与排序）、C-067（名称集合/数量）、C-069（`planId` 前置条件）、C-063（marker 仅内部元数据） | C-063、C-064、C-067、C-069 |
+| 2026-11-15 | `docs/specs/repository.md`、`docs/specs/app.md` | C-067：映射保证 `knowledgeNames` 数量 = `knowledgeCount`；C-065：PlanPreview 只展示中文标签与文案，不展示内部代码 | C-065、C-067 |
+| 2026-11-15 | `CLAUDE.md` | D-07 补名称集合一致性；D-08 改为“不再绘制续下页，每日第一页标注本日总题数”；D-09 补 `planId` 前置条件 | C-063、C-067、C-069 |
+| 2026-11-15 | `docs/architecture/overview.md` | 多形态表与生命周期表同步：marker 仅内部元数据、每日总题数由打印层统计 | C-063 |
+| 2026-11-15 | `docs/prompts.md` | 3.2/5.2/6.1 同步 C-063～C-067 的映射、警告合并与打印规则 | C-063～C-067 |
+| 2026-11-15 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-063～C-065、C-067～C-069 移出未决并归档裁决、落地、测试与规格同步；C-066 保持未决（等待“拆分题目”解释后的裁决） | C-063～C-069 |
+| 2026-11-15 | `docs/agent-log/2026-11-15.md` | 追加审计裁决落地记录：C-063～C-069 的改动、C-066 解释、验证结果与未决问题 | 工作循环 |
+| 2026-11-17 | `core/pagination/src/main/kotlin/com/recollect/pagination/DefaultPagePlanner.kt` | C-066：整题过高提示改为“减少本题关联的知识点/缩短知识点描述”，附加超限提示改为“减少附加笔记”；删除“拆分题目”，原因归类不变 | C-061、C-066 |
+| 2026-11-17 | `core/pagination/src/main/kotlin/com/recollect/pagination/TemplateGeometry.kt` | C-063：新增 `dateHeadingFontMm=5.0`、`dateHeadingHeightMm=7.0` 与派生 `dailyTotalFontMm=2.5`、`dailyTotalHeightMm=3.5`、`dateHeadingBlockHeightMm=10.5`；默认绘制在上边距内，不占内容区 | C-063 |
+| 2026-11-17 | `core/pagination/src/test/kotlin/com/recollect/pagination/PagePlannerTest.kt` | C-066：P-14/C-061/P-05 增加文案断言（含减少知识点/缩短描述、不含“拆分题目”）；旧文案临时变异时 3/3 失败后还原 | C-066 |
+| 2026-11-17 | `core/pagination/src/test/kotlin/com/recollect/pagination/TemplateGeometryTest.kt` | C-063：断言日期标题 5/7mm、总题数 2.5/3.5mm、合计 10.5mm ≤ 12mm 上边距 | C-063 |
+| 2026-11-17 | `docs/specs/pagination.md` | C-066：两处提示文案去掉“拆分题目”；C-063：模板新增日期标题参数/派生量与上边距放置说明 | C-063、C-066 |
+| 2026-11-17 | `docs/specs/print-template.md` | C-063：日期大标题 5/7mm、总题数 2.5/3.5mm、合计 10.5mm 绘制在上边距内；C-066 关联裁决 | C-063、C-066 |
+| 2026-11-17 | `docs/prompts.md` | 5.2/6.1 同步 C-066 文案与 C-063 日期标题几何 | C-063、C-066 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-066 移出未决并归档；C-063 补 X 确认与几何裁决；C-061 文案更新注记 | C-061、C-063、C-066 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md`（新增） | 记录 C-066 与 C-063 几何裁决的改动、红绿证据、验证结果与未决问题 | 工作循环 |
+| 2026-11-17 | `core/model/src/main/kotlin/com/recollect/model/KnowledgeRowsCodec.kt`（新增） | 阶段 3.1：新增 `KnowledgeRow`/`PlanPageRows` 与 `KnowledgeRowsCodec`；Kotlin 标准库手写紧凑 JSON 编解码，行序与触发列表原样保留；未新增依赖 | C-046 方案 A、C-015、C-053、C-070 |
+| 2026-11-17 | `core/model/src/test/kotlin/com/recollect/model/KnowledgeRowsCodecTest.kt`（新增） | 阶段 3.1：用 `data-model.md` 的示例做 decode→encode 往返；断言 rows 数量/顺序、`triggeredKnowledgePointIds` 原样保留；`[5,3]` 解码后不按 number 重排 | C-015、C-046 |
+| 2026-11-17 | `docs/conflicts.md` | 新增 C-070：`repository.md` 的记录字段未列题目标识、`data-model.md` 的示例含题目标识；记录用户影响、方案与建议，不代替裁决 | C-015、C-046 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 3.1 轮次记录（目标、改动、红绿证据、验证、未决、下轮建议） | 工作循环 |
+| 2026-11-17 | `docs/specs/repository.md` | C-070 方案 A（人类授权）：`PlanPageRows` 增加 `questionId`；补充行快照按题目记录、顺序冻结、不按 number 重排的说明 | C-070、C-015、C-046 |
+| 2026-11-17 | `core/model/src/main/kotlin/com/recollect/model/KnowledgeRowsCodec.kt` | C-070 裁决后更新文件头注解，移除“repository.md 未列出该字段”的待裁决表述；代码行为不变 | C-070 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-070 移出未决并归档：裁决、落地位置、测试与规格同步状态；未决恢复为仅 C-032 | C-070 |
+| 2026-11-17 | `docs/prompts.md` | 3.1 标记【done】并补 C-070；3.2 的映射任务与 ModelMappingTest 要求补 `questionId`、rows 顺序保真 | C-070、C-015 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 `core:model` 的 KnowledgeRowsCodec；多形态表增加 `PlanPage.knowledgeRows` ↔ `PlanPageRows` 行 | C-070、C-046 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-070 裁决落地记录 | C-070 |

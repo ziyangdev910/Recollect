@@ -109,6 +109,7 @@ data class SchedulerQuestion(/* 见 scheduler.md */)
 data class RenderableQuestion(/* 见 pagination.md */)
 data class KnowledgeRow(val knowledgePointId: String, val number: Int)
 data class PlanPageRows(
+    val questionId: String, // 该记录对应的题目（C-070）
     val rows: List<KnowledgeRow>,
     val triggeredKnowledgePointIds: List<String>
 )
@@ -137,8 +138,10 @@ fun PlannedPage.toPlanPageRows(): PlanPageRows
 - `Question` 实体没有 `linkedKnowledgeIds` 列；`data/room` 从 `QuestionKnowledgeCrossRef` 读取并按 `KnowledgePoint.number` 升序构造该列表。scheduler 不依赖输入列表顺序（C-049）。
 - `data/room` 构造调度 DTO 时保证 `knowledgeStates` 与 `questions` 的 id 唯一、每条 `linkedKnowledgeIds` 内无重复，并在正常情况下保证每个关联 id 都能解析到知识点（C-056 方案 A）；备份导入/数据损坏导致的悬空关联由 scheduler 按 C-055 方案 C 跳过并留下 `UNRESOLVED_KNOWLEDGE` 记录。
 - `PlannedQuestion` 没有 `questionNumber`；映射时由 `data/room` 从 `Question.questionNumber` 补齐。
+- `PlannedQuestion.toRenderableQuestion` 的 `knowledgeNames` 必须与左侧填涂行属于同一 printable 集合（`!dormant && activeQuestionCount > 0`）、按 `KnowledgePoint.number` 升序，且数量等于 `knowledgeCount`（C-067 方案 B）；分页器只消费、不补齐/截断/重算。
 - `Question.coolingPeriodOverrideDays` 已删除；调度只通过 `coolingOverrides` 接收一次性事件。
 - `PlanPage.knowledgeRows` 的 JSON 编解码集中在 `core:model` 的 `KnowledgeRowsCodec`，Print/Scan 共用；`core:model` 不依赖 Room 或 Android。
+- `PlanPageRows` 按题目记录行快照：`questionId` 对应本页题目，`rows` 顺序保持打印时的行序，不得按 `number` 重排（C-015、C-070）；`triggeredKnowledgePointIds` 原样保留。`data:room` 只做 `PlanPage` 行与 `List<PlanPageRows>` 的映射，不自行拼 JSON。
 - `Room Entity ↔ DTO` 的转换不改变字段语义；缺失/非法值按对应规格的默认值处理（如 `estimatedReviewMinutes=15`）。
 
 ## 归档/删除的原子操作

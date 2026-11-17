@@ -1,12 +1,12 @@
 # 分页规划器规格（core/pagination）
 
 关联决策：D-07、D-08
-关联裁决：C-013、C-015、C-016、C-025、C-027、C-047、C-048
+关联裁决：C-013、C-015、C-016、C-025、C-027、C-047、C-048、C-060、C-061、C-062、C-063、C-064、C-065、C-066、C-067、C-068、C-069
 
 ## 冻结决策（D-07、D-08）
 
 - **D-07**：只打印 printable 知识点；左侧名称限一行、8–10 字截断；右上全称以「 / 」拼接、允许换行；图例仅首页一次。
-- **D-08**：按日分页、条目不得跨页；整条移至下页、不拆分；每移一条一个「续下页」标记，按题目顺序堆叠。
+- **D-08**：按日分页、条目不得跨页；整条移至下页、不拆分。不再绘制「续下页」标签；每个日期的第一页在日期大标题下方标注「本日共需复习 X 题」（X = 该日期实际打印的题目数，不含 overflow，C-063）。分页结果中的续下页元数据只供内部使用。
 
 ## 接口
 
@@ -23,7 +23,7 @@ data class RenderableQuestion(
     val questionId: String,
     val questionNumber: String,
     val knowledgeCount: Int,                  // 1..4，只计 printable 知识点（!dormant && activeQuestionCount > 0）
-    val knowledgeNames: List<String>,         // 全称，按 KnowledgePoint.number 升序（C-013/C-015）
+    val knowledgeNames: List<String>,         // 全称，按 number 升序；与左侧同一 printable 集合，数量 = knowledgeCount（计划/数据层保证，C-067）
     val knowledgeLineCount: Int,              // 右上全称换行后的视觉行数，由 feature/print 计算
     val attachmentCount: Int,                 // 0..3
     val hasNoteArea: Boolean = true
@@ -46,7 +46,9 @@ data class TemplateGeometry(
     val itemSpacingMm: Double = 3.0,
     val qrSizeMm: Double = 18.0,
     val qrPaddingMm: Double = 3.0,
-    val maxAttachmentHeightRatio: Double = 0.30   // C-027
+    val maxAttachmentHeightRatio: Double = 0.30,  // C-027
+    val dateHeadingFontMm: Double = 5.0,          // 日期大标题字号；总题数字号为其一半（C-063）
+    val dateHeadingHeightMm: Double = 7.0         // 日期大标题行高；总题数高度为其一半（C-063）
 ) {
     val qrFooterHeightMm: Double
         get() = qrSizeMm + qrPaddingMm
@@ -64,6 +66,12 @@ data class TemplateGeometry(
         get() = rightAreaWidthMm - 2 * textPaddingMm
     val maxAttachmentHeightMm: Double
         get() = usableHeightMm * maxAttachmentHeightRatio
+    val dailyTotalFontMm: Double
+        get() = dateHeadingFontMm / 2
+    val dailyTotalHeightMm: Double
+        get() = dateHeadingHeightMm / 2
+    val dateHeadingBlockHeightMm: Double
+        get() = dateHeadingHeightMm + dailyTotalHeightMm
 }
 
 sealed interface PaginationResult {
@@ -113,9 +121,15 @@ enum class OverflowReason { ITEM_TOO_TALL, ATTACHMENT_OVER_LIMIT }
 
 data class PaginationWarning(
     val questionId: String,
-    val code: String,                         // 例如 KNOWLEDGE_TEXT_OVERFLOW
-    val message: String
+    val code: PaginationWarningCode,          // 稳定代码，只给程序/日志；界面映射为中文标签（C-065）
+    val message: String                       // 给用户看的中文文案（C-065）
 )
+
+enum class PaginationWarningCode {
+    ITEM_TOO_TALL,           // 分页器产出
+    ATTACHMENT_OVER_LIMIT,   // 分页器产出
+    KNOWLEDGE_TEXT_OVERFLOW  // 计划层产出并与本列表合并（C-064），分页器不产出
+}
 ```
 
 ## 可用高度（C-025 方案一）
@@ -128,6 +142,8 @@ data class PaginationWarning(
   `headerRowHeightMm` 是页级表头，每页只扣一次，不随条目重复计入。
 - `maxAttachmentHeightMm = usableHeightMm * maxAttachmentHeightRatio`（默认 30%）；该上限与首页/后续页无关，首页空间不足由条目高度判定处理。
 - 模板参数必须满足 `usableHeightMm > 0` 且 `firstPageContentHeightMm > 0`；否则返回 `PaginationResult.Failure(PaginationFailureCode.INVALID_TEMPLATE_GEOMETRY, ...)`，不得静默产生负高度页。
+- 校验顺序（C-068 方案 A）：模板几何 → 输入计数 → 空态/分页。模板非法时，即使计数字段越界或 `dailyGroups` 为空，也返回 `Failure(INVALID_TEMPLATE_GEOMETRY)`，不得改为抛 `IllegalArgumentException` 或返回空 `Success`。
+- 日期大标题与每日总题数（C-063）：日期标题字号/行高取 `dateHeadingFontMm`（默认 5mm）/ `dateHeadingHeightMm`（默认 7mm）；总题数字号与高度各为其一半（`dailyTotalFontMm` = 2.5mm、`dailyTotalHeightMm` = 3.5mm）。两者合计 `dateHeadingBlockHeightMm` = 10.5mm，默认绘制在上边距 12mm 内，**不占用内容区高度**。若打印层改到内容区，必须从该日期首页容量扣除该高度并重跑 P-01～P-20。
 
 ## 单题高度公式（必须原样实现并测试）
 
@@ -140,8 +156,9 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 ```
 
 - `knowledgeLineCount` 由 `feature/print` 按 `print-template.md` 的右上换行规则计算；不在 `core/pagination` 里猜测文本换行。
-- `attachmentArea > maxAttachmentHeightMm` → `OverflowItem(reason = ATTACHMENT_OVER_LIMIT)`，整条不打印，提示用户减少附加笔记或拆分题目（C-027）。
-- `itemHeight > contentHeightMm` → `OverflowItem(reason = ITEM_TOO_TALL)`，整条不打印，绝不在分页器内拆分或压缩（C-016/C-025）。
+- 仅在 `hasNoteArea=true` 时判定附加上限：`attachmentArea > maxAttachmentHeightMm` → `OverflowItem(reason = ATTACHMENT_OVER_LIMIT)`，整条不打印，提示用户减少附加笔记（C-027、C-062；C-066 不再建议拆分题目）。`hasNoteArea=false` 时纸上没有笔记区与附加笔记，附加数量不参与上限判定，也不得被静默清零。
+- `itemHeight > contentHeightMm` → `OverflowItem(reason = ITEM_TOO_TALL)`，整条不打印，绝不在分页器内拆分或压缩（C-016/C-025）；提示引导用户减少本题关联的知识点或缩短知识点描述（减少右上名称行数，C-066）。
+- 两条同时成立（`attachmentArea > maxAttachmentHeightMm` 且 `itemHeight > contentHeightMm`）时按 `ITEM_TOO_TALL` 处理（C-061 方案 B）：只输出一条 overflow 记录，提示引导减少关联知识点或缩短知识点描述（C-066，不再建议拆分题目）；附加上限只在整题高度未超过 `contentHeightMm` 时判定。
 - 单题高度上限由模板参数保证：`noteAreaBaseHeightMm` 不得随条目增长；若配置导致常规条目普遍超过 `contentHeightMm`，属于模板参数错误，应在测试中失败。
 
 ## 分页规则
@@ -149,12 +166,14 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 - 输入 `Map<LocalDate, List<RenderableQuestion>>` 必须先按 `LocalDate` 升序排序再分页；输出与输入 Map 的迭代顺序无关（C-025）。
 - 按日期分组，每个日期从新页开始（D-08）；同一天产生多页时，页序连续，`PlannedPage.date` 相同。
 - 条目整条放置：当前页剩余高度不足以放下整条时，整条移到下一页，**不得拆分**（C-016）。
-- 被移走的条目在当页留白区底部生成**一个** `ContinuationMarker`（"续下页"），不画填涂框；多个被移条目按题目顺序生成多个 marker，`order` 从 0 递增，渲染时从上到下堆叠（C-016）。
+- 被移走的条目在当页生成**一个** `ContinuationMarker`，不画填涂框；多个被移条目按题目顺序生成多个 marker，`order` 从 0 递增（C-016）。**C-063 起 marker 仅作内部移页元数据，不再在纸上绘制“续下页”文本**；用户可见的每日题数由打印层在每个日期的第一页标注（见 `print-template.md`）。
 - 如果条目连一个空白的后续页都放不下（`itemHeight > contentHeightMm`），进入 `overflowItems`，不进入 `pages`。
 - 如果条目能放进后续页但放不进首页（首页扣了图例），首页生成 marker，条目放到下一页；首页即使没有条目也要存在，以承载图例。
+- 若某日期的条目全部进入 `overflowItems`（该日期没有任何可打印条目），该日期不建页，也不输出仅含图例的空白页；整份计划都没有可打印条目时返回 `Success(emptyList(), overflowItems, warnings)`，空态与提示由 `feature/planning` 负责（C-060 方案 B）。
 - 留白区域不放置任何方框，不参与 OMR 采样。
 - `pageId = "{planId}-{pageNumber:02d}"`；`pageNumber` 从 1 连续递增，超过 99 时返回 `PaginationResult.Failure(PaginationFailureCode.PLAN_TOO_LONG, ...)`（计划过长，需拆分计划）。
-- `Success.overflowItems` 不进入 `pages`，不打印；`Success.warnings` 同时给出用户可读提示（含 `questionId` 与原因）。
+- `planId` 由计划层保证为 6 位 Crockford Base32（去掉 I/L/O/U）且全局唯一（`planning.md`）；分页器只拼接，不校验、不改写（C-069 方案 A）。
+- `Success.overflowItems` 不进入 `pages`，不打印；`Success.warnings` 同时给出用户可读提示（含 `questionId` 与原因）。警告代码是稳定枚举，只给程序/日志；文案给用户看（C-065 方案 B）。分页器只产出 `ITEM_TOO_TALL`、`ATTACHMENT_OVER_LIMIT` 两类；`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并与本列表合并，不在分页器内生成（C-064 方案 A，合并规则见 `planning.md`）。
 - 图例仅文档首页出现一次（D-07、C-001）：仅首页可用高度扣除 `legendHeightMm`，后续页不扣除。
 - `PagePlanner` 只返回映射，不写数据库；`feature/planning` 负责持久化 `PlanPage`（pageId/pageNumber/date/questionIds/knowledgeRows/markers）并把 `Question.lastScheduledDate` 写为目标日（C-033 方案一）。
 
@@ -163,10 +182,10 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 - `PlacedItem.yOffsetMm = topMarginMm + (pageNumber == 1 ? legendHeightMm : 0) + headerRowHeightMm + Σ(当页已放置条目的 itemHeight)`；从页面顶边起算。
 - `PlacedItem.heightMm = itemHeight`（含 `itemSpacingMm`）。
 - 当前页按输入顺序尝试放置；**遇到第一条放不下的条目就结束当前页**，该条及后续条目按原顺序进入下一页；不得跳过该条去填更小的后续条目。
-- 每条被移走的条目在来源页生成一个 `ContinuationMarker`：`fromPageId=来源页`、`toPageId=实际放置页`、`order` 按该页被移条目的题目顺序从 0 递增；不画填涂框。
+- 每条被移走的条目在来源页生成一个 `ContinuationMarker`：`fromPageId=来源页`、`toPageId=实际放置页`、`order` 按该页被移条目的题目顺序从 0 递增；不画填涂框、不绘制“续下页”文本（C-063，marker 仅作内部元数据）。
 - 条目高于 `contentHeightMm` 时进入 `overflowItems(ITEM_TOO_TALL)`，不生成 marker、不打印、不拆分/压缩。
-- 空日期（`List` 为空）不建页；`dailyGroups` 全空时返回 `Success(emptyList(), emptyList(), emptyList())`。有任意条目时，首页即使没有条目也保留以承载图例。
-- `overflowItems` 按 `date` 升序、同日按输入题目顺序；`warnings` 按 `questionId` 字典序升序。
+- 空日期（`List` 为空）不建页；`dailyGroups` 全空时返回 `Success(emptyList(), emptyList(), emptyList())`。有可打印条目时，首页即使没有条目也保留以承载图例；某日期的条目全部进入 `overflowItems` 时该日期不建页（C-060 方案 B）。
+- `overflowItems` 按 `date` 升序、同日按输入题目顺序；`warnings` 按 `questionId` 字典序升序，同 `questionId` 按 `code` 枚举序升序（合并计划层文字警告后同样适用，C-064）。
 - 非法输入抛 `IllegalArgumentException`：`knowledgeCount !in 1..4`、`attachmentCount !in 0..3`、`knowledgeLineCount !in 1..4`；不静默截断或补 0。
 
 ## 用例表
