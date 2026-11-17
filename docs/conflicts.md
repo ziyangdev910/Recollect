@@ -2,14 +2,14 @@
 
 - 建立日期：2026-11-11。
 - 当前未决：**C-032（本地 Kotlin 实现缺失，部分落地）**。
-- 已裁决/已落地条目（C-034～C-070）已归档至 `docs/conflicts-archive.md`（C-034～C-053 于 2026-11-13；C-054～C-070 于 2026-11-15 与 2026-11-17），本文件不再保留其详情。
+- 已裁决/已落地条目（C-034～C-089）已归档至 `docs/conflicts-archive.md`（C-034～C-053 于 2026-11-13；C-054～C-074 于 2026-11-15、2026-11-17；C-075、C-076 于 2026-11-17；C-077～C-089 于 2026-11-17），本文件不再保留其详情。
 - 已裁决但待验证（非新冲突）：C-050、C-051；验证门禁见 `docs/conflicts-archive.md`。
 
 ## 既有未决
 
 ### C-032 本地 Kotlin 实现缺失，规格无法代码级核对
 
-- **状态：部分落地**（2026-11-13 建立 Gradle 骨架；同日落地 `core:model` 的 `SchedulerModels` 与 `core:scheduler` 的 `Scheduler`/`DefaultScheduler`/`SchedulerPlanTest`；截至 2026-11-15 收尾，scheduler 已有 28 个 `@Test` 方法 + 1 个 `@RepeatedTest(100)` 属性测试（共 128 次执行），覆盖 S-01～S-22；S-12 按规格由 feedback-usecase 的 U-12 承载，scheduler 不读取该字段；S-06/S-07 已迁移 U-06/U-07。2026-11-15 起 `core:pagination` 落地 `TemplateGeometry`、`RenderableQuestion`、`PaginationResult` 系列类型、`PagePlanner`/`DefaultPagePlanner`、`TemplateGeometryTest`、26 个 `PagePlannerTest` 方法与 1 个 `@RepeatedTest(100)` 属性测试（P-09）；收尾后 P-01～P-20 均有测试映射，并补齐三条验收门禁：模板非法返回 `Failure(INVALID_TEMPLATE_GEOMETRY)`、页数超过 99 返回 `Failure(PLAN_TOO_LONG)`、P-20 三类非法计数抛 `IllegalArgumentException`；C-047、C-048、C-060、C-061、C-062、C-063、C-065、C-066、C-068 均有实现或测试锁定；C-064、C-067、C-069 的实现分别在计划/数据层，规格已回写）。剩余：`core:common`、`data`/`feature`/`app` 仍无业务 Kotlin。
+- **状态：部分落地**（2026-11-13 建立 Gradle 骨架；同日落地 `core:model` 的 `SchedulerModels` 与 `core:scheduler` 的 `Scheduler`/`DefaultScheduler`/`SchedulerPlanTest`；截至 2026-11-15 收尾，scheduler 已有 28 个 `@Test` 方法 + 1 个 `@RepeatedTest(100)` 属性测试（共 128 次执行），覆盖 S-01～S-22；S-12 按规格由 feedback-usecase 的 U-12 承载，scheduler 不读取该字段；S-06/S-07 已迁移 U-06/U-07。2026-11-15 起 `core:pagination` 落地 `TemplateGeometry`、`RenderableQuestion`、`PaginationResult` 系列类型、`PagePlanner`/`DefaultPagePlanner`、`TemplateGeometryTest`、26 个 `PagePlannerTest` 方法与 1 个 `@RepeatedTest(100)` 属性测试（P-09）；收尾后 P-01～P-20 均有测试映射，并补齐三条验收门禁：模板非法返回 `Failure(INVALID_TEMPLATE_GEOMETRY)`、页数超过 99 返回 `Failure(PLAN_TOO_LONG)`、P-20 三类非法计数抛 `IllegalArgumentException`；C-047、C-048、C-060、C-061、C-062、C-063、C-065、C-066、C-068 均有实现或测试锁定；C-064、C-067、C-069 的实现分别在计划/数据层，规格已回写。2026-11-17 起 `data:room` 落地四个实体与 Entity↔DTO 映射、`ModelMappingTest` 5 个用例，同日落 `FirstVerticalSliceTest`（scheduler → pagination 纵切，1 个用例）；尚未接入 Room 注解/schema/DAO）。剩余：`core:common`、`data:room` 之外的 `data`/`feature`/`app` 仍无业务 Kotlin。
 - 现象：2026-11-13 前仓库无 `.kt`/`.kts`/`.gradle`；当前已有 `settings.gradle.kts`、根 `build.gradle.kts`、`gradle/libs.versions.toml`、Gradle Wrapper、四个 `core` 模块的构建脚本与 scheduler/pagination 的业务代码。
 - 影响：`docs/architecture/overview.md` 仍标注“规范口径，待代码复核”；`./gradlew test` 目前有 scheduler 的 28 个 `@Test` 方法 + 1 个属性测试，以及 pagination 的 `TemplateGeometryTest`、26 个 `PagePlannerTest` 方法与 1 个属性测试（P-09，100 次重复），其余模块为 `NO-SOURCE`。
 - **对用户的实际影响**：用户目前还不能走完任何真实流程（录入、生成并打印周计划、拍照回读与确认）；调度器的候选、冷却与排序，以及分页器的页码、移页、溢出与提示逻辑虽已在测试中验证，但尚无录入界面、数据库与打印/回读管线，用户仍拿不到可打印、可复习的计划。

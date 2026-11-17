@@ -31,4 +31,5 @@ include(
     ":core:model",
     ":core:scheduler",
     ":core:pagination",
+    ":data:room",
 )

@@ -62,7 +62,7 @@ data class PrintJob(
 - `onWrite`：按 `PrintJob.pages` 逐页 Canvas 绘制；左侧一行一组、组内三框、右上信息、右下笔记、题块底部 QR、四角 ArUco。
 - **条目整条移至下页时**，不绘制“续下页”文本，也不画框；分页结果中的 `continuationMarkers` 仅作内部元数据（C-063）。每日题数在每个日期的第一页日期大标题下方标注。
 - 渲染器不得在 `onLayout`/`onWrite` 中临时压缩行高来"塞下"条目；放不下就是放不下，由 `PagePlanner` 决定移页或溢出。
-- 打印前由计划层把本页的 `PlanPage.questionIds` 与 `PlanPage.knowledgeRows`（行快照 + trigger 标记）写入数据库，并把每道题的 `Question.lastScheduledDate` 写为该题的目标日；没有快照的旧稿在回读时按当前关联重算并警告（C-009/C-015/C-033 方案一）。
+- 打印前由计划层把本页的 `PlanPage.questionIds` 与 `PlanPage.knowledgeRows`（行快照 + trigger 标记）写入数据库，并把每道题的 `Question.lastScheduledDate` 写为该题的目标日；没有快照的旧稿不得按当前关联重算，回读/确认时阻断并提示重新生成计划、按新稿打印（C-009/C-015/C-033 方案一、C-072 方案 A）。
 - 打印成功后由打印层写 `Question.pageId` 与 `Question.qrPayload`（最近一次打印快照）；打印失败不写（C-033 方案一）。
 - `PlanPage` 已在 `feature/planning` 持久化；打印层不重复写。
 

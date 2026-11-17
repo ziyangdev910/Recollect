@@ -61,6 +61,6 @@
 
 ## 验收
 
-- `./gradlew :feature:entry:test`（UI 校验）与 `:data:test`（Repository 事务）全绿。
+- `./gradlew :feature:entry:test`（UI 校验）与 `:data:room:test`（Repository 事务）全绿。
 - 「双重校验」两条路径各有测试：UI 层阻止 + Repository 拒绝。
 - 编号不复用测试必须包含「删除 → 新建」与「导入 → 新建」两种路径。

@@ -13,13 +13,13 @@
 
 ## 模块结构与依赖方向
 app → feature → data → core
-core/common、core/model、core/scheduler、core/pagination 为纯 Kotlin，禁止 import android.*/androidx.*，只允许 Kotlin 标准库与 java.*（含 java.time）。`core:model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含 `Tier`、`KnowledgeState`、`SchedulerQuestion`，C-053）；Room Entity ↔ DTO 的映射放在 `data:room`（C-046 方案 A）。
+core/common、core/model、core:scheduler、core:pagination 为纯 Kotlin，禁止 import android.*/androidx.*，只允许 Kotlin 标准库与 java.*（含 java.time）。`core:model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含 `Tier`、`KnowledgeState`、`SchedulerQuestion`，C-053）；打印题目投影 `RenderableQuestion` 属于 `core:pagination`，不在 `core:model` 重复定义（C-073 方案 A）；Room Entity ↔ DTO 的映射放在 `data:room`（C-046 方案 A）；计划持久化草稿 `PlanDraft` 与 `PlanGenerationException` 放在 `data:room`，编排层只构造入参与展示（C-074 方案 A）。确认提交的状态在 `data:room` 的 `ApplyFeedbackUseCase` 内计算并转 `Float`，写入反馈/决定日志/删除待确认由 `saveDecisions` 单事务负责，`ApplyResult` 携带 `SaveDecisionsResult`（C-075 方案 A）。确认前校验（会话 READY/未提交、待确认行完整、计划日与触发标记一致、知识点归属、复习日上下界、档位可用）由 `ApplyFeedbackUseCase` 承担，统一抛 `InvalidConfirmationException`（C-079 方案 A）；整题跳过仍写确认日志，但不写反馈、状态与题目复习日（C-078 方案 A、C-077 方案 A）；已提交会话拒绝重复提交（C-080 方案 A）。冷却顺延由 `PlanRepository.savePlan` 在计划保存的同一事务内按调度器给出的目标日期写入，不另设独立顺延用例（C-076 方案 A）。
 
 ## 冻结的架构决策（不得"优化"或"简化"）
 D-01 调度单元是知识点；同一题目被多知识点触发只打印一次，触发知识点正常更新；非触发关联知识点按 0.3 权重更新连续掌握度增量，档位与下次到期日不变。非触发知识点也各占一行并独立填涂；有填涂时按该行自己的档位计算 ×0.3，未填涂（本次未复习）则不更新。
 D-02 档位差至少一档仅作为同档位组内的排序权重（只比较本期到期点与非触发的、仍会打印的关联点之间的档位差，C-054；最高档位分组优先于档位差，C-059），不淘汰候选；所有到期题目都进入候选池。
 D-03 连续掌握度仅用于同档位内排序与时间装箱；更新规则：掌握 +0.3、较熟悉 −0.1、不会 −0.3，夹在 [0,1]；不得替代档位比较。C-050：算术在 UseCase 内部用 `Double`，对外/落库转 `Float`；`effectiveFeedbackCount` 阈值精确 `>= 3.0f`，不做 epsilon。
-D-04 冷却期优先于到期触发；固定 7 天（设置页不可修改；0 仅内部/测试表示关闭，负数非法，C-057），期间知识点顺延并标记"因冷却顺延"；用户手动覆盖后才可突破。覆盖采用确认页创建的一次性 CoolingOverrideEvent，plan() 通过 coolingOverrides 接收。
+D-04 冷却期优先于到期触发；固定 7 天（设置页不可修改；0 仅内部/测试表示关闭，负数非法，C-057），期间知识点顺延并标记"因冷却顺延"；用户手动覆盖后才可突破。覆盖采用确认页创建的一次性 CoolingOverrideEvent，plan() 通过 coolingOverrides 接收。冷却顺延由计划保存的同一事务原样写入（C-076 方案 A）。
 D-05 冷启动固定阶梯 1/3/7 天；三档任意填涂均计有效反馈，"较熟悉"按 0.5 次计入；累计有效反馈 ≥ 3.0 后从下一次反馈起切换到墨墨背单词 DHP 简化模型：FAMILIAR 半强度、90% 保持率 + 30 天上限、新增 difficulty/halfLifeDays 字段；D-01～D-04 的排序/权重/冷却仍生效。
 D-06 手写笔记 OCR 只存储和展示，不参与调度更新；原始 OCR 只读、修正文本可编辑，导出两者都含。
 D-07 打印模板：左侧填涂区约 40%（一行一个知识点组，A/B/C 三框水平），右上题目信息区约 60%（页码、题号、知识点全称，不预留作答空白），右下笔记区约 60%（书写区+可选附加摘要）。图例"A—掌握 B—较熟悉 C—不会"仅文档首页出现一次，后续页不重复。知识点名称限一行；8–10 字截断只作用于左侧填涂区，右上保留全称并以" / "拼接、允许换行。左上/右上均按知识点编号升序；右上名称与左侧同一 printable 集合，数量等于知识点数量（由计划/数据层保证，C-067）。
@@ -69,6 +69,10 @@ R-06 不得为适配实现而修改架构决策；冲突写入 docs/conflicts.md
 5) `docs/changelog.md` 与 `docs/agent-log/YYYY-MM-DD.md`：记录本轮代码、`prompts.md`、`CLAUDE.md`、`overview.md` 与规格的改动。
 
 不得只改代码或只改其中一份文档；代码、`prompts.md`、`CLAUDE.md` 与 `overview.md` 的表述必须与本轮裁决一致。
+
+## 无需决策的一轮完成后的文档同步
+
+每当一轮对话顺利完成而不需要人类进行决策，执行“决策落地后的文档同步”的第2至5条任务。
 
 ## 文档索引
 规格：docs/specs/scheduler.md、feedback-usecase.md、pagination.md、data-model.md、entry.md、planning.md、repository.md、app.md、settings.md、print-template.md、scan-pipeline.md、confirm-flow.md、backup.md

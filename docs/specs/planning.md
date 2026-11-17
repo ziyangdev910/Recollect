@@ -1,12 +1,12 @@
 # 计划编排规格（feature/planning）
 
 关联决策：D-01、D-02、D-04、D-08、D-11、D-12
-关联裁决：C-047
+关联裁决：C-047、C-074、C-076
 关联规格：`scheduler.md`、`pagination.md`、`print-template.md`、`feedback-usecase.md`、`repository.md`
 
 ## 职责
 
-`feature/planning` 负责把「知识状态 + 题目 + 日期范围 + 设置」变成一份可打印计划，并把计划快照、`Question.lastScheduledDate`、冷却覆盖事件消费、冷却顺延落库。它不实现调度/分页算法，只做编排与事务。
+`feature/planning` 负责把「知识状态 + 题目 + 日期范围 + 设置」变成一份可打印计划，并把计划快照、`Question.lastScheduledDate`、冷却覆盖事件消费、冷却顺延放进 `PlanDraft` 交给 `PlanRepository.savePlan` 的单事务落库（C-076 方案 A）。它不实现调度/分页算法，只做编排与事务。
 
 ## GeneratePlanUseCase
 
@@ -36,9 +36,11 @@ data class PlanningSettings(
 // feature/planning 从 AppSettings 映射；today 由 Clock 提供
 fun planningSettingsFrom(settings: AppSettings, today: LocalDate): PlanningSettings
 
+// C-074 方案 A：PlanDraft 定义在 data:room（见 repository.md），编排层只构造入参。
 data class PlanDraft(
     val planId: String,
     val pages: List<PlannedPage>,
+    val knowledgeRowsByQuestionId: Map<String, PlanPageRows>, // 打印时冻结的每题行快照（C-071/C-072）
     val scheduledDates: Map<String, LocalDate>, // questionId -> targetDate
     val coolingEventIdsToConsume: List<Long>,
     val deferred: List<DeferredItem>
@@ -52,6 +54,7 @@ data class PrintJob(
     val template: TemplateGeometry
 )
 
+// C-074 方案 A：定义在 data:room，由数据层在进入事务前抛出；编排层与 App 只捕获/映射。
 class PlanGenerationException(
     val code: PaginationFailureCode,
     message: String
@@ -73,12 +76,12 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
    - 调用 `PagePlanner.plan(planId, dateGroups, template)` 得到 `PaginationResult`：
      - `Success`：取 `pages`、`overflowItems`、`warnings` 继续；计划层把文本测量产生的 `KNOWLEDGE_TEXT_OVERFLOW` 警告合并进该 `warnings`（C-064 方案 A）：按 `questionId + code` 去重（同一题同一 code 至多一条；不同 code 可并存，例如整题过高与文字溢出），按 `questionId` 字典序、同 `questionId` 按 `code` 枚举序排序；分页器不产出该警告，也不猜文本换行；
      - `Failure(code, message)`：抛 `PlanGenerationException(code, message)`，**不进入事务**，由 App 映射为可重试 UI 错误；
-   - 生成 `PlanPage` 行（`pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers`）；`continuationMarkers` 仅作内部移页元数据，不在纸上绘制“续下页”（C-063）。
-5. 在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`：
+   - 为每道已排入题目生成行快照 `PlanPageRows`，与页一起放入 `PlanDraft.knowledgeRowsByQuestionId`；行组按打印时的 `KnowledgePoint.number` 升序生成后冻结，后续不接受重算（C-071/C-072）。`PlanPage` 的 `pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers` 由 `PlanRepository.savePlan` 按草稿落库；`continuationMarkers` 仅作内部移页元数据，不在纸上绘制“续下页”（C-063）。
+5. 在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`（`PlanDraft` 含上述行快照，C-074 方案 A）：
    - 写全部 `PlanPage`；
    - 对每个已排入题目写 `Question.lastScheduledDate = targetDate`；
    - 对本次命中的 `CoolingOverrideEvent` 写 `consumedAt = now`；
-   - 应用 `DeferredItem(COOLING)` 的 `targetNextDueDates`。
+   - 应用 `DeferredItem(COOLING)` 的 `targetNextDueDates`（同一事务，C-076 方案 A）。
 6. 事务成功后组装 `PrintJob`；失败则整体回滚，不返回 `PrintJob`。
 
 > 打印不重新分页：`PrintDocumentAdapter` 只消费 `PrintJob.pages`。`PlanPage` 在规划阶段已持久化。
@@ -111,5 +114,6 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 - 计划生成后：`PlanPage`、`Question.lastScheduledDate`、冷却事件消费、顺延在同一事务内；任一步失败全部回滚。
 - `PagePlanner` 返回 `Failure` 时抛 `PlanGenerationException`，不进入事务、不写任何 `PlanPage`。
+- C-074 方案 A：`PlanDraft`/`PlanGenerationException` 位于 `data:room`；草稿携带冻结行快照，编排层不重算行组。
 - 同一 `planId` 重试生成不会产生重复 `PlanPage`；`planId` 冲突按规则重试/失败。
 - 打印层只消费 `PrintJob`，不在 `onLayout` 查询数据库或重新分页。

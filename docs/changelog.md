@@ -240,3 +240,142 @@
 | 2026-11-17 | `docs/prompts.md` | 3.1 标记【done】并补 C-070；3.2 的映射任务与 ModelMappingTest 要求补 `questionId`、rows 顺序保真 | C-070、C-015 |
 | 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 `core:model` 的 KnowledgeRowsCodec；多形态表增加 `PlanPage.knowledgeRows` ↔ `PlanPageRows` 行 | C-070、C-046 |
 | 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-070 裁决落地记录 | C-070 |
+| 2026-11-17 | `settings.gradle.kts` | 注册 `:data:room` 模块 | C-046 方案 A |
+| 2026-11-17 | `data/room/build.gradle.kts`（新增） | Kotlin/JVM 17 模块，依赖 `core:model`/`core:scheduler`/`core:pagination`；本轮不接 Room 注解/KSP，留待阶段 4.1 | C-046 方案 A |
+| 2026-11-17 | `data/room/.../entity/KnowledgePoint.kt`、`Question.kt`、`QuestionKnowledgeCrossRef.kt`、`PlanPage.kt`（新增） | 按 `data-model.md` 建立四个映射所需实体；`continuousScore` 为 `Float`（C-050） | C-046、C-050、C-015 |
+| 2026-11-17 | `data/room/.../mapping/ModelMapping.kt`（新增） | Entity ↔ 纯 DTO：`toKnowledgeState`、`toSchedulerQuestion`（含 cross-ref 按 number 升序、唯一性校验、悬空 id 保留）、`toRenderableQuestion`（名称数量 = knowledgeCount）、`toPlanPageRows`（快照只解码、不重排） | C-046、C-050、C-055、C-056、C-067、C-070、C-015 |
+| 2026-11-17 | `data/room/src/test/.../ModelMappingTest.kt`（新增） | 5 个用例：字段一一对应、difficulty/halfLifeDays=null、estimatedReviewMinutes<=0→15、continuousScore 为 Float、linkedKnowledgeIds 唯一且按 number 升序、名称数量 = knowledgeCount、questionId/rows 顺序保真 | C-046、C-050、C-056、C-067、C-070、C-015 |
+| 2026-11-17 | `docs/conflicts.md` | 新增 C-071：`repository.md` 的行快照映射签名与数据来源不一致；记录用户影响、方案、建议与裁决前禁止事项；C-032 状态补 `data:room` 映射落地 | C-046、C-070、C-015 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 `data:room` 映射落地，Room 注解/schema/DAO 待 4.1 | C-046、C-070 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 3.2 记录：目标、改动、红绿证据、验证结果、未决问题、下轮建议 | 工作循环 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-071 按方案 A 裁决并归档：未决恢复为仅 C-032；归档裁决、落地、测试与“规格同步待授权” | C-071、C-046、C-015、C-070 |
+| 2026-11-17 | `docs/prompts.md` | 3.2 标记【done】；背景与任务改为 Room `PlanPage.knowledgeRows` → `List<PlanPageRows>`，只解码、不重排、不重生成 | C-071、C-015、C-070 |
+| 2026-11-17 | `docs/architecture/overview.md` | 多形态表改为 `List<PlanPageRows>` 并标注 C-071 | C-071、C-046 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-071 裁决落地记录与待授权规格措辞清单 | C-071 |
+| 2026-11-17 | `docs/conflicts.md` | 只读审计发现旧稿无快照时的重算条款与 C-071 方案 A 冲突，新增 C-072（旧稿是否回退重算），不代替裁决 | C-071、C-015 |
+| 2026-11-17 | `docs/conflicts-archive.md` | C-071 归档的「规格同步」段改为自包含清单，并指向 C-072；修正 `overview.md` 已同步的过时说明 | C-071、C-072 |
+| 2026-11-17 | `docs/prompts.md` | 3.2 的 `ModelMappingTest` 清单补「只解码 `PlanPage.knowledgeRows`、不从当前关联重新生成」 | C-071 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加只读审计结果：A 类 10 处措辞、B 类 4 处行为条款、C-072 与验证命令 | C-071、C-072 |
+| 2026-11-17 | `docs/specs/repository.md` | A 类授权回写：关联裁决补 C-015/C-070/C-071/C-072；小节标题补 C-071；映射签名改为 `PlanPage.toPlanPageRows(): List<PlanPageRows>`；行快照补只解码/不重生成/不重排/不合并；`knowledgeRows` 空或不可解析按 C-072 阻断；验收补题目标识与顺序保真 | C-071、C-072、C-015、C-070 |
+| 2026-11-17 | `docs/specs/data-model.md` | A 类授权回写：关联裁决、`knowledgeRows` 字段注释、映射说明、快照说明；C-072：迁移条目禁止按当前关联重算，无快照旧稿阻断并提示重印 | C-071、C-072、C-070 |
+| 2026-11-17 | `docs/specs/print-template.md` | C-072：没有快照的旧稿不得重算，回读/确认阻断并提示重新生成计划、重印 | C-072、C-009、C-015 |
+| 2026-11-17 | `docs/specs/scan-pipeline.md` | C-072：回读只读 `PlanPage.knowledgeRows`；无快照不创建 `PendingFeedback`、不进入确认页；验收改「只使用快照、不回退重算」 | C-072、C-071、C-015 |
+| 2026-11-17 | `docs/specs/confirm-flow.md` | C-072：`knowledgeRows` 为空或不可解析视为无快照，阻断本页与提交 | C-072 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-072 按方案 A 裁决并归档；未决恢复为仅 C-032；C-071 的规格同步状态改为已授权回写 | C-071、C-072 |
+| 2026-11-17 | `docs/prompts.md` | 3.2 背景补 C-072 方案 A：无快照旧稿不可回读、禁止按当前关联重算 | C-072 |
+| 2026-11-17 | `docs/architecture/overview.md` | 生命周期表补无快照旧稿不可回读；多形态表标注 C-072 | C-072、C-071 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-072 裁决落地记录：规格回写位置、关键口径、验证与未决 | C-072 |
+| 2026-11-17 | `data/room/src/test/kotlin/com/recollect/data/room/FirstVerticalSliceTest.kt`（新增） | 阶段 3.3：首个跨模块纵切（core:model DTO → data:room 映射 → scheduler → pagination）；2 个知识点、2 道题（q1 关联 k1/k2，q2 关联 k2）→ 1 页 2 条、`pageId={planId}-01`、D-01 同一题只出现一次、D-08 按日分页且无题日期不建页；`Failure` 时按 C-047 记录 code/message 并让测试失败；测试首跑即绿，以两处临时变异取得红证据后原样还原 | D-01、D-08、C-046、C-047、C-053、C-067 |
+| 2026-11-17 | `docs/conflicts.md` | 新增 C-073：打印题目投影类型的模块归属在 `repository.md` 与 `pagination.md`/实现间不一致；无用户可见影响，记录方案与建议；C-032 状态补纵切测试 | C-046、C-053 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 3.3 轮次记录：目标、Observe、红绿证据、验证、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `docs/specs/repository.md` | C-073 方案 A：关联裁决与小节标题补 C-073；`RenderableQuestion` 移出 `// core:model` 代码块并标注 `// core:pagination`；映射段说明由 `core:pagination` 提供、`core:model` 不重复定义同名类型 | C-073、C-046、C-053 |
+| 2026-11-17 | `CLAUDE.md` | 模块约束补：打印题目投影 `RenderableQuestion` 属于 `core:pagination`，不在 `core:model` 重复定义 | C-073 |
+| 2026-11-17 | `docs/architecture/overview.md` | 多形态表标注 `RenderableQuestion` 在 `core:pagination`（C-073 方案 A），核心模型模块不重复定义 | C-073 |
+| 2026-11-17 | `docs/prompts.md` | 3.3 标记【done】；背景补 C-073 方案 A；任务写明从 `core:pagination` 引用；目标测试命令改为 `:data:room:test` | C-073 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-073 按方案 A 裁决并归档：未决恢复为仅 C-032；归档裁决、落地、测试与规格同步 | C-073 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-073 裁决落地记录 | C-073 |
+| 2026-11-17 | `data/room/build.gradle.kts` | 阶段 4.1：转为 Android 库（AGP + Kotlin Android + KSP + `de.mannodermaus.android-junit5`），接入 Room 2.7.2 与 schema 导出；继续依赖三个 core 模块；未新增版本目录外依赖 | C-046 方案 A、C-052 方案 C |
+| 2026-11-17 | `data/room/src/main/AndroidManifest.xml`（新增） | Android 库最小清单（namespace 在构建脚本） | 阶段 4.1 |
+| 2026-11-17 | `data/room/.../entity/`（4 个既有实体加注解，新增 `ReviewFeedback`、`ConfirmationDecisionLog`、`PendingFeedback`、`ScanSession`、`CoolingOverrideEvent`） | 按 data-model.md 加 `@Entity`/`@PrimaryKey`/`@Index`；`knowledge_point.number` 与 `plan_page.pageId` 唯一索引；交叉表/待确认/页表复合主键；`continuousScore`/`effectiveFeedbackCount` 为 `Float` | D-11、D-12、D-13、C-050、C-056 |
+| 2026-11-17 | `data/room/.../RoomTypeConverters.kt`（新增） | Room 2.7.2 未内置 `java.time` 转换器：`LocalDate` ↔ ISO-8601 TEXT、`Instant` ↔ epoch 毫秒 INTEGER | 阶段 4.1 |
+| 2026-11-17 | `data/room/.../RecollectDatabase.kt`（新增） | `@Database` v1、9 个实体、`exportSchema = true`；禁止 destructive migration | D-11、C-056 |
+| 2026-11-17 | `data/room/.../dao/*.kt`（9 个新增） | 9 个实体的最小 DAO：可打印知识点、打印快照、归档、关联去重、待确认替换、会话复用/过期、覆盖事件消费、页快照查询 | C-056、C-022、C-040、C-008、C-014 |
+| 2026-11-17 | `data/room/.../migration/SchemaMigrationRules.kt`、`RecollectMigrations.kt`（新增） | 唯一索引迁移守卫：重复 `number`/`pageId` 直接失败并提示，禁止静默重编号；迁移清单为空（v1 首建） | D-12、C-056 |
+| 2026-11-17 | `data/room/src/test/.../schema/RoomSchemaTest.kt`、`MiniJson.kt`（新增） | schema 测试：9 张表的字段名/类型/可空性/主键/索引与 data-model.md 一一对应；锁定两个唯一索引、交叉表复合主键、`continuousScore`/`effectiveFeedbackCount` 为 REAL | C-050、C-056、D-12 |
+| 2026-11-17 | `data/room/src/test/.../migration/SchemaMigrationRulesTest.kt`（新增） | 重复 `number`/`pageId` 抛错且消息含“重复/不得静默重编号”；唯一值不抛错 | D-12、C-056 |
+| 2026-11-17 | `data/room/schemas/com.recollect.data.room.RecollectDatabase/1.json`（生成） | Room KSP 导出的 v1 schema，作为 schema 测试与后续迁移的事实来源 | 阶段 4.1 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度：`data:room` 已落地 Room 实体/schema/DAO，余 4 个实体随对应 UseCase 补齐 | 阶段 4.1 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.1 轮次记录：目标、Observe、红绿证据、验证、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `data/room/.../repository/TransactionRunner.kt`（新增） | 事务执行器接口与 Room `withTransaction` 实现；Repository 的跨表写操作统一从一个入口进入事务 | C-052 方案 C |
+| 2026-11-17 | `data/room/.../repository/PlanDraft.kt`（新增） | 计划持久化草稿（含冻结行快照）与 `PlanGenerationException`；`fromPagination` 在进入事务前把 `PaginationResult.Failure` 转异常（C-047）；签名缺项见 C-074 | C-047、C-071、C-072 |
+| 2026-11-17 | `data/room/.../repository/PlanRepository.kt`（新增） | `savePlan` 单事务：写 `PlanPage`、`Question.lastScheduledDate`、消费 `CoolingOverrideEvent`、按调度结果原样应用冷却顺延；写库前校验页 id 唯一、题目只出现一次、计划日与行快照齐全（C-056）；不改写冷却天数/不夹取（C-057） | D-01、D-04、C-047、C-056、C-057 |
+| 2026-11-17 | `data/room/.../repository/PlanPageJson.kt`（新增） | `plan_page.questionIds` 与 `continuationMarkers` 的 JSON 序列化；`knowledgeRows` 仍由 `KnowledgeRowsCodec` 编码 | C-015、C-016、C-046 |
+| 2026-11-17 | `data/room/.../repository/ConfirmedDecision.kt`、`FeedbackRepository.kt`（新增） | `saveDecisions` 单事务：写 `ReviewFeedback`、`ConfirmationDecisionLog`、更新 `KnowledgePoint`（`continuousScore` 以 `Float` 落库）、写 `NoteAttachmentItem`、更新 `Question.lastReviewedDate`、按结果删除 `PendingFeedback`；关联失效整题跳过并返回可见清单、不补默认知识点（C-055）；失败整体回滚、待确认行保留 | D-01、D-13、C-050、C-055、C-056 |
+| 2026-11-17 | `data/room/.../entity/NoteAttachmentItem.kt`、`dao/NoteAttachmentItemDao.kt`（新增） | 补 `note_attachment_item` 实体与 DAO（下一展示顺序、最近 3 条）；`saveDecisions` 事务需要 | C-026 方案二 |
+| 2026-11-17 | `data/room/.../RecollectDatabase.kt`、`migration/RecollectMigrations.kt` | schema 升到 v2：登记第 10 个实体并新增 v1→v2 迁移（建 `note_attachment_item`），仍不允许 destructive migration | D-12、C-056 |
+| 2026-11-17 | `data/room/src/test/.../repository/*`（新增） | fake DAO + 可回滚事务执行器；`PlanRepositoryTransactionTest` 2 例（成功全写 + 任一步失败全回滚、C-047 事务前失败）、`FeedbackRepositoryTransactionTest` 2 例（成功全写 + 失败回滚且 `PendingFeedback` 保留、C-055 整题跳过可见记录）；先红后绿 | C-047、C-050、C-055、C-056、C-057 |
+| 2026-11-17 | `data/room/src/test/.../schema/RoomSchemaTest.kt`、`schemas/.../2.json`（生成） | schema 测试锁定 v2 与 `note_attachment_item` 字段/主键；Room 导出 v2 schema | 阶段 4.2 |
+| 2026-11-17 | `docs/conflicts.md` | 新增 C-074：Repository 接口签名缺少行快照/状态与复习日输入、计划异常归属、跳过记录出口；无当前用户可见影响，待裁决类型归属 | C-047、C-055、C-071、C-072 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.2 轮次记录：目标、Observe、红绿证据、验证、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `CLAUDE.md` | 按「无需决策的一轮完成后的文档同步」执行收尾（该小节由用户定义，本轮未改其内容）：同步 prompts/overview/changelog/agent-log；未改 specs 与 D-01～D-13 | 工作循环 |
+| 2026-11-17 | `docs/prompts.md` | 4.2 标记【done】并补充落地状态与 C-074；4.3a/4.3b/4.3c 背景同步 `saveDecisions` 实际签名（UseCase 计算状态、Repository 只落库、返回跳过清单） | C-050、C-055、C-074 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度更新为 10 个实体、schema v2（含 v1→v2 迁移）与 `savePlan`/`saveDecisions` 单事务 Repository | 阶段 4.2 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.2 收尾同步记录：按 CLAUDE.md「无需决策的一轮完成后的文档同步」回写 prompts/overview，未改代码与测试 | 工作循环 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-074 按方案 A 裁决并归档：数据层草稿/提交输入显式补齐行快照、状态、复习日与笔记附件，提交结果返回跳过清单；未决恢复为仅 C-032 | C-047、C-055、C-071、C-072 |
+| 2026-11-17 | `docs/prompts.md` | 4.2 落地说明与 4.3a/4.3b/4.3c 背景由「待 C-074 裁决」改为「C-074 方案 A」 | C-074 |
+| 2026-11-17 | `CLAUDE.md` | 模块约束补：`PlanDraft` 与 `PlanGenerationException` 放在 `data:room`，编排层只构造入参与展示 | C-074 方案 A |
+| 2026-11-17 | `docs/architecture/overview.md` | 多形态表标注 `PlanDraft` 归属 `data:room`（C-074 方案 A） | C-074 方案 A |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-074 裁决落地记录：归档、代码落地位置、测试与规格同步待授权 | C-074 |
+| 2026-11-17 | `docs/specs/repository.md` | 授权回写 C-074 方案 A：关联裁决补 C-074；`saveDecisions` 签名补状态/复习日/笔记附件与 `SaveDecisionsResult`；新增 `PlanDraft`/`PlanGenerationException`/`NoteAttachmentDraft`/`SaveDecisionsResult` 与归属说明；事务规则与验收同步 | C-074 方案 A、C-047、C-055、C-050 |
+| 2026-11-17 | `docs/specs/planning.md` | 授权回写 C-074 方案 A：关联裁决补 C-074；`PlanDraft` 增加 `knowledgeRowsByQuestionId` 并标注定义在 data:room；`PlanGenerationException` 归属；固定流程与验收同步 | C-074 方案 A、C-071、C-072 |
+| 2026-11-17 | `docs/conflicts-archive.md` | C-074 规格同步状态由「待授权」改为「已授权回写」，记录两份规格的回写内容 | C-074 方案 A |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-074 规格回写记录 | C-074 方案 A |
+| 2026-11-17 | `data/room/.../usecase/ApplyFeedbackUseCase.kt`（新增） | 阶段 4.3a：U-01～U-05。触发行 ACCEPT/CORRECTED 全量更新档位/连续掌握度/有效反馈计数/下次到期日；非触发行按该行档位增量 ×0.3；`NOT_REVIEWED` 只写决定日志、不改状态；`continuousScore` 内部 `Double`、边界转 `Float`（C-050）；写入统一走 `saveDecisions`（C-074 方案 A） | D-01、D-03、D-05、D-13、C-050、C-074 |
+| 2026-11-17 | `data/room/.../usecase/NextDueCalculator.kt`（新增） | `MemoryState`/`NextDueResult`/`NextDueCalculator` 接口与冷启动实现：按反馈事件序号 1/3/7 天推进；DHP、3.0 切换与记忆状态初始化留给 4.3b（U-06～U-12） | D-05、C-050 |
+| 2026-11-17 | `data/room/.../repository/KnowledgePointRepository.kt`（新增） | 状态更新所需的只读端口：`KnowledgePointRepository.states()` 与 `ReviewFeedbackHistoryRepository.triggeredCount()`（非触发行不推进冷启动）；Repository 仍只落库、不重算状态 | C-074 方案 A、D-05 |
+| 2026-11-17 | `data/room/src/test/.../usecase/ApplyFeedbackUseCaseTest.kt`（新增） | U-01～U-05 共 5 个 JUnit 5 用例；U-01/U-02/U-03/U-05 先红后绿，U-04 由 U-03 的非触发路径覆盖、单测首跑即绿；断言未放宽，`Float` 期望值按 `Double` 同序计算 | D-01、D-03、D-05、D-13、C-050 |
+| 2026-11-17 | `docs/conflicts.md` | 新增 C-075：反馈规格的状态更新用例接口（三仓储注入、返回反馈行号）与 C-074 的单一事务提交入口不一致；无用户可见影响，待裁决后回写规格 | C-074 方案 A、R-04、D-13 |
+| 2026-11-17 | `docs/prompts.md` | 4.3a 标记【done】，补落地说明、冷启动/ DHP 边界与 C-075 待裁决 | 阶段 4.3a、C-075 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 `ApplyFeedbackUseCase` U-01～U-05（阶段 4.3a）与 C-075 | 阶段 4.3a |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.3a 轮次记录：目标、Observe、红绿证据、验证命令与结果、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `docs/specs/feedback-usecase.md` | C-075 方案 A 授权回写：关联裁决补 C-075；接口段改为读端口（`states()`/`triggeredCount()`）+ 单事务 `saveDecisions`，去掉独立时钟；`ApplyResult` 改为携带 `SaveDecisionsResult` 与更新后状态；处理顺序注明步骤 1/4 与状态落库、删除待确认由数据层事务执行 | C-075 方案 A、C-074 方案 A、D-13 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-075 按方案 A 裁决并归档；未决恢复为仅 C-032；归档记录落地、测试与规格同步状态，并记录 `:data:test` 命令修正项（同日授权后已修正） | C-075 方案 A |
+| 2026-11-17 | `docs/prompts.md` | 4.3a 落地说明改为已按 C-075 方案 A 回写；4.3b/4.3c 背景补 `ApplyResult` 口径；4.3a/4.3b/4.3c/4.4 的验证命令由不存在的 `:data:test` 修正为 `:data:room:test` | C-075 方案 A |
+| 2026-11-17 | `CLAUDE.md` | 模块约束补：确认提交状态在 `data:room` 的 `ApplyFeedbackUseCase` 计算并转 `Float`，写入/决定日志/删除待确认由 `saveDecisions` 单事务负责，`ApplyResult` 携带 `SaveDecisionsResult` | C-075 方案 A |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 C-075 方案 A 的接口口径 | C-075 方案 A |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-075 裁决落地记录：归档、规格回写、验证与 `:data:test` 命令说明 | C-075 方案 A |
+| 2026-11-17 | `docs/specs/feedback-usecase.md`、`docs/specs/entry.md` | 授权修正验收命令：`./gradlew :data:test` 改为 `./gradlew :data:room:test`（仓库只有 `:data:room` 项目，无 `:data`）；`docs/conflicts-archive.md` 与 `docs/agent-log/2026-11-17.md` 的「待授权」状态同步为已完成 | C-075 方案 A |
+| 2026-11-17 | `data/room/.../usecase/NextDueCalculator.kt` | 新增 `TriggeredFeedback`、`MemoryStateInitializer`/`DefaultMemoryStateInitializer` 与 `MaimemoNextDueCalculator`：d_init/h_init、MASTERED/FAMILIAR/UNKNOWN 的 h/d 更新、90% 保持率 + 30 天上限；`NextDueCalculator` 以带默认值的 `actualIntervalDays` 表达 C-037 的实际间隔（规格接口段未列该入参，待授权同步） | D-05、C-018、C-037、C-050 |
+| 2026-11-17 | `data/room/.../repository/KnowledgePointRepository.kt` | `ReviewFeedbackHistoryRepository` 新增 `recentTriggered(limit)` 与 `TriggeredFeedbackRecord`；按复习日升序返回 triggered 历史，供 DHP 初始化与实际间隔计算；不向上暴露 Room 实体 | C-037、C-074 方案 A |
+| 2026-11-17 | `data/room/.../usecase/ApplyFeedbackUseCase.kt` | 4.3b U-06～U-12：第 3 条 triggered 反馈后初始化 `difficulty/halfLifeDays`；事件序号 >3 时按实际间隔更新 DHP；切换阈值精确 `effectiveFeedbackCountBefore >= 3.0f`，达到 3.0 的本次仍按冷启动 7 天；历史不足时按当前档位重复 + 1/3/7 兜底 | D-01、D-03、D-05、C-006、C-018、C-037、C-050 |
+| 2026-11-17 | `data/room/src/test/.../usecase/ApplyFeedbackUseCaseTest.kt` | 新增 U-06/U-07/U-08/U-09/U-10/U-11/U-12 共 7 个 JUnit 5 用例；U-06 编译红、U-07 断言红、U-12 断言红后转绿；U-08/U-09/U-10/U-11 由既有实现或 U-12 修复覆盖、首跑即绿；断言未放宽，DHP 到期日按存储的 `halfLifeDays` 同序计算 | D-01、D-03、D-05、D-13、C-050 |
+| 2026-11-17 | `docs/prompts.md` | 4.3b 标记【done】，补落地说明与规格接口待同步项 | 阶段 4.3b |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 U-06～U-12（冷启动 + DHP 切换） | 阶段 4.3b |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.3b 轮次记录：目标、Observe、红绿证据、验证、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `docs/conflicts.md` | 「未决文档缺口（非冲突）」补 `NextDueCalculator` 实际间隔入参待规格同步；不新增待裁决条目 | C-037 |
+| 2026-11-17 | `docs/specs/feedback-usecase.md` | 授权回写接口段：`NextDueCalculator` 增加 `actualIntervalDays`；`ReviewFeedbackHistoryRepository` 增加 `recentTriggered()` 与 `TriggeredFeedbackRecord`；处理顺序与 C-037 间隔来源明确为 `reviewedOn`，并注明间隔入参 | C-037、C-018、D-05 |
+| 2026-11-17 | `docs/conflicts.md` | 移除「未决文档缺口」中的实际间隔入参待同步条目（已授权回写）；仍不新增待裁决条目 | C-037 |
+| 2026-11-17 | `docs/prompts.md` | 4.3b 落地说明改为「规格接口段已授权回写」并补充回写内容 | 阶段 4.3b、C-037 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加规格授权回写记录：改动范围、未改代码、验证沿用 4.3b 结果 | C-037 |
+| 2026-11-17 | `data/room/.../usecase/ApplyFeedbackUseCase.kt` | 4.3c U-13：同一提交内同一知识点被多道题触发时，事件序号与 DHP 历史累计本批已处理的触发行，不再两行共用「库内历史 + 1」 | D-05、C-018、C-037 |
+| 2026-11-17 | `data/room/src/test/.../usecase/ApplyFeedbackUseCaseTest.kt` | 新增 U-13/U-15/U-16/U-17/U-18/U-19 与「多行提交中途失败整体回滚、待确认行保留」共 7 个 JUnit 5 用例；U-13 断言红后转绿，其余首跑即绿并用断言锁定既有实现 | D-01、D-03、D-05、D-13、C-050、C-057、C-074 |
+| 2026-11-17 | `data/room/src/test/.../repository/PlanRepositoryTransactionTest.kt` | 新增 U-14：用真实 `DefaultScheduler` 驱动连续两份计划各顺延 1 天，并覆盖 C-057 的 0=关闭冷却、负数非法；顺延按 `repository.md` 由 `savePlan` 事务承载 | D-04、C-021、C-057 |
+| 2026-11-17 | `docs/conflicts.md` | 新增 C-076：冷却顺延写入位置在 `feedback-usecase.md`（独立用例）与 `repository.md`（计划保存事务）之间不一致；无用户可见差异，待裁决 | C-021、C-057、D-04 |
+| 2026-11-17 | `docs/prompts.md` | 4.3c 标记【done】，补落地说明、U-13 事件序号修复、U-14 落点与 C-076 | 阶段 4.3c、C-076 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 U-13～U-19（阶段 4.3c）与 U-14 落点/C-076 | 阶段 4.3c、C-076 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.3c 轮次记录：目标、Observe、红绿证据、验证命令与结果、未决问题、下轮建议 | 工作循环 |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-076 按方案 A 裁决并归档：冷却顺延由 `savePlan` 计划保存事务写入，不另设独立顺延用例；未决恢复为仅 C-032 | C-076 方案 A、C-021、C-057 |
+| 2026-11-17 | `docs/specs/feedback-usecase.md` | 授权回写 C-076 方案 A：关联裁决补 C-076；不另设顺延用例；「冷却顺延应用」改为 `savePlan` 单事务并补失败回滚；U-14 断言补事务口径 | C-076 方案 A、C-021 |
+| 2026-11-17 | `docs/specs/scheduler.md` | 授权回写：关联裁决补 C-076；状态更新规则改为规划层放入 `PlanDraft`、由 `savePlan` 事务应用顺延 | C-076 方案 A |
+| 2026-11-17 | `docs/specs/planning.md` | 授权回写：关联裁决补 C-076；职责与固定流程第 5 步标注冷却顺延在同一事务内落库 | C-076 方案 A |
+| 2026-11-17 | `docs/specs/repository.md` | 授权回写：关联裁决补 C-076；事务规则注明冷却顺延不另设独立 UseCase | C-076 方案 A |
+| 2026-11-17 | `CLAUDE.md` | D-04 摘要与模块约束补：冷却顺延由计划保存事务原样写入，不另设独立顺延用例 | C-076 方案 A |
+| 2026-11-17 | `docs/architecture/overview.md` | 字段产权 `nextDueDate` 写入者改为 `ApplyFeedbackUseCase / PlanRepository.savePlan`；生命周期与实现进度同步 C-076 方案 A | C-076 方案 A |
+| 2026-11-17 | `docs/prompts.md` | 4.3c 落地说明由「C-076 待裁决」改为「C-076 方案 A 已裁决并回写规格」 | C-076 方案 A |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加 C-076 裁决落地记录：归档、规格回写范围与验证沿用 | C-076 方案 A |
+| 2026-11-17 | `data/room/src/test/.../usecase/ApplyFeedbackUseCaseTest.kt` | 阶段 4.4 收尾：U-05 由“触发行 NOT_REVIEWED”改为用例表要求的“触发行 A 已填涂 + 非触发行 B 本次未复习”，补 B 状态完全不变、两行都写决定日志、A 正常推进与题目复习日断言；临时变异（取消 NOT_REVIEWED 跳过）使 U-05/U-10/U-13/U-19 共 4 个用例变红，还原后全绿 | D-13、C-010、C-050 |
+| 2026-11-17 | `docs/conflicts.md` | 阶段 4.4 只读审计：新增 C-077～C-089（②代码做了但规格未定义、③测试断言与规格不一致、④需人类裁决），均含用户影响、方案、选型参考、建议与裁决前禁止事项；未改 specs | C-055、C-018、C-037、C-050、D-05、D-13、R-04 |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部实现进度补 4.4 收尾：U-01～U-19/C-050 复验、U-05 场景补齐、审计新增 C-077～C-089 | 阶段 4.4 |
+| 2026-11-17 | `docs/prompts.md` | 4.4 标记【done】，补落地说明、验证结论与审计去向 | 阶段 4.4 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加阶段 4.4 记录：目标、U-01～U-19 核对表、C-050 复验、红绿证据、验证结果、审计 ① 清单、代码审查三档、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `data/room/.../repository/ConfirmedDecision.kt` | C-083 方案 C：新增共享的 `effectiveTier()`，UseCase 与写入入口共用同一档位解析 | C-083 方案 C、C-022 |
+| 2026-11-17 | `data/room/.../repository/QuestionLookupRepository.kt`（新增） | C-079 方案 A：提交前校验“知识点属于该题”的只读端口；题目不存在返回 null，交由整题跳过 | C-079 方案 A、C-055 |
+| 2026-11-17 | `data/room/.../repository/PlanWeekStartProvider.kt`（新增） | C-081 方案 A：计划周起始日端口，默认周一；确认提交按“计划日所在周 + 设置”计算复习日下界 | C-081 方案 A |
+| 2026-11-17 | `data/room/.../repository/FeedbackRepository.kt` | C-077～C-080 方案 A：新增 `pending()`/`session()` 只读入口；跳过行仍写确认日志；只落库未跳过题目引用的状态；整批成功标记会话 SUBMITTED，有跳过则保留 READY；前置校验抛 `InvalidConfirmationException` | C-077～C-080 方案 A、C-055、C-089 方案 A |
+| 2026-11-17 | `data/room/.../usecase/ApplyFeedbackUseCase.kt` | C-079/C-080/C-081/C-082 方案 A：注入时钟、待确认/题目关联/周起始端口；完成空/重复/会话/行集合/计划日/触发标记/知识点归属/复习日上下界/档位校验；跳过题目不贡献状态；迁移窗口首条间隔取前一条复习日 | C-077～C-082 方案 A、C-084 方案 A |
+| 2026-11-17 | `data/room/.../usecase/NextDueCalculator.kt` | C-084 方案 A：`actualIntervalDays` 去掉默认值成为必填；C-085 方案 B：移除生产源集的 `ColdStartNextDueCalculator` | C-084 方案 A、C-085 方案 B |
+| 2026-11-17 | `data/room/src/test/.../usecase/ColdStartNextDueCalculator.kt`（新增） | C-085 方案 B：冷启动对照实现移到测试源集，不进入生产装配 | C-085 方案 B |
+| 2026-11-17 | `data/room/src/test/.../repository/FakeStores.kt` | 新增 fake 扫描会话 DAO、题目关联查询与内存映射，支撑 C-079/C-080 的会话与归属校验 | C-079、C-080 方案 A |
+| 2026-11-17 | `data/room/src/test/.../usecase/ApplyFeedbackUseCaseTest.kt` | 新增 C-077/C-078/C-079/C-080/C-081/C-082/C-088 用例；U-06～U-17 改为经 `submit()` 种入会话/待确认行；C-086/C-087 改为独立硬编码 DHP 期望值；全部断言未放宽 | C-077～C-089 方案 A/C |
+| 2026-11-17 | `data/room/src/test/.../repository/FeedbackRepositoryTransactionTest.kt` | C-078 方案 A：跳过行断言改为“写日志、不写反馈”；C-089 方案 A：补计划号/页号/计划日断言；新增“仅被跳过题目贡献的状态不落库”用例（C-077） | C-077～C-089 方案 A |
+| 2026-11-17 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-077～C-089 移出未决并按人类选择归档（裁决、落地、测试、规格同步待授权、裁决前禁止事项） | C-077～C-089 |
+| 2026-11-17 | `docs/prompts.md` | 4.4 落地说明补裁决口径；6.4 确认页背景同步 C-077～C-089 | C-077～C-089 |
+| 2026-11-17 | `CLAUDE.md` | 模块约束补确认前校验、跳过行日志、已提交会话拒绝重复提交 | C-077～C-080 方案 A |
+| 2026-11-17 | `docs/architecture/overview.md` | 头部进度与确认生命周期同步 C-077～C-080 方案 A；测试数更新为每配置 48 个 | C-077～C-089 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加裁决落地记录：目标、改动、红绿证据、验证结果、未决与下轮建议 | 工作循环 |
+| 2026-11-17 | `docs/specs/feedback-usecase.md` | 授权回写 C-077～C-089：UseCase 前置校验与时钟/待确认/题目关联/周起始依赖；会话 READY/未提交与重复提交；跳过题目不写状态、跳过行写日志；部分成功保持 READY；迁移窗口锚点；`effectiveTier()` 与 `actualIntervalDays` 必填 | C-077～C-084、C-086、C-087 |
+| 2026-11-17 | `docs/specs/repository.md` | 授权回写：`FeedbackRepository` 增加 `pending()`/`session()` 与 `ConfirmationSession`；跳过行写日志、状态按未跳过题目过滤、整批成功标记 SUBMITTED；前置校验归属 UseCase；验收补 C-077～C-089 | C-077～C-080、C-089 |
+| 2026-11-17 | `docs/specs/confirm-flow.md` | 授权回写：重复提交拒绝、计划周起始下界、数据层整题跳过与部分成功展示、跳过行审计、补填验收 | C-077、C-078、C-080、C-081、C-088 |
+| 2026-11-17 | `docs/specs/data-model.md` | 授权回写：`ConfirmationDecisionLog` 含跳过行；`ScanSession` 部分成功保持 READY、整批成功才 SUBMITTED | C-077、C-078、C-080 |
+| 2026-11-17 | `docs/conflicts-archive.md` | C-077～C-089 的“规格同步”由待授权更新为已回写，注明文件与段落 | C-077～C-089 |
+| 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加规格授权回写记录：改动范围、与代码一致性、验证沿用 | 工作循环 |

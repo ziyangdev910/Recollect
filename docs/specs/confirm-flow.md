@@ -1,7 +1,7 @@
 # 人工确认页规格（feature/confirm）
 
 关联决策：D-06、D-09、D-13
-关联裁决：C-009、C-010、C-011、C-012、C-022、C-030、C-038、C-040、C-041、C-050
+关联裁决：C-009、C-010、C-011、C-012、C-022、C-030、C-038、C-040、C-041、C-050、C-077、C-078、C-079、C-080、C-081、C-088
 
 ## 冻结决策（D-09、D-13）
 
@@ -31,7 +31,8 @@
   - `actualReviewDate > plannedDate` → 该行标 `LATE`，显示 `lateDays`；`actualReviewDate <= plannedDate` → `ON_TIME`。
   - 扫描日 > `planEndDate + 7` → 显示 `LATE_BATCH`，但不自动改每行日期；窗口内（planEnd+1..+7）为正常批量。
   - 扫描日 < `planEndDate` 时，`plannedDate > 今天` 的行必须标 `NOT_REVIEWED`，否则禁止提交。
-- 提交前：所有行 `UNMARKED` 必须清零；`actualReviewDate` 不能晚于今天；未来日期的行不能写非 `NOT_REVIEWED` 决策。
+- 提交前：所有行 `UNMARKED` 必须清零；`actualReviewDate` 不能晚于今天、不能早于“计划日所在周 + 用户设置的计划周起始日”；未来日期的行不能写非 `NOT_REVIEWED` 决策。
+- 同一 `ScanSession` 只提交一次：会话已 `SUBMITTED` 时再次提交必须被拒绝并提示“已提交”，不写任何行（C-080 方案 A）；确认页的按钮禁用与 UseCase 拒绝构成双保险。
 
 ## 归属校验（C-011 方案一 + 方案二）
 
@@ -48,8 +49,11 @@ scan 端在进入本页前完成校验；本页渲染前与提交前各再校验
 | 手动输入 | 手动输入 | `pageId + 题号` 能解析出唯一题目；pageId 命中 `PlanPage` 后取 `questionIds` 按题号匹配 | 阻断，提示「页面或题号不存在」 |
 
 - 手动输入的 `pageId` 可输入字符集：`A-Z a-z 0-9 -`；大小写不敏感；规范化映射 `I/L → 1`、`O → 0`，其余非法字符拒绝。
-- 归属校验失败时**不得写入** `PendingFeedback`、`ReviewFeedback` 或知识点状态；只显示错误与「重拍 / 重新输入 / 取消」。
+- 归属校验失败时**不得写入** `PendingFeedback`、`ReviewFeedback` 或知识点状态；只显示错误与「重拍 / 重新输入 / 取消」。这是渲染前/提交前的界面层校验。
+- `PlanPage.knowledgeRows` 为空或不可解析时视为无快照：阻断本页、不进入提交，提示重新生成计划并按新稿打印；不得按当前关联重算行（C-072 方案 A）。
 - 提交时若校验结果与渲染时不一致（例如计划被删除），同样阻断（TOCTOU 防护）。
+- **数据层兜底（C-078 方案 A）**：若提交进入数据层后才发现某题的题目记录或关联知识点已不存在，该题整题跳过：不写反馈、不写知识点状态、不写题目复习日，但仍写该题所有行的 `ConfirmationDecisionLog`，并把题目加入 `SaveDecisionsResult.skippedQuestionIds` 返回。确认页必须展示跳过清单；被跳过题目的待确认行保留，会话保持 `READY`，数据修复后可重新提交该题。
+- **部分成功**：有整题跳过时，其余题目正常落库；确认页同时展示“已生效题目”和“被跳过题目”，不把整批结果伪装成全部成功或全部失败。
 
 ## 冷却覆盖（C-008 方案二）
 
@@ -111,6 +115,7 @@ UNMARKED ──接受──▶ ACCEPT
 - 不在本页直接更新知识点状态；提交后由 `ApplyFeedbackUseCase` 统一写入。
 - 不允许未经用户确认的批量写入。
 - 不允许在存在 `UNMARKED` 行时提交。
+- 不允许对已 `SUBMITTED` 的扫描会话再次提交。
 - 不允许把 `detectedRawOcr` 绑定为可编辑控件（D-06）。
 
 ## 验收
@@ -120,6 +125,10 @@ UNMARKED ──接受──▶ ACCEPT
 - `NOT_REVIEWED` 只写 `ConfirmationDecisionLog`、不写 `ReviewFeedback` 的测试。
 - 非触发行填不同档位 → 按该行档位 ×0.3；非触发行「本次未复习」→ 不更新的测试。
 - 归属校验失败（版本/planId/pageId/questionId/校验码/知识点归属）逐项阻断测试。
+- 整题跳过（题目或关联知识点不存在）时：不写反馈/状态/复习日，仍写决定日志，返回并展示跳过清单，待确认行保留（C-077/C-078 方案 A）。
+- 已 `SUBMITTED` 会话重复提交被拒绝且不写任何行（C-080 方案 A）。
+- 复习日早于“计划日所在周 + 用户设置的周起始日”时提交被拒绝（C-081 方案 A）。
+- 补填（`SUPPLEMENTED`）按用户选择的档位计入有效反馈，`isSupplemental=true`（C-088 方案 A）。
 - 原始 OCR 与修正文本都被保存；原始 OCR 控件只读断言。
 - 「本次提前复习」创建一条未消费 `CoolingOverrideEvent`；题目排入下一份计划后事件被消费；重复点击不重复插入。
 - 「保存为笔记附件」写入 `NoteAttachmentItem(text=correctedText, order=当前最大+1)`；不改变原始 OCR。

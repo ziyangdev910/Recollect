@@ -164,7 +164,7 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
 ## OMR 行组重建（C-015 方案一）
 
 - 行序的生成规则 = 该题关联知识点中**未休眠且 `activeQuestionCount > 0`** 的列表按 `KnowledgePoint.number` 升序；打印端在生成 `PlanPage.knowledgeRows` 时按此规则冻结行快照（C-015）。
-- **回读端优先读取 `PlanPage.knowledgeRows`** 的 `rows` 与 `triggeredKnowledgePointIds`，按快照重建行组并设置 `PendingFeedback.triggered`；只有旧稿没有快照时才回退到「按当前关联知识点 + number 升序重算」，并在日志中警告。下文的 `sortedKnowledgePoints` 即快照中的 rows。
+- **回读端只读取 `PlanPage.knowledgeRows`** 的 `rows` 与 `triggeredKnowledgePointIds`，按快照重建行组并设置 `PendingFeedback.triggered`；`knowledgeRows` 为空或不可解析时视为无快照，不创建 `PendingFeedback`、不进入确认页，提示重新生成计划并按新稿打印，不得按当前关联知识点 + number 升序重算（C-071/C-072 方案 A）。下文的 `sortedKnowledgePoints` 即快照中的 rows。
 - 若快照与当前 DB 的关联集合不一致（例如打印后用户改了关联），确认页按快照校验；用户必须重新打印才能使用新关联。
 - 行组边界：透视矫正后，左侧填涂区顶部为 `leftAreaTop`；第 i 行（0-based）的 y 范围为
   `[leftAreaTop + headerRowHeightMm + i * rowHeightMm, leftAreaTop + headerRowHeightMm + (i + 1) * rowHeightMm)`。
@@ -205,6 +205,6 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
 - QR 中心与题块匹配、`knowledgeRows` 行序绑定各有用例；不匹配走 `OWNERSHIP_MISMATCH`。
 - 同一 `ScanSession` 多页追加、重复页去重、提前扫描/晚扫描标记各有用例。
 - 手动输入 `pageId + 题号` 的降级路径可用；pageId 全局唯一命中；手动输入不要求 version/CRC（无 QR 载荷）。
-- 行组重建：同一题 1/2/3/4 个知识点，行 i 与 `number` 升序一致；重启/重新规划后行序不变；优先使用 `PlanPage.knowledgeRows` 快照。
+- 行组重建：同一题 1/2/3/4 个知识点，行 i 与 `number` 升序一致；重启/重新规划后行序不变；只使用 `PlanPage.knowledgeRows` 快照，无快照的旧稿阻断并提示重印，不回退重算（C-072 方案 A）。
 - 快照与当前关联的成员/顺序不一致、或快照中的知识点已删除时，归属校验阻断并提示重新打印。
 - C-051 方案 A：850×540 → 2480×3508 的适配结果必须给出 `evidence/scan/` 原始输出；若 5 张真实打印稿的 OMR 精度不达标，按方案 B fork，不得用降采样后的“看起来正确”结果通过 R-01。

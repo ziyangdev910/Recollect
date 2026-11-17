@@ -1,7 +1,7 @@
 # 数据模型规格（data/room）
 
 关联决策：D-01、D-03、D-06、D-11、D-12、D-13
-关联裁决：C-006、C-009、C-010、C-013、C-015、C-017、C-019、C-021、C-022、C-023、C-026、C-028、C-030、C-031、C-046、C-050
+关联裁决：C-006、C-009、C-010、C-013、C-015、C-017、C-019、C-021、C-022、C-023、C-026、C-028、C-030、C-031、C-046、C-050、C-070、C-071、C-072、C-077、C-078、C-080
 
 ## 冻结决策（D-06、D-11、D-12、D-13）
 
@@ -175,7 +175,8 @@ enum class ScanSessionStatus { SCANNING, READY, SUBMITTED, ABANDONED }
 - 一次 plan 扫描共用一个 `sessionId`；多页扫描向同一 session 追加 `PendingFeedback` 行。
 - 状态流转：`startSession → SCANNING`；打开确认页或追加页 → `READY`；提交成功 → `SUBMITTED`；用户取消/超过 24h → `ABANDONED`。
 - App 启动时把 `startedAt < now-24h` 且非 `SUBMITTED` 的 session 标为 `ABANDONED`；不引入 WorkManager。
-- 提交成功后 `status=SUBMITTED` 并删除该 session 的 `PendingFeedback`；失败保持 `READY`。
+- 整批无跳过时提交成功：`status=SUBMITTED` 并删除该 session 的 `PendingFeedback`；失败保持 `READY`。
+- 存在整题跳过时（C-078/C-080 方案 A）：已写入题目的待确认行删除，跳过行保留，会话保持 `READY` 供数据修复后重试；只有全部题目成功才置 `SUBMITTED`。`SUBMITTED` 会话的重复提交在 UseCase 前置校验被拒绝。
 - 临时操作态，不导出备份；导入时清空。
 
 ### ConfirmationDecisionLog（确认决定日志）
@@ -200,7 +201,8 @@ data class ConfirmationDecisionLog(
 )
 ```
 
-- 每次提交对每一行写一条，包括 `NOT_REVIEWED`；这是 R-04 的审计落点，不等于写 `ReviewFeedback`。
+- 每次提交对每一行写一条，包括 `NOT_REVIEWED` 与整题被跳过的行（C-078 方案 A）；这是 R-04 的审计落点，不等于写 `ReviewFeedback`。
+- 整题跳过时该题所有行仍写本表，但不写 `ReviewFeedback`、不写知识点状态与题目复习日（C-077/C-078 方案 A）。
 - `MISSED` 不落库：按 `(planId,pageId,questionId)` 在该表无记录，或所有决策均为 `NOT_REVIEWED`，且 `plannedDate <= 今天` 派生。
 - 纳入备份导出（历史记录，不是未确认状态）。
 
@@ -219,19 +221,19 @@ data class PlanPage(
     val date: LocalDate,
     val itemCount: Int,
     val questionIds: String,            // 序列化 JSON 数组，本页题目的打印顺序
-    val knowledgeRows: String,          // 序列化 JSON：每题打印时的行快照与 trigger 标记（C-009/C-015）
+    val knowledgeRows: String,          // 序列化 JSON 数组：每题一条行快照与 trigger 标记（C-009/C-015/C-070）；映射时只解码，不重排、不重算（C-071 方案 A）
     val continuationMarkers: String     // 序列化 JSON，按题目顺序排列
 )
 ```
 
 - `pageId` 全局唯一索引使手动输入「页面 ID + 题号」可以只凭 pageId 解析出 planId（C-011/C-014）。
 - `questionIds` 用于手动回退与归属校验；不依赖 `Question.pageId` 的「最近一次打印」值。
-- `knowledgeRows` 的 JSON 编解码由 `core:model` 的 `KnowledgeRowsCodec` 负责（纯 Kotlin，不依赖 Room/Android）；`data/room` 只负责 `PlanPage` 行与 `PlanPageRows` 的映射（C-046）。
+- `knowledgeRows` 的 JSON 编解码由 `core:model` 的 `KnowledgeRowsCodec` 负责（纯 Kotlin，不依赖 Room/Android）；`data/room` 只负责把 `PlanPage.knowledgeRows` 这段冻结快照解码为 `List<PlanPageRows>`（每题一条，不按 `number` 重排、不从当前关联重算、不合并或丢弃记录），不自行拼 JSON（C-046、C-071 方案 A）。
 - `knowledgeRows` 的结构：
   ```json
   [{"questionId":"q1","rows":[{"knowledgePointId":"k1","number":3},{"knowledgePointId":"k2","number":5}],"triggeredKnowledgePointIds":["k1"]}]
   ```
-  它冻结打印时的行集合、行序（仍由 `number` 升序产生）与 trigger 标记；scan 按它重建行组，确认页按它校验归属。打印后修改题目关联知识点不会改变旧稿的行映射；若用户要求新关联生效，必须重新生成计划并打印（C-015）。
+  它冻结打印时的行集合、行序（生成时由 `number` 升序产生，回读不得重排）与 trigger 标记，并按 `questionId` 每题一条保存，一页可有多条（C-070/C-071 方案 A）；scan 按它重建行组，确认页按它校验归属。打印后修改题目关联知识点不会改变旧稿的行映射；若用户要求新关联生效，必须重新生成计划并打印（C-015）。
 - `continuationMarkers` 的 JSON 结构见 `pagination.md`；数组顺序即绘制顺序（C-016）。
 
 ### NoteAttachment
@@ -306,7 +308,7 @@ data class KnowledgeNumberSequence(
 - `knowledge_point` 新增可空列 `difficulty: Int?`、`halfLifeDays: Float?`、`createdAt: Instant`（C-018/C-037）；旧数据 `difficulty/halfLifeDays` 为 `null`，`createdAt` 用迁移时间回填。
 - 新增表：`confirmation_decision_log`、`note_attachment_item`、`knowledge_point_tombstone`、`knowledge_number_sequence`、`cooling_override_event`、`scan_session`；`knowledge_number_sequence` 迁移时种入 `(1, max(number, 0))`。
 - 新增唯一索引 `knowledge_point.number` 与 `plan_page.pageId` 前必须先清理重复值；迁移脚本遇到重复应失败并提示，不得静默重编号。
-- `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时回读回退到按当前关联 + `number` 升序重算，并记录警告。
+- `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时不得按当前关联 + `number` 升序重算，应视为「无快照」并在回读/确认时阻断，提示重新生成计划并按新稿打印，同时记录警告（C-072 方案 A）。
 - 导出 JSON 的范围以 `backup.md` 的白名单为准，不再表述为「全部实体」；`PendingFeedback`、`ScanSession` 与 `CoolingOverrideEvent` 不导出（C-031/C-040/C-008）。
 
 ## 禁止

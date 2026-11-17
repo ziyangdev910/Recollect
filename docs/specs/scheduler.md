@@ -1,7 +1,7 @@
 # 调度器规格（core/scheduler）
 
 关联决策：D-01、D-02、D-03、D-04、D-05、D-11、D-12
-关联裁决：C-006、C-007、C-009、C-017、C-019、C-020、C-021、C-046、C-049、C-050、C-054、C-055、C-056、C-057、C-058、C-059
+关联裁决：C-006、C-007、C-009、C-017、C-019、C-020、C-021、C-046、C-049、C-050、C-054、C-055、C-056、C-057、C-058、C-059、C-076
 
 ## 冻结决策（D-01～D-05）
 
@@ -156,7 +156,7 @@ enum class DeferReason { COOLING, TIME_OVERFLOW, UNRESOLVED_KNOWLEDGE }  // C-05
 - 冷启动 1/3/7 天阶梯与切换到记忆模型的边界；
 - 冷却顺延 `targetNextDueDates` 的落库。
 
-调度器只返回计划与 `DeferredItem`；`feature/planning` 在计划生成后调用 `ApplyPlanDeferralsUseCase` 应用顺延。
+调度器只返回计划与 `DeferredItem`；`feature/planning` 把它们放入 `PlanDraft`，由 `PlanRepository.savePlan` 在计划保存的同一事务内应用顺延（C-076 方案 A）。
 
 ## 用例表（测试必须逐条覆盖）
 

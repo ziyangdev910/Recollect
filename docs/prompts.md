@@ -622,22 +622,22 @@
 - 不要 git commit，除非我明确要求。
 ```
 
-### 3.2 data/room 映射（C-046 方案 A）
+### 3.2 data/room 映射（C-046 方案 A）【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 3（core:model → data:room），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A：core:model 只做纯 DTO/枚举与 KnowledgeRowsCodec，Room ↔ DTO 映射在 data:room。C-050：`continuousScore` 内部 `Double`、落库/构造 DTO 转 `Float`。C-053：`Tier`/`KnowledgeState`/`SchedulerQuestion` 来自 `core:model`。C-056 方案 A：id 唯一性与关联完整性由 `data:room` 保证，调度器不做去重/合并。C-067 方案 B：`knowledgeNames` 与左侧同一 printable 集合、按 number 升序、数量 = `knowledgeCount`，由 data/room 映射保证，分页器不校验。C-070 方案 A：`PlanPageRows` 含 `questionId`，行快照顺序冻结（C-015）。本轮只做映射。
+【本轮背景】阶段 3（core:model → data:room），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A：core:model 只做纯 DTO/枚举与 KnowledgeRowsCodec，Room ↔ DTO 映射在 data:room。C-050：`continuousScore` 内部 `Double`、落库/构造 DTO 转 `Float`。C-053：`Tier`/`KnowledgeState`/`SchedulerQuestion` 来自 `core:model`。C-056 方案 A：id 唯一性与关联完整性由 `data:room` 保证，调度器不做去重/合并。C-067 方案 B：`knowledgeNames` 与左侧同一 printable 集合、按 number 升序、数量 = `knowledgeCount`，由 data/room 映射保证，分页器不校验。C-070 方案 A：`PlanPageRows` 含 `questionId`，行快照顺序冻结（C-015）。C-071 方案 A（2026-11-17 已裁决）：行快照映射来源是 Room 实体 `PlanPage.knowledgeRows` 的冻结 JSON → `List<PlanPageRows>`，只解码，不从当前关联重新生成、不重排、不丢记录。C-072 方案 A（2026-11-17 已裁决）：无 `knowledgeRows` 快照的旧打印稿不可回读，提示重新生成计划并按新稿打印，不得按当前关联重算。本轮只做映射。
 
 【本轮任务】
 在 data:room 实现 Room Entity ↔ 纯 DTO 映射，不改 core:model 的纯度：
 - KnowledgePoint.toKnowledgeState()：`continuousScore` 按 C-050 转 `Float`；
 - Question.toSchedulerQuestion(linkedKnowledgeIds)：linkedKnowledgeIds 从 QuestionKnowledgeCrossRef 读取，按 KnowledgePoint.number 升序构造；构造结果须满足 id 唯一前置条件（C-056），不补不存在的知识点、不静默去重/合并（C-055）；
 - PlannedQuestion.toRenderableQuestion(questionNumber, knowledgeNames, knowledgeLineCount, attachmentCount)：questionNumber 从 Question 实体补齐；knowledgeNames 与左侧同一 printable 集合、按 number 升序、数量 = knowledgeCount（C-067）；
-- PlannedPage.toPlanPageRows()：每题记录带 `questionId`（C-070）；rows 保持打印快照顺序，不按 number 重排（C-015）。
-先写 ModelMappingTest（字段一一对应、difficulty/halfLifeDays=null、estimatedReviewMinutes<=0→15、continuousScore 为 Float、linkedKnowledgeIds 唯一且按 number 升序、knowledgeNames 数量 = knowledgeCount、questionId 与 rows 顺序保真），再实现。
+- PlanPage.toPlanPageRows()：Room 实体 `PlanPage.knowledgeRows` 的冻结 JSON → `List<PlanPageRows>`（一页可有多条记录）；每题记录带 `questionId`（C-070）；rows 保持打印快照顺序，不按 number 重排（C-015）；不从当前题目关联重新生成行（C-071 方案 A）。
+先写 ModelMappingTest（字段一一对应、difficulty/halfLifeDays=null、estimatedReviewMinutes<=0→15、continuousScore 为 Float、linkedKnowledgeIds 唯一且按 number 升序、knowledgeNames 数量 = knowledgeCount、questionId 与 rows 顺序保真、行快照只解码 `PlanPage.knowledgeRows` 且不从当前题目关联重新生成），再实现。
 core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.* / androidx.*。
 
 【固定循环（本轮只走一遍）】
@@ -657,17 +657,17 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 3.3 首个纵切：FirstVerticalSliceTest
+### 3.3 首个纵切：FirstVerticalSliceTest【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/repository.md、docs/specs/data-model.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 3（core:model），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A、C-053 方案 A（DTO 在 core:model）。本轮只做一个跨模块纵切测试（不写 UI）。
+【本轮背景】阶段 3（core:model），规格 docs/specs/repository.md、docs/specs/data-model.md；C-046 方案 A、C-053 方案 A（调度 DTO 在 core:model）。C-073 方案 A（2026-11-17 已裁决）：`RenderableQuestion` 属于 `core:pagination`，`core:model` 不重复定义同名类型。本轮只做一个跨模块纵切测试（不写 UI），测试放在 `data:room`（唯一同时依赖三个 core 模块的模块）。
 
 【本轮任务】
-- 2 个知识点、2 道题 → Scheduler.plan → RenderableQuestion → PagePlanner.plan；
+- 2 个知识点、2 道题 → Scheduler.plan → RenderableQuestion（从 `core:pagination` 引用）→ PagePlanner.plan；
 - 断言 1 页 2 条、pageId 格式、D-01（同一题只出现一次）与 D-08（按日分页）；
 - 若 `PagePlanner` 返回 `PaginationResult.Failure`，按 C-047 记录 code/message 并停下，不得吞掉或改成 `Success`；
 - 先写失败测试；如果失败原因是规格没有覆盖，停下来写 docs/conflicts.md，不要绕过。
@@ -677,7 +677,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 2. Red：为当前用例只写一个失败测试；运行目标测试并把完整失败输出贴出来。
 3. Green：写最小实现让该测试变绿；不顺手实现其它用例。
 4. Refactor：只重构本轮代码，保持测试绿。
-5. Verify：先跑目标测试（如 ./gradlew :core:model:test --tests "*FirstVerticalSliceTest"），再跑相关模块全部测试；最后跑 ./gradlew verifyCorePurity。
+5. Verify：先跑目标测试（./gradlew :data:room:test --tests "*FirstVerticalSliceTest"），再跑相关模块全部测试；最后跑 ./gradlew verifyCorePurity。
 6. Record：更新 docs/changelog.md 与 docs/agent-log/YYYY-MM-DD.md，写清目标、改动文件、验证命令与结果、未决问题、下轮建议。
 
 【硬性禁止】
@@ -695,7 +695,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 
 > 规格：docs/specs/repository.md、docs/specs/feedback-usecase.md。C-052 方案 C：Android 单元测试用 JUnit 5（`de.mannodermaus.android-junit5`），`androidTest` 用 JUnit 4。
 
-### 4.1 Room schema 与 DAO
+### 4.1 Room schema 与 DAO【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -728,7 +728,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 4.2 Repository 事务
+### 4.2 Repository 事务【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -736,6 +736,8 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
 【本轮背景】阶段 4（data/room），规格 docs/specs/repository.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-047：`PaginationResult.Failure` 转 `PlanGenerationException`，不进入事务、不写库。C-055：关联 id 失效时整题跳过并留可见记录，不由 Repository 补默认知识点。C-056：id 唯一与关联完整是 `data:room` 的前置条件。C-057：冷却天数固定 7 天，0 仅内部/测试使用、负数非法。本轮只做 Repository 事务。
+
+**2026-11-17 已落地（【done】）**：`RoomPlanRepository.savePlan` 与 `RoomFeedbackRepository.saveDecisions` 均为单事务；JVM 单元测试用 fake DAO + 可回滚事务执行器（不引入 Robolectric）。实际签名相对 `repository.md` 有扩展：计划草稿带每题冻结行快照；确认提交带 `updatedKnowledgeStates`/`questionLastReviewedDates`/显式 `noteAttachments`，并返回 `SaveDecisionsResult` 的跳过清单；`PlanDraft`/`PlanGenerationException` 目前放在 `data:room`。这些签名/归属已由 C-074 方案 A 裁决（见 `docs/conflicts-archive.md`），后续轮次不得改回按当前关联重算行快照、不得在关联失效时补默认知识点。
 
 【本轮任务】
 - PlanRepository.savePlan：PlanPage + lastScheduledDate + 消费 CoolingOverrideEvent + 冷却顺延，同一事务；只接收成功的分页结果，`Failure` 在进入事务前抛 `PlanGenerationException`（C-047）；
@@ -762,14 +764,16 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 4.3a ApplyFeedbackUseCase：U-01～U-05
+### 4.3a ApplyFeedbackUseCase：U-01～U-05【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/feedback-usecase.md、docs/specs/repository.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050：`continuousScore` 算术用 `Double`，落库/断言转 `Float`；`effectiveFeedbackCount` 精确 `>= 3.0f`，不做 epsilon。本轮只做 U-01～U-05。
+【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050：`continuousScore` 算术用 `Double`，落库/断言转 `Float`；`effectiveFeedbackCount` 精确 `>= 3.0f`，不做 epsilon。本轮只做 U-01～U-05。依赖 4.2 已落地的 `saveDecisions(sessionId, decisions, updatedKnowledgeStates, questionLastReviewedDates, noteAttachments): SaveDecisionsResult`：状态在 UseCase 内计算并转 `Float`，Repository 只落库；C-055 的整题跳过清单由返回结果驱动确认页提示（C-074 方案 A）。
+
+**2026-11-17 已落地（【done】）**：`data:room` 的 `ApplyFeedbackUseCase` 覆盖 U-01～U-05；`ApplyResult` 携带 `SaveDecisionsResult` 与更新后的状态。读侧新增 `KnowledgePointRepository.states()` 与 `ReviewFeedbackHistoryRepository.triggeredCount()`；`ColdStartNextDueCalculator` 只实现冷启动 1/3/7 天，DHP 与 3.0 切换留给 4.3b。`feedback-usecase.md` 原「接口」段（三仓储注入、返回反馈行号、独立时钟）与 C-074 的单一事务入口不一致，已按 C-075 方案 A 裁决并回写：读端口 + 单事务提交入口，`ApplyResult` 携带 `SaveDecisionsResult`。
 
 【本轮任务】
 - 触发行 ACCEPT/CORRECTED；非触发行 ×0.3；NOT_REVIEWED 不写 ReviewFeedback、只写 ConfirmationDecisionLog；
@@ -781,7 +785,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 2. Red：为当前用例只写一个失败测试；运行目标测试并把完整失败输出贴出来。
 3. Green：写最小实现让该测试变绿；不顺手实现其它用例。
 4. Refactor：只重构本轮代码，保持测试绿。
-5. Verify：先跑目标测试，再跑 ./gradlew :data:test；最后跑 ./gradlew verifyCorePurity。
+5. Verify：先跑目标测试，再跑 ./gradlew :data:room:test；最后跑 ./gradlew verifyCorePurity。
 6. Record：更新 docs/changelog.md 与 docs/agent-log/YYYY-MM-DD.md，写清目标、改动文件、验证命令与结果、未决问题、下轮建议。
 
 【硬性禁止】
@@ -793,14 +797,14 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 4.3b ApplyFeedbackUseCase：U-06～U-12
+### 4.3b ApplyFeedbackUseCase：U-06～U-12【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/feedback-usecase.md、docs/specs/repository.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。本轮只做 U-06～U-12。
+【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。本轮只做 U-06～U-12。写入统一走 4.2 已落地的 `saveDecisions`：UseCase 负责计算状态，Repository 只落库（C-074 方案 A）。C-075 方案 A：`ApplyResult` 携带 `SaveDecisionsResult` 与更新后状态，不返回反馈行 id。
 
 【本轮任务】
 - 冷启动 1/3/7、FAMILIAR 0.5、2.5→3.0 的切换边界、达到 3.0 的这次仍按冷启动；
@@ -811,7 +815,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 2. Red：为当前用例只写一个失败测试；运行目标测试并把完整失败输出贴出来。
 3. Green：写最小实现让该测试变绿；不顺手实现其它用例。
 4. Refactor：只重构本轮代码，保持测试绿。
-5. Verify：先跑目标测试，再跑 ./gradlew :data:test；最后跑 ./gradlew verifyCorePurity。
+5. Verify：先跑目标测试，再跑 ./gradlew :data:room:test；最后跑 ./gradlew verifyCorePurity。
 6. Record：更新 docs/changelog.md 与 docs/agent-log/YYYY-MM-DD.md，写清目标、改动文件、验证命令与结果、未决问题、下轮建议。
 
 【硬性禁止】
@@ -823,14 +827,16 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 4.3c ApplyFeedbackUseCase：U-13～U-19
+### 4.3c ApplyFeedbackUseCase：U-13～U-19【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/feedback-usecase.md、docs/specs/repository.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050：内部 `Double`、落库/断言 `Float`，阈值精确 `>= 3.0f`。C-057：冷却天数固定 7 天，0 关闭、负数非法。本轮只做 U-13～U-19。
+【本轮背景】阶段 4（UseCase），规格 docs/specs/feedback-usecase.md；C-052 方案 C：Android 单元测试用 JUnit 5，androidTest 用 JUnit 4。C-050：内部 `Double`、落库/断言 `Float`，阈值精确 `>= 3.0f`。C-057：冷却天数固定 7 天，0 关闭、负数非法。本轮只做 U-13～U-19。写入统一走 4.2 已落地的 `saveDecisions`，事务回滚与 C-055 跳过清单语义沿用该实现（C-074 方案 A）。C-075 方案 A：`ApplyResult` 携带 `SaveDecisionsResult` 与更新后状态，不返回反馈行 id。
+
+**2026-11-17 已落地（【done】）**：`ApplyFeedbackUseCase` 已覆盖 U-13～U-19，其中 U-13 修复了同一提交内同一知识点被多道题触发时事件序号不累计的问题（事件序号与 DHP 历史现在包含本批已处理的触发行）；U-14 按 `repository.md` 的事务规则由 `RoomPlanRepository.savePlan` 在计划保存事务内应用，不另设独立顺延用例；该落点已由 C-076 方案 A 裁决并回写规格；U-15～U-19 由既有实现自然覆盖，首跑即绿并用断言锁定。新增「多行提交中途写库失败整体回滚、待确认行保留」用例。
 
 【本轮任务】
 - 同一 session 多行、冷却顺延、ACCEPT 但 detectedTier=null、历史只有非触发行、第 3 条后初始化记忆状态、批量扫描晚复习、全部 NOT_REVIEWED；
@@ -842,7 +848,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 2. Red：为当前用例只写一个失败测试；运行目标测试并把完整失败输出贴出来。
 3. Green：写最小实现让该测试变绿；不顺手实现其它用例。
 4. Refactor：只重构本轮代码，保持测试绿。
-5. Verify：先跑目标测试，再跑 ./gradlew :data:test；最后跑 ./gradlew verifyCorePurity。
+5. Verify：先跑目标测试，再跑 ./gradlew :data:room:test；最后跑 ./gradlew verifyCorePurity。
 6. Record：更新 docs/changelog.md 与 docs/agent-log/YYYY-MM-DD.md，写清目标、改动文件、验证命令与结果、未决问题、下轮建议。
 
 【硬性禁止】
@@ -854,7 +860,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 4.4 UseCase 收尾
+### 4.4 UseCase 收尾【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -866,7 +872,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 【本轮任务：收尾】
 1) 逐条核对 feedback-usecase.md 的 U-01～U-19，缺哪个补哪个（先红后绿）；
 2) 用 U-01～U-19 验证 C-050 的 Double/Float 边界与精确阈值，不得用 epsilon 容差迁就浮点误差；
-3) 跑 ./gradlew :data:test；
+3) 跑 ./gradlew :data:room:test；
 4) 更新 docs/changelog.md（文件、意图、关联决策）与 docs/agent-log/YYYY-MM-DD.md（目标、改动、验证命令与结果、未决问题、下轮建议），列出下一轮建议的单个用例编号；
 5) 不要 git commit，除非我明确要求。
 
@@ -895,6 +901,16 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不为了让测试变绿而放宽断言。
 - core 模块不得出现 import android.* / androidx.*。
 ```
+
+> 落地说明（2026-11-17）：U-01～U-19 已逐条核对，均有对应测试（U-14 在 `PlanRepositoryTransactionTest`）；C-050 的 Double 同序计算/`Float` 精确断言与 `effectiveFeedbackCount >= 3.0f` 精确边界已由 U-01/U-02/U-03/U-12/U-08 等锁定，测试中无 epsilon 容差。U-05 原测试只覆盖“触发行 NOT_REVIEWED”，已改为用例表要求的“触发行 A 已填涂 + 非触发行 B 本次未复习”，临时变异取得红证据后还原。只读审计与代码审查结论见 `docs/agent-log/2026-11-17.md`。
+>
+> 裁决落地（2026-11-17）：C-077～C-089 已按人类选择落地，归档见 `docs/conflicts-archive.md`。后续确认流程直接按以下口径实现：
+> - C-077 A / C-078 A：整题跳过的题目不写反馈、状态与题目复习日，但仍写确认日志并返回可见清单；待确认行保留，会话维持 READY 供修复后重试。
+> - C-079 A：`ApplyFeedbackUseCase` 负责全部前置校验（会话 READY/未提交、行集合完整、计划日/触发标记一致、知识点归属、复习日上下界、档位可用），统一抛 `InvalidConfirmationException`；确认页保留按钮禁用的双保险。
+> - C-080 A：会话整批成功后标记 SUBMITTED；重复提交直接拒绝，不写任何行。
+> - C-081 A：实际复习日下界按“计划日所在周 + 用户设置的周起始日”计算（默认周一，设置未接入前用 `PlanWeekStartProvider`）。
+> - C-082 A：迁移兜底窗口首条间隔取紧邻前一条复习日；C-083 C：档位解析共用 `ConfirmedDecision.effectiveTier()`；C-084 A：`actualIntervalDays` 为必填。
+> - C-085 B：`ColdStartNextDueCalculator` 只在测试源集；C-086～C-089 A：DHP 期望值硬编码、初始化数值断言、补填用例、计划号/页号断言。
 
 ---
 
@@ -1109,7 +1125,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/confirm-flow.md、docs/specs/feedback-usecase.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Confirm），规格 docs/specs/confirm-flow.md；实体机验证，不装模拟器。C-050：确认后的状态更新内部 `Double`、落库 `Float`，`effectiveFeedbackCount` 精确 `>= 3.0f`。C-052 方案 C：单元测试 JUnit 5，androidTest JUnit 4。R-04/D-13：逐项确认，NOT_REVIEWED 只写决定日志。本轮只做 Confirm。
+【本轮背景】阶段 6（Confirm），规格 docs/specs/confirm-flow.md；实体机验证，不装模拟器。C-050：确认后的状态更新内部 `Double`、落库 `Float`，`effectiveFeedbackCount` 精确 `>= 3.0f`。C-052 方案 C：单元测试 JUnit 5，androidTest JUnit 4。R-04/D-13：逐项确认，NOT_REVIEWED 只写决定日志。C-077 A/C-078 A：整题跳过不写反馈/状态/复习日但仍写日志并展示清单；C-079 A：提交前置校验由 UseCase 承担，确认页保留按钮禁用双保险；C-080 A：已提交会话拒绝重复提交；C-081 A：复习日下界按用户设置的计划周起始日；C-088：补填必须可测且计入有效反馈。本轮只做 Confirm。
 
 【本轮任务】
 - 逐项标记 ACCEPT/CORRECTED/NOT_REVIEWED/SUPPLEMENTED，禁止一键全部接受；
