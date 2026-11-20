@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 证据用例只依赖平台自带的 android.test 库，不引入 androidx.test（R-05）。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <uses-library android:name="android.test.base" />
+        <uses-library android:name="android.test.runner" />
+    </application>
+</manifest>

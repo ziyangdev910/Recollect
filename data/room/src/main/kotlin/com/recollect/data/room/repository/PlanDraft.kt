@@ -4,6 +4,7 @@ import com.recollect.model.PlanPageRows
 import com.recollect.pagination.PaginationFailureCode
 import com.recollect.pagination.PaginationResult
 import com.recollect.pagination.PlannedPage
+import com.recollect.pagination.ScanItemGeometry
 import com.recollect.scheduler.DeferredItem
 import java.time.LocalDate
 
@@ -20,6 +21,8 @@ data class PlanDraft(
     val scheduledDates: Map<String, LocalDate>, // questionId -> targetDate
     val coolingEventIdsToConsume: List<Long>,
     val deferred: List<DeferredItem>,
+    // 回读几何快照（C-093 方案 A）：pageId → 该页每个题块的几何；旧草稿可为空。
+    val geometryByPage: Map<String, List<ScanItemGeometry>> = emptyMap(),
 ) {
     companion object {
         /**
@@ -32,6 +35,7 @@ data class PlanDraft(
             scheduledDates: Map<String, LocalDate>,
             coolingEventIdsToConsume: List<Long>,
             deferred: List<DeferredItem>,
+            geometryByPage: Map<String, List<ScanItemGeometry>> = emptyMap(),
         ): PlanDraft = when (result) {
             is PaginationResult.Failure -> throw PlanGenerationException(result.code, result.message)
             is PaginationResult.Success -> PlanDraft(
@@ -41,6 +45,7 @@ data class PlanDraft(
                 scheduledDates = scheduledDates,
                 coolingEventIdsToConsume = coolingEventIdsToConsume,
                 deferred = deferred,
+                geometryByPage = geometryByPage,
             )
         }
     }

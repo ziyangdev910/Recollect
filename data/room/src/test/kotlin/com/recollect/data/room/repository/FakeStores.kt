@@ -51,6 +51,9 @@ internal class InMemoryStores {
     /** 模拟数据库异常：置为非空后下一次对应写操作抛错。 */
     var failOnKnowledgePointUpdate: Throwable? = null
     var failOnNoteInsert: Throwable? = null
+    /** 非空时，第 [failOnPendingFeedbackInsertAfter] 行之后的插入抛错，用来验证整页回滚。 */
+    var failOnPendingFeedbackInsert: Throwable? = null
+    var failOnPendingFeedbackInsertAfter: Int = 0
 
     fun insertCoolingEvent(sessionId: String, questionId: String, createdAt: Instant): Long {
         val id = nextEventId++
@@ -73,6 +76,7 @@ internal class InMemoryStores {
         val decisionLogs: List<ConfirmationDecisionLog>,
         val pendingFeedbacks: List<PendingFeedback>,
         val noteItems: List<NoteAttachmentItem>,
+        val scanSessions: Map<String, ScanSession>,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -84,6 +88,7 @@ internal class InMemoryStores {
         decisionLogs = decisionLogs.toList(),
         pendingFeedbacks = pendingFeedbacks.toList(),
         noteItems = noteItems.toList(),
+        scanSessions = scanSessions.toMap(),
     )
 
     fun restore(snapshot: Snapshot) {
@@ -103,6 +108,8 @@ internal class InMemoryStores {
         pendingFeedbacks.addAll(snapshot.pendingFeedbacks)
         noteItems.clear()
         noteItems.addAll(snapshot.noteItems)
+        scanSessions.clear()
+        scanSessions.putAll(snapshot.scanSessions)
     }
 
     fun insertReviewFeedback(entity: ReviewFeedback): Long {
@@ -153,7 +160,10 @@ internal class FakeConfirmationDecisionLogDao(private val stores: InMemoryStores
 
 internal class FakePendingFeedbackDao(private val stores: InMemoryStores) : PendingFeedbackDao {
     override suspend fun insertAll(rows: List<PendingFeedback>) {
-        rows.forEach { row ->
+        rows.forEachIndexed { index, row ->
+            stores.failOnPendingFeedbackInsert?.let { failure ->
+                if (index >= stores.failOnPendingFeedbackInsertAfter) throw failure
+            }
             stores.pendingFeedbacks.removeAll {
                 it.sessionId == row.sessionId &&
                     it.questionId == row.questionId &&
@@ -246,6 +256,9 @@ internal class FakeQuestionDao(private val stores: InMemoryStores) : QuestionDao
 
     override suspend fun byId(id: String): Question? = stores.questions[id]
 
+    override suspend fun latestSourcePageCode(): Int? =
+        stores.questions.values.lastOrNull()?.sourcePageCode
+
     override suspend fun setPrintSnapshot(id: String, pageId: String, qrPayload: String) {
         stores.questions[id]?.let { stores.questions[id] = it.copy(pageId = pageId, qrPayload = qrPayload) }
     }
@@ -296,6 +309,11 @@ internal class FakeScanSessionDao(private val stores: InMemoryStores) : ScanSess
             .filter { it.planId == planId && it.status in setOf(ScanSessionStatus.SCANNING, ScanSessionStatus.READY) }
             .maxByOrNull { it.startedAt }
 
+    override suspend fun latestActive(): ScanSession? =
+        stores.scanSessions.values
+            .filter { it.status in setOf(ScanSessionStatus.SCANNING, ScanSessionStatus.READY) }
+            .maxByOrNull { it.startedAt }
+
     override suspend fun markSubmitted(sessionId: String, submittedAt: Instant) {
         stores.scanSessions[sessionId]?.let {
             stores.scanSessions[sessionId] = it.copy(status = ScanSessionStatus.SUBMITTED, submittedAt = submittedAt)
@@ -336,6 +354,13 @@ internal class FakeKnowledgePointDao(private val stores: InMemoryStores) : Knowl
         stores.knowledgePoints.values.sortedBy { it.number }
 
     override suspend fun byId(id: String): KnowledgePoint? = stores.knowledgePoints[id]
+
+    override suspend fun maxNumber(): Int =
+        stores.knowledgePoints.values.maxOfOrNull { it.number } ?: 0
+
+    override suspend fun delete(id: String) {
+        stores.knowledgePoints.remove(id)
+    }
 
     override suspend fun printable(): List<KnowledgePoint> =
         stores.knowledgePoints.values

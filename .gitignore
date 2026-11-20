@@ -11,3 +11,6 @@ captures/
 .blurt/
 .agentlens/
 .claude/
+
+# 截图证据
+evidence/

@@ -12,11 +12,20 @@ import com.recollect.scheduler.DeferReason
 import java.time.Clock
 
 /**
- * 计划持久化（repository.md）。本轮只落地事务方法 [savePlan]；查询/清理随对应轮次补齐。
+ * 计划持久化（repository.md）。本轮落地事务方法 [savePlan] 与计划生成所需的未消费冷却覆盖读取。
  */
 interface PlanRepository {
+    /** 未消费的一次性冷却覆盖；计划层只把 `questionId` 交给调度器（C-008 方案二）。 */
+    suspend fun pendingCoolingOverrides(): List<PendingCoolingOverride>
+
     suspend fun savePlan(draft: PlanDraft)
 }
+
+/** 冷却覆盖的只读投影；不向上暴露 Room 实体（repository.md「边界」）。 */
+data class PendingCoolingOverride(
+    val id: Long,
+    val questionId: String,
+)
 
 /**
  * `savePlan` 的单事务实现（repository.md「事务规则」）。
@@ -35,11 +44,24 @@ class RoomPlanRepository(
     private val clock: Clock,
 ) : PlanRepository {
 
+    override suspend fun pendingCoolingOverrides(): List<PendingCoolingOverride> =
+        coolingOverrideEventDao.unconsumed().map {
+            PendingCoolingOverride(id = it.id, questionId = it.questionId)
+        }
+
     override suspend fun savePlan(draft: PlanDraft) {
         requirePlanInvariants(draft)
 
         transactionRunner.inTransaction {
-            draft.pages.forEach { planPageDao.insert(it.toEntity(draft.planId, draft.knowledgeRowsByQuestionId)) }
+            draft.pages.forEach { page ->
+                planPageDao.insert(
+                    page.toEntity(
+                        planId = draft.planId,
+                        rowsByQuestionId = draft.knowledgeRowsByQuestionId,
+                        geometry = draft.geometryByPage[page.pageId].orEmpty(),
+                    ),
+                )
+            }
 
             draft.scheduledDates.forEach { (questionId, targetDate) ->
                 checkNotNull(questionDao.byId(questionId)) { "计划引用的题目不存在：$questionId（C-056）" }
@@ -88,6 +110,7 @@ class RoomPlanRepository(
     private fun PlannedPage.toEntity(
         planId: String,
         rowsByQuestionId: Map<String, PlanPageRows>,
+        geometry: List<com.recollect.pagination.ScanItemGeometry>,
     ): PlanPage {
         val questionIds = items.map { it.questionId }
         val pageRows = questionIds.map { questionId ->
@@ -102,6 +125,7 @@ class RoomPlanRepository(
             questionIds = PlanPageJson.encodeQuestionIds(questionIds),
             knowledgeRows = KnowledgeRowsCodec.encode(pageRows),
             continuationMarkers = PlanPageJson.encodeContinuationMarkers(continuationMarkers),
+            itemGeometry = ItemGeometryJson.encode(geometry),
         )
     }
 }

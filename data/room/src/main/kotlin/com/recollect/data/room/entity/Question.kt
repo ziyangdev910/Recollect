@@ -1,5 +1,6 @@
 package com.recollect.data.room.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.time.Instant
@@ -23,4 +24,17 @@ data class Question(
     val estimatedReviewMinutes: Int = 15, // 缺失或 <= 0 按 15（C-017）
     val createdAt: Instant,
     val archivedAt: Instant?,
+    /**
+     * 来源页码的说明文字（如「作业本」「同步练习」），可空。
+     * 展示/打印时与 [sourcePageCode] 组成 `编号-说明`；说明为空时只显示编号。
+     * 不是复习打印稿的 pageId。
+     */
+    @ColumnInfo(defaultValue = "''")
+    val sourcePage: String = "",
+    /**
+     * 来源页码编号：由用户通过 +/− 调整，默认沿用上次使用的值（不自增）。
+     * 同一页的多道题共用同一编号；与 [sourcePage] 一起组成页码。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val sourcePageCode: Int = 0,
 )

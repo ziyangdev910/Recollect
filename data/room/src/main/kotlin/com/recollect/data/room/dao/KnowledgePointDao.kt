@@ -21,6 +21,14 @@ interface KnowledgePointDao {
     @Query("SELECT * FROM knowledge_point WHERE id = :id")
     suspend fun byId(id: String): KnowledgePoint?
 
+    /** 首个纵切的编号分配基线；序列表/墓碑（E-04/E-05/E-10）随完整录入补齐。 */
+    @Query("SELECT COALESCE(MAX(number), 0) FROM knowledge_point")
+    suspend fun maxNumber(): Int
+
+    /** 删除知识点实体；编号墓碑由 Repository 在同一事务内先写入（D-12）。 */
+    @Query("DELETE FROM knowledge_point WHERE id = :id")
+    suspend fun delete(id: String)
+
     @Query("SELECT * FROM knowledge_point WHERE dormant = 0 AND activeQuestionCount > 0 ORDER BY number ASC")
     suspend fun printable(): List<KnowledgePoint>
 

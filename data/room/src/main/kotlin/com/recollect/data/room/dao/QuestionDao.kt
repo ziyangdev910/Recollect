@@ -23,6 +23,10 @@ interface QuestionDao {
     @Query("SELECT * FROM question WHERE id = :id")
     suspend fun byId(id: String): Question?
 
+    /** 最近一次录入使用的来源页码编号；用于录入卡片默认显示，不自动变化。 */
+    @Query("SELECT sourcePageCode FROM question ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestSourcePageCode(): Int?
+
     @Query("UPDATE question SET pageId = :pageId, qrPayload = :qrPayload WHERE id = :id")
     suspend fun setPrintSnapshot(id: String, pageId: String, qrPayload: String)
 

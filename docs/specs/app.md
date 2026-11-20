@@ -79,7 +79,7 @@ sealed interface UiState<out T> {
 | PlanPreview | 计划页、overflow 警告、每日容量、生成/打印 | 容量不足、`KNOWLEDGE_TEXT_OVERFLOW`、`ITEM_TOO_TALL`、`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG` |
 
 > 警告代码（`PaginationWarningCode`）只给程序/日志使用；PlanPreview 必须把代码映射为中文标签，并展示给用户看的 `message`，不得直接显示枚举名（C-065 方案 B）。`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并与分页警告合并（C-064 方案 A）。
-| Print | 系统打印适配器、打印结果 | 打印中、失败、成功写 pageId/QR |
+| Print | 系统打印适配器、文档生成后的结果确认 | 打印中、失败、等待「已打印/未打印」确认；确认「已打印」后写 pageId/QR（C-094 方案 B） |
 | Scan | 相机/相册、当前 `ScanSession`、已扫页 | 一页一拍、`PAGE_*` 错误、重复页提示 |
 | Confirm | plan 级多页确认、批次实际复习日期、逐行决策 | `UNMARKED`、`LATE_BATCH`、未来日期行只能 NOT_REVIEWED |
 | Settings | 每日分钟、计划周、扫描窗口、保留策略 | 见 `settings.md` |

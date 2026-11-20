@@ -1,7 +1,7 @@
 # 计划编排规格（feature/planning）
 
 关联决策：D-01、D-02、D-04、D-08、D-11、D-12
-关联裁决：C-047、C-074、C-076
+关联裁决：C-047、C-074、C-076、C-090、C-091
 关联规格：`scheduler.md`、`pagination.md`、`print-template.md`、`feedback-usecase.md`、`repository.md`
 
 ## 职责
@@ -22,15 +22,52 @@ class GeneratePlanUseCase(
     private val planIdGenerator: PlanIdGenerator,
     private val clock: Clock
 ) {
-    suspend fun execute(settings: PlanningSettings): PrintJob
+    // C-090 方案 A：返回结果包装，成功含打印输入，空计划含空态与提示。
+    suspend fun execute(settings: PlanningSettings): PlanGenerationOutcome
 }
+
+// C-090 方案 A：唯一的结果出口；PaginationResult.Failure 不在此出现，按 C-047 抛 PlanGenerationException。
+sealed interface PlanGenerationOutcome {
+    data class Planned(
+        val printJob: PrintJob,          // 打印层唯一输入；字段不含任何界面状态
+        val preview: PlanPreviewContent  // 预览页唯一输入
+    ) : PlanGenerationOutcome
+
+    // C-060：整份计划没有可打印题目；仍需把 overflow 原因与建议交给预览页。
+    data class Empty(
+        val message: String,
+        val warnings: List<PlanPreviewWarning>
+    ) : PlanGenerationOutcome
+}
+
+// 预览投影：只给 PlanPreview 使用；打印层不读取。
+data class PlanPreviewContent(
+    val planId: String,
+    val pages: List<PlanPreviewPage>,
+    val warnings: List<PlanPreviewWarning>
+)
+
+data class PlanPreviewPage(
+    val pageNumber: Int,
+    val date: LocalDate,
+    val questionNumbers: List<String>
+)
+
+// C-065 方案 B：界面只展示中文 label 与 message，不展示分页内部代码。
+data class PlanPreviewWarning(
+    val questionId: String,      // 仅供定位/日志，不直接展示
+    val questionNumber: String,  // 界面展示的题号
+    val label: String,
+    val message: String
+)
 
 data class PlanningSettings(
     val planStartDate: LocalDate,          // 默认：生成日所在周末后的下一个周一
     val planEndDate: LocalDate,            // 默认：planStartDate + 6
     val dailyAvailableMinutes: Map<LocalDate, Int>, // 缺失默认 60
     val coolingPeriodDays: Int = 7,      // >= 0；0 = 关闭冷却（内部/测试），负数非法（C-057 方案 D）
-    val template: TemplateGeometry = TemplateGeometry()
+    // C-091 方案 A：生产模板为四角标记预留 14mm 角区，内容区从 26mm 开始。
+    val template: TemplateGeometry = TemplateGeometry.a4Print()
 )
 
 // feature/planning 从 AppSettings 映射；today 由 Clock 提供
@@ -76,13 +113,15 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
    - 调用 `PagePlanner.plan(planId, dateGroups, template)` 得到 `PaginationResult`：
      - `Success`：取 `pages`、`overflowItems`、`warnings` 继续；计划层把文本测量产生的 `KNOWLEDGE_TEXT_OVERFLOW` 警告合并进该 `warnings`（C-064 方案 A）：按 `questionId + code` 去重（同一题同一 code 至多一条；不同 code 可并存，例如整题过高与文字溢出），按 `questionId` 字典序、同 `questionId` 按 `code` 枚举序排序；分页器不产出该警告，也不猜文本换行；
      - `Failure(code, message)`：抛 `PlanGenerationException(code, message)`，**不进入事务**，由 App 映射为可重试 UI 错误；
+     - `Success` 且 `pages` 为空：返回 `PlanGenerationOutcome.Empty(message, warnings 的预览投影)`，**不建页、不进入事务**（C-060）；`message` 必须区分“没有到期题目”与“有题目但全部无法打印”，且 overflow 的原因与题目不得丢弃（C-061/C-062）。
    - 为每道已排入题目生成行快照 `PlanPageRows`，与页一起放入 `PlanDraft.knowledgeRowsByQuestionId`；行组按打印时的 `KnowledgePoint.number` 升序生成后冻结，后续不接受重算（C-071/C-072）。`PlanPage` 的 `pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers` 由 `PlanRepository.savePlan` 按草稿落库；`continuationMarkers` 仅作内部移页元数据，不在纸上绘制“续下页”（C-063）。
-5. 在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`（`PlanDraft` 含上述行快照，C-074 方案 A）：
+   - 有可打印页时组装预览投影：`PlanPreviewContent(planId, pages, warnings)`；警告已按 C-064 合并去重排序，并按 C-065 方案 B 映射为中文标签与 `message`，不把分页内部代码交给界面。
+5. 仅当存在可打印页时，在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`（`PlanDraft` 含上述行快照，C-074 方案 A）：
    - 写全部 `PlanPage`；
    - 对每个已排入题目写 `Question.lastScheduledDate = targetDate`；
    - 对本次命中的 `CoolingOverrideEvent` 写 `consumedAt = now`；
    - 应用 `DeferredItem(COOLING)` 的 `targetNextDueDates`（同一事务，C-076 方案 A）。
-6. 事务成功后组装 `PrintJob`；失败则整体回滚，不返回 `PrintJob`。
+6. 事务成功后返回 `PlanGenerationOutcome.Planned(printJob, preview)`；`PrintJob` 仍是打印层唯一输入，`preview` 仍是预览页唯一输入。事务失败则整体回滚，不返回 `Planned`。空计划返回 `PlanGenerationOutcome.Empty`，不写库。
 
 > 打印不重新分页：`PrintDocumentAdapter` 只消费 `PrintJob.pages`。`PlanPage` 在规划阶段已持久化。
 
@@ -112,6 +151,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## 验收
 
+- C-090 方案 A：`GeneratePlanUseCase.execute()` 返回 `PlanGenerationOutcome`；`Planned` 同时携带 `PrintJob`（打印层唯一输入）与 `PlanPreviewContent`（预览页唯一输入）；`Empty` 携带可读文案与 `PlanPreviewWarning`，不得只返回页列表或丢弃提示。`PaginationResult.Failure` 不进入结果包装，仍按 C-047 抛 `PlanGenerationException`。
 - 计划生成后：`PlanPage`、`Question.lastScheduledDate`、冷却事件消费、顺延在同一事务内；任一步失败全部回滚。
 - `PagePlanner` 返回 `Failure` 时抛 `PlanGenerationException`，不进入事务、不写任何 `PlanPage`。
 - C-074 方案 A：`PlanDraft`/`PlanGenerationException` 位于 `data:room`；草稿携带冻结行快照，编排层不重算行组。

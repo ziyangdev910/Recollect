@@ -167,7 +167,7 @@ class DefaultPagePlanner : PagePlanner {
         return indicesByPage.mapIndexed { pageIndex, indices ->
             val pageNumber = startPageNumber + pageIndex
             val pageId = pageIdOf(planId, pageNumber)
-            var itemCursor = template.topMarginMm +
+            var itemCursor = template.contentTopMm +
                 (if (pageNumber == 1) template.legendHeightMm else 0.0) +
                 template.headerRowHeightMm
 

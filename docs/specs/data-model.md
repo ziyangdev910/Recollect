@@ -57,10 +57,13 @@ data class Question(
     val lastReviewedDate: LocalDate?,           // 实际复习日；由 ApplyFeedbackUseCase 写（C-039）
     val estimatedReviewMinutes: Int = 15,      // 单位：分钟；缺失按 15（C-017）
     val createdAt: Instant,
-    val archivedAt: Instant?
+    val archivedAt: Instant?,
+    val sourcePage: String = "",               // 来源页码说明（可空，如「作业本」）；旧文本迁移到这里
+    val sourcePageCode: Int = 0                // 来源页码编号；用户通过 +/− 调整，默认沿用上次使用值，同页可复用（2026-11-20 用户要求）
 )
 ```
 
+- 来源页码 = `sourcePageCode`（用户可调编号，最小 1；默认沿用最近一次使用的值，保存后不自增）+ `sourcePage`（用户可编辑说明，可留空）。同一页的多道题共用同一编号。展示格式为 `编号-说明`；说明为空时只显示编号，不输出 `-`。用于定位题目在试卷或作业本的哪一面，**不是**复习打印稿的 `pageId`。迁移时旧 `sourcePage` 文本保留为说明，并按 `createdAt` 顺序补 1..N 编号（2026-11-20 用户要求）。
 - `Question` 实体没有 `linkedKnowledgeIds` 列；调度 DTO `SchedulerQuestion.linkedKnowledgeIds` 由 `data/room` 从 `QuestionKnowledgeCrossRef` 按 `KnowledgePoint.number` 升序构造（C-046/C-049）。
 
 ### CoolingOverrideEvent（C-008 方案二）

@@ -15,13 +15,28 @@ import java.time.LocalDate
  */
 interface KnowledgePointRepository {
     suspend fun states(): List<KnowledgeState>
+
+    /** 打印/预览所需的编号与名称；按 `number` 升序（C-015/C-067）。 */
+    suspend fun catalog(): List<KnowledgePointRef>
 }
+
+/** 知识点的展示投影；调度状态由 [KnowledgeState] 承载。 */
+data class KnowledgePointRef(
+    val id: String,
+    val number: Int,
+    val name: String,
+)
 
 class RoomKnowledgePointRepository(
     private val knowledgePointDao: KnowledgePointDao,
 ) : KnowledgePointRepository {
     override suspend fun states(): List<KnowledgeState> =
         knowledgePointDao.allOrderedByNumber().map { it.toKnowledgeState() }
+
+    override suspend fun catalog(): List<KnowledgePointRef> =
+        knowledgePointDao.allOrderedByNumber().map {
+            KnowledgePointRef(id = it.id, number = it.number, name = it.name)
+        }
 }
 
 /**

@@ -88,6 +88,7 @@ fun PlannedQuestion.toRenderableQuestion(
     knowledgeNames: List<String>,
     knowledgeLineCount: Int,
     attachmentCount: Int,
+    sourcePage: String = "",
 ): RenderableQuestion {
     val printableKnowledgeCount = triggeredKnowledgeIds.size + nonTriggeredKnowledgeIds.size
     require(knowledgeNames.size == printableKnowledgeCount) {
@@ -102,6 +103,7 @@ fun PlannedQuestion.toRenderableQuestion(
         knowledgeNames = knowledgeNames,
         knowledgeLineCount = knowledgeLineCount,
         attachmentCount = attachmentCount,
+        sourcePage = sourcePage,
     )
 }
 

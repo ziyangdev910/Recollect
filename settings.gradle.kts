@@ -27,9 +27,15 @@ dependencyResolutionManagement {
 rootProject.name = "Recollect"
 
 include(
+    ":app",
     ":core:common",
     ":core:model",
     ":core:scheduler",
     ":core:pagination",
     ":data:room",
+    ":feature:entry",
+    ":feature:planning",
+    ":feature:print",
+    ":feature:scan",
+    ":feature:confirm",
 )

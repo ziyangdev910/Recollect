@@ -94,6 +94,36 @@ class PlanRepositoryTransactionTest {
     )
 
     @Test
+    fun `save plan freezes the read-back geometry snapshot`() = runBlocking {
+        stores.knowledgePoints["k1"] = knowledgePoint()
+        stores.questions["q1"] = question("q1")
+        val geometry = listOf(
+            com.recollect.pagination.ScanItemGeometry(
+                questionId = "q1",
+                topMm = 20.0,
+                heightMm = 68.5,
+                rowCount = 1,
+                noteArea = com.recollect.pagination.NoteWritingArea(92.2, 33.5, 88.8, 25.0),
+            ),
+        )
+
+        repository.savePlan(
+            PlanDraft(
+                planId = planId,
+                pages = listOf(plannedPage(pageNumber = 1, date = plannedDay, questionId = "q1")),
+                knowledgeRowsByQuestionId = mapOf("q1" to rows("q1", "k1")),
+                scheduledDates = mapOf("q1" to plannedDay),
+                coolingEventIdsToConsume = emptyList(),
+                deferred = emptyList(),
+                geometryByPage = mapOf("$planId-01" to geometry),
+            ),
+        )
+
+        val page = stores.planPages.getValue("$planId-01")
+        assertEquals(geometry, ItemGeometryJson.decode(page.itemGeometry), "C-093 方案 A：几何随打印快照冻结")
+    }
+
+    @Test
     fun `save plan commits every write and rolls back fully when a later step fails`() = runBlocking {
         stores.knowledgePoints["k1"] = knowledgePoint()
         stores.questions["q1"] = question("q1")

@@ -24,4 +24,6 @@ data class PlanPage(
     val questionIds: String, // JSON 数组，本页题目的打印顺序
     val knowledgeRows: String, // 行快照 JSON；由 KnowledgeRowsCodec 编解码（C-046）
     val continuationMarkers: String, // JSON 数组（C-016）
+    // 回读几何快照（C-093 方案 A）：每题题块位置/高度与笔记书写区，JSON 数组；旧行为 "[]"。
+    val itemGeometry: String = "[]",
 )

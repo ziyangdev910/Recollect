@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/2.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/7.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,7 +39,7 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(2, database.required("version").asInt(), "schema 版本")
+        assertEquals(7, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
@@ -53,9 +53,11 @@ class RoomSchemaTest {
                 "cooling_override_event",
                 "plan_page",
                 "note_attachment_item",
+                "knowledge_point_tombstone",
+                "knowledge_number_sequence",
             ),
             entities.keys,
-            "阶段 4.2 应落 data-model.md 已定义的 10 个实体",
+            "v7 应落 data-model.md 已定义的 12 个实体（含标签库编号序列与墓碑）",
         )
 
         assertTable(
@@ -94,6 +96,8 @@ class RoomSchemaTest {
                 "estimatedReviewMinutes" to Column("INTEGER", true),
                 "createdAt" to Column("INTEGER", true),
                 "archivedAt" to Column("INTEGER", false),
+                "sourcePage" to Column("TEXT", true),
+                "sourcePageCode" to Column("INTEGER", true),
             ),
             primaryKey = listOf("id"),
             autoGenerate = false,
@@ -216,6 +220,7 @@ class RoomSchemaTest {
                 "questionIds" to Column("TEXT", true),
                 "knowledgeRows" to Column("TEXT", true),
                 "continuationMarkers" to Column("TEXT", true),
+                "itemGeometry" to Column("TEXT", true),
             ),
             primaryKey = listOf("planId", "pageId"),
             autoGenerate = false,
@@ -237,6 +242,28 @@ class RoomSchemaTest {
             ),
             primaryKey = listOf("id"),
             autoGenerate = true,
+        )
+
+        assertTable(
+            table = "knowledge_point_tombstone",
+            columns = mapOf(
+                "number" to Column("INTEGER", true),
+                "knowledgePointId" to Column("TEXT", true),
+                "voidedAt" to Column("INTEGER", true),
+                "reason" to Column("TEXT", false),
+            ),
+            primaryKey = listOf("number"),
+            autoGenerate = false,
+        )
+
+        assertTable(
+            table = "knowledge_number_sequence",
+            columns = mapOf(
+                "id" to Column("INTEGER", true),
+                "lastIssued" to Column("INTEGER", true),
+            ),
+            primaryKey = listOf("id"),
+            autoGenerate = false,
         )
 
         // C-050：两个状态字段必须落库为 Float（schema 中为 REAL），不得退化为 REAL 以外类型。

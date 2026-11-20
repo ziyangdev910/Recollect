@@ -7,11 +7,19 @@ room = "2.7.2"
 junitJupiter = "5.13.4"
 junitPlatform = "1.13.4"
 junit5Android = "1.13.4.0"
+# 阶段 5.1：Compose 壳的最小 Activity 接入（见 docs/dependency-proposals.md）。
+activityCompose = "1.11.0"
 mlkitTextRecognitionChinese = "16.0.0"
 mlkitVisionCommon = "17.3.0"
 mlkitBarcode = "17.2.0"
-# C-051 方案 A：JitPack 根坐标，不是 openscanvision-core。
+# C-051 方案 A 时期 JitPack 根坐标（6.2 spike 后按 C-092 方案 C 停用，仅保留供证据复现）。
 openscanvision = "1.0.0"
+# C-092 方案 C：自研扫描引擎直接使用 OpenCV（`openscanvision` 的传递依赖版本）。
+opencvContrib = "4.5.3.0"
+# 打印层二维码生成（纯 Java，无原生库；docs/dependency-proposals.md 2026-11-18）。
+zxing = "3.5.3"
+# C-096 方案 B：扫描页内相机预览与拍摄（docs/dependency-proposals.md 2026-11-20）。
+camerax = "1.7.0"
 
 [libraries]
 kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
@@ -19,6 +27,10 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jun
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+compose-runtime = { module = "androidx.compose.runtime:runtime" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
@@ -27,6 +39,13 @@ mlkit-text-recognition-chinese = { module = "com.google.mlkit:text-recognition-c
 mlkit-vision-common = { module = "com.google.mlkit:vision-common", version.ref = "mlkitVisionCommon" }
 mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
 openscanvision = { module = "com.github.MatiwosKebede:openscanvision", version.ref = "openscanvision" }
+opencv-contrib = { module = "com.quickbirdstudios:opencv-contrib", version.ref = "opencvContrib" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

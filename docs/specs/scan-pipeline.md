@@ -1,7 +1,7 @@
 # 回读管线规格（feature/scan）
 
 关联决策：D-06、D-09、D-10
-关联裁决：C-010、C-011、C-012、C-015、C-021、C-030、C-051
+关联裁决：C-010、C-011、C-012、C-015、C-021、C-030、C-051、C-091、C-092
 
 ## 冻结决策（D-06、D-09、D-10）
 
@@ -12,16 +12,16 @@
 ## 顺序（不得调换）
 
 1. CameraX 取帧（或相册选图）
-2. OpenScanVision：ArUco 定位 → 透视矫正
+2. 自研引擎（OpenCV）：ArUco 定位 → 透视矫正（C-092 方案 C）
 3. 逐题在其页脚区域解码 QR（每题一个）；解码后立即做版本/校验码/归属校验（见下）；失败不进入确认页
-4. OpenScanVision OMR：仅采样左侧填涂区，按行分组识别 A/B/C
+4. 自研引擎 OMR：仅采样左侧填涂区，按行分组识别 A/B/C（几何与阈值见下）
 5. 对右下笔记区**手写书写区**裁剪 → ML Kit 中文离线 OCR（text-recognition-chinese:16.0.0）；不读取印刷的附加摘要区
 6. 产出 `PendingFeedback`（含 `triggered`、`detectedTier`、`detectionStatus`、`conflict`、`detectedRawOcr`），初始 `userDecision = UNMARKED`
 7. 转交 feature/confirm；本模块不直接写 `ReviewFeedback`（R-04）
 
 ## ScanEngine 适配层
 
-`feature/scan` 定义 `ScanEngine`，内部封装 OpenScanVision；ViewModel/UseCase 不直接调用库：
+`feature/scan` 定义 `ScanEngine`，内部封装 OpenCV 与 ML Kit；ViewModel/UseCase 不直接调用库（R-03）：
 
 ```kotlin
 interface ScanEngine {
@@ -73,19 +73,19 @@ data class OmrRow(
 )
 ```
 
-## C-051 方案 A：OpenScanVision 适配层
+## C-092 方案 C：自研回读引擎
 
-- 依赖坐标固定为 JitPack 根坐标 `com.github.MatiwosKebede:openscanvision:1.0.0`；JitPack 上不存在 `openscanvision-core` 坐标。
-- `ScanEngine` 适配层负责把库的 850×540 输出映射到本规格的 2480×3508 坐标系；ArUco/透视复用库，逐题 QR 用 ML Kit barcode 解码（若直接调用，显式固定 `barcode-scanning:17.2.0`，见 `docs/dependency-proposals.md`），OMR 按本规格的几何与阈值自行采样。
-- 方案 A 是 MVP spike：R-01 必须用真实打印稿验证 850×540 信息量是否足以支撑 4mm 选框；若 OMR/QR 精度不达标，按 C-051 方案 B fork 并补齐 2480×3508、rotation、多 QR、自定义模板 API。
-- `OpenCV 4.5.3.0` 与 `ML Kit barcode 17.2.0` 的 `.so` 当前是 4KB 对齐；Android 15+ 16KB 页面设备需实测，必要时升级到 16KB 对齐版本或替换依赖。
-- 适配层必须与 `feature/print` 共用同一 `OmrConfig`；ArUco 字典、QR ECC、采样窗口、阈值写入 `evidence/scan/omr-config.json`。
+- C-051 方案 A（OpenScanVision 根坐标、850×540 适配）经 6.2 spike 判定不可行：库的参考画面固定 850×540 横向，四角标记参考位置与唯一一个二维码区域写死，自定义模板在模块外不可达（见 `docs/conflicts-archive.md` C-092）。`openscanvision:1.0.0` 停用，坐标仅保留供 spike 复现。
+- 现行实现：ArUco 定位与单应性透视用 `com.quickbirdstudios:opencv-contrib:4.5.3.0`（`DICT_4X4_50`），按标记中心与打印几何矫正，统一输出 2480×3508（300 DPI）；逐题 QR 用 ML Kit `barcode-scanning:17.2.0`；OMR 按本规格的几何与阈值自行采样。
+- 打印层不引入 OpenCV：四角标记图案以常量固化（`ArucoPattern`），由 Canvas 绘制；扫描端按同一 `DICT_4X4_50` 检测。
+- `ScanEngine` 适配层必须与 `feature:print` 共用同一 `TemplateGeometry.a4Print()`；采样窗口、阈值与二维码生成参数写入 `evidence/scan/omr-config.json`。
+- 原生库（`libopencv_java4.so`、ML Kit `libbarhopper_v3.so`）当前为 4KB 对齐；Android 15+ 16KB 页设备需升级依赖或替换实现，解决前不得声称 16KB 设备可用。
 
 ## 页面检测、矫正与多页
 
 - MVP 一次只接受**一页**；检测到多组 ArUco 返回 `MULTIPLE_PAGES`，提示重拍。
 - 用 ArUco 顺序（左上→右上→右下→左下）判断旋转，支持 0/90/180/270；透视后统一输出 2480×3508（300 DPI）。
-- 四角任一无检测 → `PAGE_NOT_FOUND`；透视后边长比例异常/清晰度低于 OpenScanVision 阈值 → `PAGE_UNREADABLE`。
+- 四角任一无检测 → `PAGE_NOT_FOUND`；透视后边长比例异常/清晰度低于引擎阈值 → `PAGE_UNREADABLE`。
 - 不自动拼接多页；多页计划逐页拍摄。多页计划如何合并为一个确认会话见 `confirm-flow.md` 的“扫描会话”。
 
 ## 扫描会话与批量回读（C-038、C-040、C-041）
@@ -98,7 +98,8 @@ data class OmrRow(
 
 ## OMR 采样几何与阈值
 
-- 左区 x 起点 12mm，宽 74.4mm；列宽：序号 8mm、知识点 34mm、A/B/C 各 4mm，框间距 2mm。
+- 左区 x 起点 = `TemplateGeometry.contentLeftMm`（`a4Print()` 下 26mm），宽 = `leftAreaWidthMm`（`a4Print()` 下 63.2mm）；列宽：序号 8mm、知识点 34mm、A/B/C 各 3.5mm，框间距 2mm。不得再用旧的 12mm/74.4mm（C-091 方案 A）。
+- 框中心 x = `contentLeftMm + 8 + 2 + 34 + 2 + i*(3.5+2) + 1.75`（i=0/1/2，`a4Print()` 下为 73.75/79.25/84.75mm）；框中心 y = 行 y 起点 + `rowHeightMm/2`。
 - 单个题块内第 j 行 y 起点 = `yOffset + j*rowHeightMm`；`yOffset` 已包含页首图例/表头与上方题块。不要用跨题块的全局行号公式。
 - 题块内定位优先用 `PlacedItem.yOffsetMm`：题块左侧行从 `yOffset` 开始（已包含页首与上方题块），按 `knowledgeRows` 快照行序绑定。
 - 每个框采样中心 2.5mm×2.5mm；灰度 < 128 记为暗像素。
@@ -142,7 +143,7 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
 
 ### 手动回退
 
-- QR 失败时提示「请重拍，或手动输入页面 ID + 题号」。
+- QR 失败时提示「请重拍，或按页脚二维码旁的小字手动输入页面 ID + 题号」；打印稿页脚以 2.2mm 小字显示完整 `pageId`（C-095 方案 B）。
 - 用户输入 `pageId + 题号`；`pageId` 全局唯一，直接命中 `PlanPage`，再按 `questionIds` 与 `questionNumber` 定位题目。
 - 输入规范化：大小写不敏感；`I/L → 1`、`O → 0`；允许字符 `A-Z a-z 0-9 -`；长度必须为 9（6 位 planId + `-` + 2 位页码）；不匹配则提示格式错误。
 - 手动输入成功后，执行上述 **2～4** 的归属校验（版本与 CRC 仅 QR 适用；`questionId` 由 `PlanPage.questionIds` + 题号在本地解析）。
@@ -168,7 +169,7 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
 - 若快照与当前 DB 的关联集合不一致（例如打印后用户改了关联），确认页按快照校验；用户必须重新打印才能使用新关联。
 - 行组边界：透视矫正后，左侧填涂区顶部为 `leftAreaTop`；第 i 行（0-based）的 y 范围为
   `[leftAreaTop + headerRowHeightMm + i * rowHeightMm, leftAreaTop + headerRowHeightMm + (i + 1) * rowHeightMm)`。
-- 每行三个框：A/B/C 在行内水平等距；框中心与边距来自 `TemplateGeometry` 的固定比例。采样窗口不跨行、不跨框。
+- 每行三个框：A/B/C 在行内水平等距；框中心与边距来自 `TemplateGeometry.a4Print()` 的 `contentLeftMm` 与固定列宽（序号 8、知识点 34、A/B/C 3.5、间距 2）。采样窗口不跨行、不跨框。
 - 第 i 行绑定到 `sortedKnowledgePoints[i].id`（来自 `PlanPage.knowledgeRows` 快照）；因此回读端不需要 QR 携带知识点 ID（D-09）。
 - `KnowledgePoint.number` 创建后不可变、删除后由墓碑保留；若打印后用户修改了题目的关联知识点集合，旧打印稿仍按快照行映射，确认页会校验快照与当前关联的**成员与顺序**是否一致，不一致则阻断写入，要求重新打印。
 - OMR 识别结果：
@@ -178,12 +179,14 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
   - 图像不可判定 → `UNREADABLE`，`detectedTier = null`。
 - 行分组与人工核对规则不变：允许 ≤ 1 组误判，误判由确认页修正。
 
-## OpenScanVision 版本与配置
+## 引擎版本与配置
 
-- `libs.versions.toml` 固定 `com.github.MatiwosKebede:openscanvision:1.0.0`，不使用 `+`/`latest`；不使用不存在的 `openscanvision-core` 坐标（C-051）。
-- 打印验收与扫描共用同一 `OmrConfig`：ArUco 字典、QR ECC、采样窗口、阈值写入 `evidence/` JSON，保证可复现。
-- 不引入云端 OCR/AI；ML Kit 固定 `text-recognition-chinese:16.0.0` + `vision-common:17.3.0`。
-- 适配层升级 OpenScanVision/OpenCV/ML Kit 版本时必须重跑 `evidence/print/` 的 R-01 门禁，不能只跑单元测试。
+- `libs.versions.toml` 固定 `opencv-contrib:4.5.3.0` 与 `barcode-scanning:17.2.0`，不使用 `+`/`latest`。
+- 打印验收与扫描共用同一 `OmrConfig`：ArUco 字典、二维码 ECC、采样窗口、阈值写入 `evidence/` JSON，保证可复现。
+- 四角标记：`DICT_4X4_50`，ID 0/1/2/3 = 左上/右上/右下/左下，内码 10mm、白边 4mm、距页边 12mm；打印层按 `ArucoPattern` 的 6×6 模块绘制。
+- 二维码：每题一个，载荷见「QR 载荷与校验算法」；生成参数（版本、纠错级别）与打印几何写入 `OmrConfig`。
+- 不引入云端 OCR/AI；ML Kit 中文 OCR 仍固定 `text-recognition-chinese:16.0.0` + `vision-common:17.3.0`。
+- 升级 OpenCV/ML Kit 或更换二维码生成方案时，必须重跑 `evidence/print/` 与 `evidence/scan/` 的 R-01 门禁，不能只跑单元测试。
 
 ## 约束
 
@@ -207,4 +210,4 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
 - 手动输入 `pageId + 题号` 的降级路径可用；pageId 全局唯一命中；手动输入不要求 version/CRC（无 QR 载荷）。
 - 行组重建：同一题 1/2/3/4 个知识点，行 i 与 `number` 升序一致；重启/重新规划后行序不变；只使用 `PlanPage.knowledgeRows` 快照，无快照的旧稿阻断并提示重印，不回退重算（C-072 方案 A）。
 - 快照与当前关联的成员/顺序不一致、或快照中的知识点已删除时，归属校验阻断并提示重新打印。
-- C-051 方案 A：850×540 → 2480×3508 的适配结果必须给出 `evidence/scan/` 原始输出；若 5 张真实打印稿的 OMR 精度不达标，按方案 B fork，不得用降采样后的“看起来正确”结果通过 R-01。
+- C-092 方案 C：四角定位、A4 透视（2480×3508）、逐题 QR 与 OMR 必须给出 `evidence/scan/` 的原始输出；5 张真实打印稿的照片回读仍是 R-01 硬门禁，不得用 PDF 光栅位图代替。

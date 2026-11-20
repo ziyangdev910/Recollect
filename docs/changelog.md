@@ -379,3 +379,255 @@
 | 2026-11-17 | `docs/specs/data-model.md` | 授权回写：`ConfirmationDecisionLog` 含跳过行；`ScanSession` 部分成功保持 READY、整批成功才 SUBMITTED | C-077、C-078、C-080 |
 | 2026-11-17 | `docs/conflicts-archive.md` | C-077～C-089 的“规格同步”由待授权更新为已回写，注明文件与段落 | C-077～C-089 |
 | 2026-11-17 | `docs/agent-log/2026-11-17.md` | 追加规格授权回写记录：改动范围、与代码一致性、验证沿用 | 工作循环 |
+| 2026-11-18 | `settings.gradle.kts`、`gradle/libs.versions.toml`、`app/build.gradle.kts`（新增） | 新增 `:app` 模块（Compose + android-junit5）；版本目录补 `compose-runtime`/`compose-ui`/`compose-material3`（BOM 管理）与 `activity-compose` 1.11.0；app 依赖 core 四模块、`data:room`、`room-runtime` | 阶段 5.1、app.md、C-052、R-05 |
+| 2026-11-18 | `app/src/main/AndroidManifest.xml`（新增） | 注册 `MainActivity` 为启动页；使用平台 `Theme.Material.Light.NoActionBar`，不引入 appcompat/material XML 依赖 | 阶段 5.1、app.md |
+| 2026-11-18 | `app/src/main/.../navigation/AppNavigator.kt`（新增） | `AppRoute` sealed 路由；`AppNavigator` 用 `mutableStateOf` + `ArrayDeque` 实现 push/pop/replace 与 `canPop`；不引入 navigation-compose | app.md「DI 与导航」 |
+| 2026-11-18 | `app/src/main/.../AppContainer.kt`（新增） | 手写进程内单例容器：现有 `data:room` Repository、`ApplyFeedbackUseCase`、`DefaultScheduler`、`DefaultPagePlanner`；不引入 Hilt/Koin、不复制 `core:model` DTO；不捕获分页失败（C-047 出口仍在 `PlanDraft.fromPagination`） | app.md、C-047、C-053、R-03 |
+| 2026-11-18 | `app/src/main/.../AppRoot.kt`（新增） | Compose 壳：`BackHandler` 仅在可返回时拦截并 pop；根路由交系统结束 Activity；路由占位文案为后续功能页留位 | app.md、R-03 |
+| 2026-11-18 | `app/src/main/.../MainActivity.kt`（新增） | 只创建 `AppContainer`/`AppNavigator`/`AppRoot` 并 `setContent`；不直接访问 Room/CameraX/PrintManager/ML Kit | app.md、R-03 |
+| 2026-11-18 | `app/src/test/.../navigation/AppNavigatorTest.kt`（新增） | 1 个 JUnit 5 用例：push 两层后逐次 pop 回到根，根上 pop 返回 false 且当前路由不变 | app.md、C-052 |
+| 2026-11-18 | `docs/dependency-proposals.md` | 新增 2026-11-18 条目：Compose 壳所需 runtime/ui/material3（BOM）与 `activity-compose` 1.11.0；补 `libandroidx.graphics.path.so` 的 ABI 与 `zipalign -P 16` 实测 | 阶段 5.1、R-05 |
+| 2026-11-18 | `docs/prompts.md` | 5.1 标记【done】，补落地说明、C-047 出口、5.2 待接入项与无设备状态 | 阶段 5.1 |
+| 2026-11-18 | `docs/architecture/overview.md` | 头部实现进度补阶段 5.1 的 `:app` 壳、装配范围与导航用例 | 阶段 5.1 |
+| 2026-11-18 | `docs/agent-log/2026-11-18.md`（新增） | 本轮目标、Observe、红绿证据、验证结果、16KB/设备检查、未决与下轮建议 | 工作循环 |
+| 2026-11-18 | `docs/conflicts.md` | 只更新 C-032 的「部分落地」状态：记录 `:app` 壳已落地，`feature`/`GeneratePlanUseCase`/`core:common` 仍未完成；不新增待裁决条目 | C-032、阶段 5.1 |
+| 2026-11-18 | `settings.gradle.kts` | 注册 `:feature:entry`、`:feature:planning` 两个功能模块 | 阶段 5.2、app.md 模块图 |
+| 2026-11-18 | `feature/entry/build.gradle.kts`、`feature/planning/build.gradle.kts`（新增） | Android library + Compose + android-junit5；依赖 core 模块与 `data:room`；显式声明已批准的 `activity-compose` 1.11.0，避免 material3 传递解析到未缓存的 1.8.2 | 阶段 5.2、C-052、R-05 |
+| 2026-11-18 | `core/common/src/main/.../UiState.kt`（新增） | `UiState`（Loading/Empty/Content/Error）与 `UiError(code, message, retryable)`；纯 Kotlin | app.md「DI 与导航」「全局错误与恢复」 |
+| 2026-11-18 | `core/common/src/main/.../PlanIdGenerator.kt`（新增） | 6 位 Crockford Base32 计划号生成器（去掉 I/L/O/U）；冲突重试留给计划持久化边界 | planning.md、C-069 |
+| 2026-11-18 | `core/common/src/main/.../KnowledgeTextMeasurer.kt`（新增） | 右上知识点全称的视觉行数测量接口；实现留给打印层 | print-template.md、R-02 |
+| 2026-11-18 | `core/pagination/.../TemplateGeometry.kt` | 补 `pagination.md` 已定义的宽度派生量 `contentWidthMm`/`leftAreaWidthMm`/`rightAreaWidthMm`/`rightTextWidthMm`，供计划层测量右上文名 | D-07、C-067 |
+| 2026-11-18 | `data/room/.../repository/KnowledgePointRepository.kt` | 增加 `KnowledgePointRef` 与 `catalog()`（编号 + 名称，按编号升序）；不向上暴露 Room 实体 | C-015、C-067、C-046 方案 A |
+| 2026-11-18 | `data/room/.../repository/QuestionRepository.kt`（新增） | `schedulerQuestions()`（未归档题目 + cross-ref 映射）与 `questionNumbers()`；计划层用它补齐调度 DTO 缺的题号 | repository.md、C-046、C-056 |
+| 2026-11-18 | `data/room/.../repository/NoteAttachmentRepository.kt`（新增） | 最近 N 条笔记附件只读端口，供计划层计算打印附件数 | repository.md、C-026 |
+| 2026-11-18 | `data/room/.../repository/EntryRepository.kt`、`RoomEntryRepository.kt`（新增） | 首个纵切录入端口：一个事务内写知识点、题目与关联；编号取现有最大编号 + 1（序列表/墓碑随 E-04/E-05/E-10 补齐） | entry.md、D-12、C-028 |
+| 2026-11-18 | `data/room/.../dao/KnowledgePointDao.kt`、`data/room/src/test/.../repository/FakeStores.kt` | 增加 `maxNumber()` 供录入事务分配编号；同步 fake DAO | D-12、C-028 |
+| 2026-11-18 | `data/room/.../repository/PlanRepository.kt` | 增加 `pendingCoolingOverrides()` 与只读投影 `PendingCoolingOverride`；`savePlan` 行为不变 | planning.md、C-008 方案二、C-076 方案 A |
+| 2026-11-18 | `feature/planning/.../PlanningModels.kt`、`GeneratePlanUseCase.kt`（新增） | 计划编排：调度 → 行快照/名称（同集合按编号升序，C-067）→ 分页 → `PlanDraft.fromPagination` 单事务；`Failure` 转 `PlanGenerationException` 不写库（C-047）；空计划/全 overflow 返回空态并保留提示（C-060/C-061）；文字警告与分页警告按 `questionId + code` 去重排序合并（C-064）；预览只产生中文标签（C-065） | C-047、C-060～C-067、D-08、D-12 |
+| 2026-11-18 | `feature/planning/.../PlanPreviewViewModel.kt`、`PlanPreviewScreen.kt`（新增） | 不持有 Context 的状态持有者：计划失败映射为可重试 `UiError`；空态携带 warnings；Compose 页面展示页/题号/中文警告 | app.md、C-047、C-065、R-03 |
+| 2026-11-18 | `feature/entry/.../EntryViewModel.kt`、`EntryScreen.kt`（新增） | Entry 空态与新建 1 题 1 知识点；空题号/空名称在状态层拒绝，编号由数据层分配；Compose 页面不直接访问 Room/Context | entry.md、D-12、R-03 |
+| 2026-11-18 | `feature/planning/src/test/.../GeneratePlanUseCaseTest.kt`、`PlanPreviewViewModelTest.kt`（新增） | 7 个 JUnit 5 用例：1 页 1 条、C-047 失败不写库、空计划空态、全 overflow 保留题目与原因、文字溢出标签、C-064 去重排序、C-067 名称数量/顺序；状态层成功/空态/可重试错误 | C-047、C-060～C-067 |
+| 2026-11-18 | `feature/entry/src/test/.../EntryViewModelTest.kt`（新增） | 2 个 JUnit 5 用例：空题库空态；新建 1 题 1 知识点后列表 1 条 | entry.md、阶段 5.2 |
+| 2026-11-18 | `app/src/main/.../AppContainer.kt` | 装配 `EntryRepository`/`QuestionRepository`/`NoteAttachmentRepository`/`GeneratePlanUseCase`/`PlanIdGenerator`；对外暴露业务 `clock`，不暴露 Context | app.md、R-03 |
+| 2026-11-18 | `app/src/main/.../AndroidKnowledgeTextMeasurer.kt`（新增） | 用 `Paint.breakText` 按毫米宽度折行；3.2→3.0→2.8mm 降字号，仍超 4 行返回实际行数供计划层发警告；暂放在 app（`feature:print` 未建） | print-template.md、C-064、R-02 |
+| 2026-11-18 | `app/src/main/.../AppRoot.kt`、`app/build.gradle.kts` | Home → Entry → PlanPreview 的首个可跑纵切；接入两个 feature 模块 | 阶段 5.2、app.md |
+| 2026-11-18 | `docs/conflicts.md` | 新增 C-090：计划生成规格返回“打印输入”，但 C-060/C-061 要求把空态与提示送到预览页，两者缺少承载位置；记录现状、用户影响、A/B/C 方案与裁决前禁止事项；同日按方案 A 裁决并归档（见下） | C-060、C-061、C-062、planning.md |
+| 2026-11-18 | `docs/prompts.md` | 5.2 补落地说明：已落地范围、验证结果、C-090 状态与无设备状态 | 阶段 5.2 |
+| 2026-11-18 | `docs/architecture/overview.md` | 头部进度补阶段 5.2：`feature` 模块、录入事务、计划编排与预览状态 | 阶段 5.2 |
+| 2026-11-18 | `CLAUDE.md` | 模块结构补现有 `:feature:entry`/`:feature:planning` 与首个纵切边界 | 阶段 5.2 |
+| 2026-11-18 | `docs/agent-log/2026-11-18.md` | 追加阶段 5.2 记录：目标、Observe、红绿证据、验证命令与结果、无设备、未决与下轮建议 | 工作循环 |
+| 2026-11-18 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-090 按方案 A 裁决并归档：计划生成返回结果包装（成功含打印输入，空计划含空态与提示）；未决恢复为仅 C-032 | C-090 方案 A、C-060、C-061 |
+| 2026-11-18 | `docs/specs/planning.md` | 授权回写 C-090 方案 A：`execute()` 返回 `PlanGenerationOutcome`；补 `Planned`/`Empty`、预览投影类型、固定流程第 4～6 步与验收 | C-090 方案 A、C-047、C-060、C-061、C-062、C-065 |
+| 2026-11-18 | `CLAUDE.md` | 模块约束补 `PlanGenerationOutcome` 返回形态；分页失败仍抛 `PlanGenerationException` 且不写库 | C-090 方案 A、C-047、C-060 |
+| 2026-11-18 | `docs/architecture/overview.md` | 头部进度与多形态表补 C-090 方案 A 的结果出口与消费方 | C-090 方案 A |
+| 2026-11-18 | `docs/prompts.md` | 5.2 落地说明由 C-090 待裁决改为已裁决并回写 | C-090 方案 A |
+| 2026-11-18 | `docs/agent-log/2026-11-18.md` | 追加 C-090 裁决落地记录：归档、规格回写、无需改代码、测试沿用 | C-090 方案 A |
+| 2026-11-18 | `evidence/screens/`、`evidence/ui/`（新增） | 实体机 `AXRBUT6518000086`（VKJ-AN00）验收证据：Home、Entry 空态、输入、保存后 1 条、PlanPreview 1 页 1 条、清空数据后的 C-060 空计划；含一次返回键误退出与重启的如实截图/UI 树 | 阶段 5.3、app.md「验收」 |
+| 2026-11-18 | `docs/prompts.md` | 5.3 补落地说明：设备序列号、操作路径、截图清单、IME/返回键问题与未覆盖路径；阶段 5 标记 5.2/5.3【done】并补完成状态，5.1/5.2 的设备表述同步为 5.3 已补做 | 阶段 5.2、5.3 |
+| 2026-11-18 | `docs/architecture/overview.md` | 头部进度补实体机 5.3 验收通过与其证据位置 | 阶段 5.3 |
+| 2026-11-18 | `docs/agent-log/2026-11-18.md` | 追加阶段 5.3 记录：设备、操作步骤、预期/实际、问题、验证命令与未决 | 工作循环 |
+| 2026-11-18 | `settings.gradle.kts`、`feature/print/build.gradle.kts`（新增） | 注册 `:feature:print`（Android library，JUnit 5 单测）；证据用例使用平台 `android.test.InstrumentationTestRunner`，仅以 SDK optional jar 做编译期引用，不引入 androidx.test/JUnit4 新依赖 | 阶段 6.1、print-template.md、R-05 |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt`（新增） | 只消费 `PlannedPage`/`PlacedItem` 生成毫米布局：A4 内容区、左侧行/三框、右上页码与全称、右下笔记/附件、QR 预留、四角 ArUco；日期首页绘制标题 +「本日共需复习 X 题」并置于上边距内，同日后续页只重复标题；`hasNoteArea=false` 不建笔记区；不生成续下页与 overflow 占位 | D-07、D-08、R-02、C-013、C-060～C-063 |
+| 2026-11-18 | `feature/print/.../PrintRenderer.kt`（新增） | Canvas 渲染布局；按 3.2→3.0→2.8mm 降字号、末行省略；四角 ArUco 预留白边与标记位；QR 预留框；不压缩行高 | print-template.md、C-013、C-063 |
+| 2026-11-18 | `feature/print/.../PrintPdfWriter.kt`、`RecollectPrintDocumentAdapter.kt`（新增） | `PrintedPdfDocument` A4/300DPI/0 页边距输出 PDF；`onLayout` 只报告页数，无页时失败不补空白页；`PrintDocumentAdapter` 接收计划层 `PrintJob` 的字段（页/题目/笔记文本/模板），生产代码不依赖兄弟 feature | D-08、R-02、C-060 |
+| 2026-11-18 | `feature/print/.../AndroidKnowledgeTextMeasurer.kt`（迁移）、`app/.../AppContainer.kt`、`app/build.gradle.kts` | 文本测量实现从 `:app` 迁到 `feature/print`（app.md 归属）；app 增加 `:feature:print` 依赖，行为不变 | print-template.md、app.md、C-064 |
+| 2026-11-18 | `feature/print/src/test/.../PrintLayoutTest.kt`（新增） | 1 个 JUnit 5 用例 PR-01：断言 A4 几何与 `TemplateGeometry` 一致、日期标题/每日题数位置与字号、图例仅首页、无“续下页”、条目 yOffset/height 原样取自分页、`hasNoteArea=false` 无笔记区、左侧 9 码点截断、四角 ArUco 与 QR 预留 | D-07、D-08、R-02、C-062、C-063 |
+| 2026-11-18 | `feature/print/src/androidTest/.../PrintPdfGenerationTest.kt`、`src/androidTest/AndroidManifest.xml`（新增） | 设备上用 `PrintedPdfDocument` 生成 PDF，并用 `PdfRenderer` 断言页数；渲染 300 DPI PNG 供人工目视辅助（不作 R-01 验收），原件存 `evidence/print/` | print-template.md「验收」、C-003、C-051 |
+| 2026-11-18 | `evidence/print/recollect-print-K7M2Q9.pdf`、`...-page-1.png`、`...-page-2.png`（新增） | 布局证据：2 页；PDF 132165 字节；渲染图可见左上 ArUco 覆盖图例/每日题数/表头/首行的问题（见 C-091） | 阶段 6.1、C-091 |
+| 2026-11-18 | `docs/conflicts.md` | 新增 C-091：四角定位标记按“距页边 12mm”绘制，与 12mm 内容区起点重叠；记录用户影响、A/B/C 方案、选型参考、建议与裁决前禁止事项；未修改 specs/分页几何 | print-template.md、pagination.md、D-07～D-09 |
+| 2026-11-18 | `docs/prompts.md` | 6.1 补落地进度：布局/PDF/证据已落地，C-091 待裁决，ArUco 实际编码与 R-01 回读未完成 | 阶段 6.1、C-091 |
+| 2026-11-18 | `CLAUDE.md`、`docs/architecture/overview.md` | 模块结构补 `:feature:print`；实现进度补阶段 6.1 与 C-091 | 阶段 6.1 |
+| 2026-11-18 | `docs/dependency-proposals.md` | 记录 androidTest 证据用例使用平台 `android.test.InstrumentationTestRunner` 与 SDK optional jar（compileOnly）；未新增 Maven 依赖，后续换 JUnit4/androidx.test 需先提案 | 阶段 6.1、R-05、C-052 |
+| 2026-11-18 | `core/pagination/.../TemplateGeometry.kt` | C-091 方案 A：新增 `cornerReserveMm`、`contentLeftMm`/`contentTopMm` 派生量与生产模板 `a4Print()`（14mm 角区预留）；`usableHeightMm`/`contentWidthMm` 扣除角区；默认 `cornerReserveMm=0` 保持既有纯几何语义 | C-091 方案 A、D-07、pagination.md |
+| 2026-11-18 | `core/pagination/.../DefaultPagePlanner.kt` | C-091 方案 A：条目 `yOffset` 起点由 `topMarginMm` 改为 `contentTopMm`，分页按预留后的内容区重算 | C-091 方案 A、C-048 |
+| 2026-11-18 | `core/pagination/src/test/.../TemplateGeometryTest.kt` | 新增 `print template reserves corner area for aruco markers`：锁定内容区 26mm、宽 158mm、可用高 245mm、首页内容高 230mm、附件上限 73.5mm，并断言内容区越过 ArUco 白边外沿 26mm | C-091 方案 A |
+| 2026-11-18 | `feature/planning/.../PlanningModels.kt` | `PlanningSettings.template` 默认值改为 `TemplateGeometry.a4Print()`，计划/分页/打印统一使用预留角区的生产几何 | C-091 方案 A、planning.md |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt`、`src/test/.../PrintLayoutTest.kt`、`src/androidTest/.../PrintPdfGenerationTest.kt` | 打印布局改用 `contentLeftMm`/`contentTopMm`，日期标题块绘制在预留带内（15.5–26mm）；单测与证据改用 `a4Print()`，断言内容区 26mm、条目起点 41/33mm、同日后续页只重复标题 | C-091 方案 A、C-063、C-091 |
+| 2026-11-18 | `evidence/print/`（重新生成） | 预留角区后的 PDF 2 页、146878 字节；PNG 2480×3508（214939/102857 字节）；左上标记不再覆盖图例、每日题数、表头与首行 | C-091 方案 A、C-003 |
+| 2026-11-18 | `docs/conflicts.md`、`docs/conflicts-archive.md` | C-091 按方案 A 裁决并归档：记录落地、测试、规格同步待授权与裁决前禁止事项（已解除）；未决恢复为仅 C-032 | C-091 方案 A |
+| 2026-11-18 | `docs/prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md` | 6.1 背景与进度同步 C-091 方案 A（`a4Print()`、内容区 26mm）；模块结构与进度同步 | C-091 方案 A、阶段 6.1 |
+| 2026-11-18 | `docs/specs/print-template.md` | 授权回写 C-091 方案 A：页面几何新增四角标记预留（`a4Print()`、内容区 26mm、宽 158mm）；日期标题块位置改为 `contentTopMm` 前 15.5–26mm；图例从 `contentTopMm` 开始；ArUco 白边不得与正文重叠；验收补不重叠断言，PDF 用 `a4Print()` | C-091 方案 A、D-07、C-063 |
+| 2026-11-18 | `docs/specs/pagination.md` | 授权回写 C-091 方案 A：`TemplateGeometry` 增加 `cornerReserveMm`、`contentLeftMm`/`contentTopMm`、`a4Print()`；`usableHeightMm`/`contentWidthMm` 扣除角区；`yOffset` 起点改 `contentTopMm`；日期标题预留带；新增 P-21 与验收门禁 | C-091 方案 A、C-048、C-063 |
+| 2026-11-18 | `docs/specs/scan-pipeline.md` | 授权回写 C-091 方案 A：OMR 左区起点改为 `contentLeftMm`（26mm）、宽 `leftAreaWidthMm`（63.2mm）；A/B/C 框 3.5mm、中心 73.75/79.25/84.75mm；与打印共用 `a4Print()`/`OmrConfig` | C-091 方案 A、C-051 |
+| 2026-11-18 | `docs/specs/planning.md` | 授权回写 C-091 方案 A：`PlanningSettings.template` 默认改为 `TemplateGeometry.a4Print()`；关联裁决补 C-091 | C-091 方案 A、C-090 |
+| 2026-11-18 | `docs/conflicts-archive.md` | C-091 规格同步状态由「待授权」改为「已授权回写」，注明四份规格的回写内容；未决仍仅 C-032 | C-091 方案 A |
+| 2026-11-18 | `feature/print/build.gradle.kts` | 增加 `androidTestImplementation(libs.openscanvision)`（坐标与版本已在版本目录登记，未新增依赖）；仅 spike 用例使用，生产代码与 release 产物不引入 OpenCV | C-051 方案 A、R-05 |
+| 2026-11-18 | `feature/print/src/androidTest/.../OpenScanVisionReadbackSpikeTest.kt`（新增） | 阶段 6.2 spike：`PrintedPdfDocument` 生成真实 A4 PDF → 设备 `PdfRenderer` 渲染 2480×3508 → `OpenScanVision.initialize/scan`，逐字段记录库原始返回并写出矫正图；不是通过性断言用例，不改断言迁就实现 | C-051 方案 A、R-01、D-09 |
+| 2026-11-18 | `evidence/print/osv-spike/`（新增） | 原始证据：spike PDF、2480×3508 PNG、库返回报告、`am instrument` 原始输出、依赖/API/16KB `p_align` 记录与 README；真机结果为 ArUco `none`、`LowConfidence(confidence=0.0)` | R-01、C-051、C-003 |
+| 2026-11-18 | `docs/conflicts.md` | 新增 C-092：方案 A spike 结论（库模板写死、单 QR、参考画面 850×540 横向；打印层尚无真实标记/QR；16KB 原生库 4KB 对齐），记录用户影响、A/B/C 选项、选型参考、建议与裁决前禁止事项；未改 specs | C-051、D-09、R-06 |
+| 2026-11-18 | `docs/dependency-proposals.md` | 记录 spike 结论：坐标可解析、公开 API 无法自定义模板、体积与 16KB 风险实测；未新增依赖 | C-051、R-05 |
+| 2026-11-18 | `docs/conflicts-archive.md`、`docs/conflicts.md` | C-092 按方案 C（自研引擎）裁决并归档：记录现象、用户影响、落地位置、测试、规格同步待授权与遗留；未决恢复为仅 C-032 | C-092、C-051、D-09 |
+| 2026-11-18 | `docs/prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md` | 6.2 标【done】；6.3 背景改为 C-092 方案 C；技术栈/模块结构与 D-09 摘要同步自研引擎（OpenCV + ML Kit + 自采样 OMR） | C-092 方案 C、阶段 6.2/6.3 |
+| 2026-11-18 | `gradle/libs.versions.toml` | 新增 `opencvContrib = 4.5.3.0` 与 `opencv-contrib`（原 `openscanvision` 传递依赖，版本不变）；`openscanvision` 注明仅供 spike 复现 | C-092 方案 C、R-05 |
+| 2026-11-18 | `settings.gradle.kts`、`feature/scan/build.gradle.kts`（新增） | 注册 `:feature:scan`；依赖 core:common/model/pagination、opencv-contrib、ML Kit barcode；单测 JUnit 5，androidTest 用平台 runner | C-092 方案 C、C-052 |
+| 2026-11-18 | `feature/scan/.../qr/QrPayloadCodec.kt`（新增） | `version|planId|pageId|questionId|CRC-32` 编解码；Crockford Base32、pageId 归属、UTF-8 CRC-32（8 位大写）；解码失败分字段数/版本/字符集/校验码 | C-030、scan-pipeline.md |
+| 2026-11-18 | `feature/scan/.../omr/OmrClassifier.kt`（新增） | 暗像素比 `>30%` 命中、`<10%` 未命中、`10%–30%` 不可判定；行状态 OK/NO_MARK/CONFLICT/UNREADABLE，A/B/C → 掌握/较熟悉/不会 | scan-pipeline.md、D-07 |
+| 2026-11-18 | `feature/scan/.../ScanModels.kt`、`ScanEngine.kt`、`OpenCvScanEngine.kt`（新增） | 引擎接口与数据同规格；OpenCV `DICT_4X4_50` 定位 → 按标记中心与打印几何做单应性变换 → 2480×3508；ML Kit 逐题 QR；2.5mm 窗口按 8/34/3.5/2mm 列宽采样 | C-092 方案 C、D-09、R-03 |
+| 2026-11-18 | `feature/print/.../ArucoPattern.kt`（新增）、`PrintRenderer.kt` | 四角改为真实 `DICT_4X4_50` 图案（6×6 模块，纯 Kotlin 常量），不再画空框与文字标签；图案由设备 OpenCV 导出后固化，release 不引入 OpenCV | C-092 方案 C、print-template.md |
+| 2026-11-18 | `feature/scan/src/test/...`、`feature/print/src/test/.../ArucoPatternTest.kt`（新增） | QR 载荷 7 个用例（往返、CRC、版本、字段数、字符集、pageId 归属、分隔符）、OMR 2 个用例、ArUco 图案 2 个用例 | C-030、scan-pipeline.md、print-template.md |
+| 2026-11-18 | `feature/scan/src/androidTest/.../OpenCvScanEngineDeviceTest.kt`、`feature/print/src/androidTest/.../ArucoDetectionDiagnosticTest.kt`（新增） | 设备上以真实打印页驱动引擎：四角坐标、rotation=0、矫正 2480×3508、未涂页全 NO_MARK、缺 QR 抛 QR_NOT_FOUND；诊断用例对照 `drawMarker` 与本仓库图案 | R-01、C-092、D-09 |
+| 2026-11-18 | `evidence/scan/`（新增） | 设备原始输出：`raw-instrumentation-6.3.txt`、`scan-SCAN01-report.txt`、spike PDF、诊断对照与角点裁剪图 | R-01、C-003 |
+| 2026-11-18 | `evidence/print/recollect-print-K7M2Q9*.png`（重新生成） | 四角空框替换为真实 ArUco 图案后的 300 DPI 渲染图 | C-092 方案 C |
+| 2026-11-18 | `docs/dependency-proposals.md` | 记录直连 `opencv-contrib:4.5.3.0` 的用途、体积/ABI、16KB 风险；二维码生成暂无可用库 | C-092 方案 C、R-05 |
+| 2026-11-18 | `gradle/libs.versions.toml`、`feature/print/build.gradle.kts` | 新增 `zxing = 3.5.3` 与 `zxing-core`，`:feature:print` 增加 `implementation(libs.zxing.core)`；仅用于二维码编码（无原生库） | 二维码生成方案 A、R-05 |
+| 2026-11-18 | `core/common/.../qr/QrPayloadCodec.kt`（迁入） | QR 载荷编解码从 `:feature:scan` 迁到纯 Kotlin 的 `core:common`，供打印与扫描共用；校验逻辑不变 | C-030、C-046 |
+| 2026-11-18 | `feature/print/.../QrCodeRenderer.kt`（新增）、`PrintLayout.kt`、`PrintRenderer.kt` | 每题载荷 `qrPayload` 由布局层生成；渲染层用 ZXing 生成版本 5/纠错 M 位图并绘制到 18mm 预留框（不滤波保证锐利），替换空白预留框 | D-09、C-030、print-template.md |
+| 2026-11-18 | `feature/scan/.../ownership/ScanOwnershipValidator.kt`（新增） | 归属校验：页面存在、planId/pageId 一致、题号在页、knowledgeRows 快照非空；失败不进入确认页 | C-011 方案二、C-071/C-072 |
+| 2026-11-18 | `feature/scan/.../session/ScanSessionAccumulator.kt`（新增） | 扫描会话：同键去重保留最新、未来日期行单列、`planEnd+7` 后 `LATE_BATCH` | C-038、C-040、C-041 |
+| 2026-11-18 | `core/common/src/test/...`、`feature/scan/src/test/...`、`feature/print/src/test/.../PrintQrPayloadTest.kt`（新增/迁移） | QR 7、OMR 2、归属 6、会话 4、打印载荷 1、ArUco 图案 2，全部通过 | C-030、scan-pipeline.md |
+| 2026-11-18 | `feature/scan/src/androidTest/.../OpenCvScanEngineDeviceTest.kt` | QR 断言从「缺 QR 抛错误」改为「每题一个 QR、题号一致、CRC 通过、pageId 一致」 | D-09、R-01 |
+| 2026-11-18 | `evidence/print/`、`evidence/scan/`（重新生成） | 打印页含每题真实二维码；扫描报告 `QR_RESULTS=q7@(2065.5,1152.0) checksum=true, q8@(2065.5,1695.5) checksum=true` | C-092、R-01 |
+| 2026-11-18 | `data/room/.../repository/ScanSessionRepository.kt`（新增） | 回读会话端口与 Room 实现：`pageFacts(pageId)` 解码冻结快照；`startOrResumeSession` 复用 SCANNING/READY；`appendPage` 单事务写 `PendingFeedback`（默认 `UNMARKED`、`plannedDate=实际复习日=PlanPage.date`）并校验题号/知识点在快照内；已结束会话拒绝追加 | C-011、C-038、C-040、R-04、C-072 |
+| 2026-11-18 | `data/room/.../repository/PlanPageJson.kt` | 新增 `decodeQuestionIds`：严格解析 `plan_page.questionIds`，结构非法直接抛错 | C-011、C-071 |
+| 2026-11-18 | `feature/scan/.../ownership/ScanOwnershipValidator.kt`、`feature/scan/build.gradle.kts` | `PlanPageFacts` 改由 `data:room` 提供；`:feature:scan` 增加 `:data:room` 依赖，归属校验的读端口改为仓库投影 | C-011、C-092 |
+| 2026-11-18 | `app/.../AppContainer.kt` | 装配 `scanSessionRepository`（`RoomScanSessionRepository`，事务运行器与三张表的 DAO） | C-092、阶段 6.3 |
+| 2026-11-18 | `data/room/src/test/.../FakeStores.kt`、`ScanSessionRepositoryTest.kt`（新增） | 假存储补 `scanSessions` 快照与插入失败注入；6 个用例覆盖会话复用、快照解码、默认未决策写入、重复页去重、越界行拒绝、整页回滚 | C-011、C-038、R-04 |
+| 2026-11-18 | `feature/scan/.../usecase/ScanPageUseCase.kt`（新增） | 回读编排：`scan`（引擎 → OCR → 校验 → 写库）与可 JVM 测试的 `store`；校验顺序 CRC → 页面 → 题号 → 行快照，失败零写入；成功写库后把会话标 READY，并返回 `lateBatch`/`pageIsFuture` | D-09、C-011、C-038～C-041、R-04 |
+| 2026-11-18 | `feature/scan/.../ocr/NoteOcr.kt`、`MlKitNoteOcr.kt`（新增） | OCR 端口与 ML Kit 中文实现：只裁剪手写书写区（不含标题/印刷摘要），结果只作 `detectedRawOcr`；未接入时用 `NoNoteOcr` | D-06、C-012、scan-pipeline.md |
+| 2026-11-18 | `feature/scan/build.gradle.kts` | 增加 `mlkit-text-recognition-chinese`（版本已在目录固定） | D-10、R-05 |
+| 2026-11-18 | `data/room/.../repository/ScanSessionRepository.kt` | `PlanPageFacts` 增加页面日期；新增 `planEndDate`、`markReady`、`abandonStaleSessions`（24h，非 SUBMITTED） | C-038～C-041、data-model.md |
+| 2026-11-18 | `feature/scan/src/test/.../ScanPageUseCaseTest.kt`（新增） | 9 个用例：正常写入（含触发标记/档位/OCR）、CRC 无效、题号越界、行数不符、重复 QR、缺 QR、跨页 QR 均不写库；`lateBatch`、`pageIsFuture`、写后 READY | C-011、C-038～C-041、R-04 |
+| 2026-11-18 | `data/room/src/test/.../ScanSessionRepositoryTest.kt` | 新增 3 个用例：计划末日、markReady、24h 过期会话 ABANDONED；合计 57 个用例 | C-038～C-041 |
+| 2026-11-18 | `feature/scan/src/androidTest/.../OpenCvScanEngineDeviceTest.kt` | 设备上用真实打印页跑「引擎 → 归属 → 写库」整链；空白笔记区 OCR 为空；证据更新 | R-01、C-092 |
+| 2026-11-18 | `docs/conflicts.md` | 新增 C-093：题块/笔记区几何未持久化，导致重启或隔天回读无法定位；记录用户影响、A/B/C 方案、建议 A 与裁决前禁止事项 | D-09、scan-pipeline.md |
+| 2026-11-18 | `docs/conflicts-archive.md`、`docs/conflicts.md` | C-093 按方案 A 裁决并归档：几何随打印快照持久化；记录落地、测试、规格同步待授权与遗留（旧稿不可回读、迁移未在设备实跑） | C-093 方案 A、D-09 |
+| 2026-11-18 | `core/pagination/.../TemplateGeometry.kt`、`ScanGeometryProjection.kt`（新增） | 增加 `noteTitleHeightMm`；新增题块/笔记书写区投影（打印与计划共用一份公式） | C-093 方案 A、D-09 |
+| 2026-11-18 | `data/room/.../entity/PlanPage.kt`、`migration/RecollectMigrations.kt`、`RecollectDatabase.kt`、`schemas/3.json` | `plan_page.itemGeometry`（JSON，默认 `[]`）；schema v3；`MIGRATION_2_3` 用 `ALTER TABLE`；导出 v3 schema | C-093 方案 A |
+| 2026-11-18 | `data/room/.../repository/PlanDraft.kt`、`PlanRepository.kt`、`ItemGeometryJson.kt`（新增） | 计划草稿携带 `geometryByPage`；`savePlan` 写入几何快照；严格 JSON 编解码 | C-093 方案 A、C-071 |
+| 2026-11-18 | `data/room/.../repository/ScanSessionRepository.kt` | `PlanPageFacts` 增加 `date` 与 `items`，几何从快照解码；新增 `planEndDate`/`markReady`/`abandonStaleSessions` | C-093 方案 A、C-038～C-041 |
+| 2026-11-18 | `feature/planning/.../GeneratePlanUseCase.kt` | 生成计划时按 `ScanGeometryProjection.of(...)` 冻结每页几何并写入 `PlanDraft` | C-093 方案 A、D-09 |
+| 2026-11-18 | `feature/scan/.../usecase/ScanPageUseCase.kt`、`.../ocr/*` | 编排改为读取持久化几何；新增 ML Kit 中文 OCR（只裁书写区）；失败零写入；`lateBatch`/`pageIsFuture`/READY | D-06、C-093 方案 A、R-04 |
+| 2026-11-18 | `core/pagination/src/test`、`data/room/src/test`、`feature/scan/src/test`、`feature/scan/src/androidTest` | 新增几何投影 3、几何落库/解码 3、编排 9（含失败零写入）、会话状态 3；schema 断言升到 v3；真机整链通过 | C-093 方案 A |
+| 2026-11-18 | `evidence/scan/`（更新） | 真机报告：`OCR_RESULTS={q7=}`、`STORE_OUTCOME=Stored(... rowCount=3 ...)` | R-01、C-093 |
+| 2026-11-18 | `settings.gradle.kts`、`feature/confirm/build.gradle.kts`（新增） | 注册 `:feature:confirm`（Android library，Compose + JUnit 5 单测）；依赖 core:common/model 与 data:room，不新增外部依赖 | 阶段 6.4、C-052、R-05 |
+| 2026-11-18 | `feature/confirm/.../ConfirmStateMachine.kt`（新增） | 纯 Kotlin 逐行状态机：接受（OMR 优先，OMR 为空需选档）、修正/补填（必须选档）、本次未复习；未来日期行只允许本次未复习；没有一键全部接受；只有全部行有效标记才可提交；NOT_REVIEWED 生成空 `actualReviewDate` | D-13、R-04、C-022、C-088 |
+| 2026-11-18 | `feature/confirm/src/test/.../ConfirmStateMachineTest.kt`（新增） | 1 个 JUnit 5 用例覆盖四种决策、逐行独立、未标记阻止提交、OMR 为空需选档、修正文本保留、补填标记、未来日期限制与 NOT_REVIEWED 不携带复习日 | D-13、R-04、C-022、C-088 |
+| 2026-11-18 | `feature/confirm/.../ConfirmViewModel.kt`（新增） | 加载会话/待确认行/知识点名称/题号；会话已提交/未就绪/过期分别提示；提交走 `ConfirmSubmitter` → `ApplyFeedbackUseCase`；整题跳过时展示清单并重载剩余行；未标记或 UseCase 拒绝时保留页面并提示 | C-077/C-078、C-079、C-080、R-03 |
+| 2026-11-18 | `feature/confirm/.../ConfirmScreen.kt`（新增） | Compose 确认页：按页分组、触发/关联标记、OMR 状态、原始 OCR 只读、修正文本可编辑、四类逐行按钮、档位对话框、底部剩余行数/提交按钮与提交结果卡片 | D-06、D-13、C-077/C-078、R-04 |
+| 2026-11-18 | `app/build.gradle.kts`、`app/.../AppRoot.kt`、`app/.../MainActivity.kt` | app 接入 `:feature:confirm`；`AppRoute.Confirm` 装配 ViewModel 与 `ApplyFeedbackUseCase`；`MainActivity` 支持 `--es confirmSessionId` 恢复确认页（扫描页落地前的入口）；androidTest 使用平台 runner，仅 compileOnly 引用 SDK optional jar | 阶段 6.4、C-052、R-05 |
+| 2026-11-18 | `app/src/androidTest/.../ConfirmSeedTest.kt`（新增） | 设备证据准备：从真实计划快照生成待确认行（人工指定识别档位），仅驱动确认页 UI，不作为识别验收；含从应用外部目录恢复数据库的测试准备步骤 | 阶段 6.4、R-01 边界 |
+| 2026-11-18 | `evidence/screens/confirm-01-unmarked.png`、`confirm-02-bottom-marked.png`、`confirm-03-top-marked.png`、`confirm-04-submitted.png`、`confirm-05-repeat-blocked.png`、`confirm-device-verify.txt`（新增） | 实体机 `AXRBUT6518000086` 证据：未标记禁用提交、四类决策、提交 3 条反馈/4 条决定日志、重复提交拒绝；数据库核对与证据边界 | 阶段 6.4、C-080、C-088、C-050 |
+| 2026-11-18 | `evidence/ui/confirm-*.xml`（新增） | 上述各步骤的 UI 树；用于核对提交按钮 `enabled` 与逐行标记文本 | 阶段 6.4 |
+| 2026-11-18 | `docs/prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md` | 6.4 标【done】并补落地说明；模块结构补 `:feature:confirm`；架构总览补确认页进度与未接入项 | 阶段 6.4、D-13 |
+| 2026-11-18 | `docs/changelog.md`、`docs/agent-log/2026-11-18.md` | 记录本轮目标、改动文件、验证命令与结果、未决问题与下轮建议 | 工作循环 |
+| 2026-11-18 | `feature/print/build.gradle.kts` | 打印模块增加 Compose 插件与 BOM/runtime/ui/material3（均为已批准 artifact，无新外部依赖） | 阶段 6.4 后续、app.md、R-05 |
+| 2026-11-18 | `feature/print/.../PrintPlanModels.kt`（新增） | `PrintPlanInput`（与 planning 的 `PrintJob` 解耦）、`PrintedQuestionSnapshot`、`PrintLauncher`/`PrintLaunchResult`/`PrintSnapshotWriter` 端口；`PrintLayout.printSnapshots()` 纯函数 | app.md「Print」、print-template.md、R-02/R-03 |
+| 2026-11-18 | `feature/print/.../PrintPlanViewModel.kt`（新增） | 打印页状态：无计划空态、按日汇总页/题数、调起系统打印、成功/失败提示；不持有 Context/PrintManager | app.md、R-03 |
+| 2026-11-18 | `feature/print/.../PrintPlanScreen.kt`（新增） | Compose 打印页：计划号、总页/题数、每日安排、A4 提示、“打开系统打印”与结果提示 | app.md「Print」 |
+| 2026-11-18 | `feature/print/.../RecollectPrintDocumentAdapter.kt` | 新增 `onWritten` 回调：文档写出成功后把每题的 `pageId/qrPayload` 交给上层；回调异常只记录日志，不影响打印结果 | print-template.md「打印成功后写 `Question.pageId/qrPayload`」、C-033 |
+| 2026-11-18 | `feature/print/.../AndroidPrintLauncher.kt`（新增） | 封装 `PrintManager`/`Context`，把 `RecollectPrintDocumentAdapter` 交给系统打印；写出成功后通过 `PrintSnapshotWriter` 异步回写快照 | R-03、print-template.md |
+| 2026-11-18 | `data/room/.../repository/QuestionRepository.kt` | 新增 `savePrintSnapshot(questionId, pageId, qrPayload)`；Room 实现调用既有 `QuestionDao.setPrintSnapshot` | C-033 方案一、print-template.md |
+| 2026-11-18 | `feature/planning/.../PlanPreviewViewModel.kt`、`PlanPreviewScreen.kt` | 计划成功后把同一份 `PrintJob` 交给打印页，失败/空态清空；预览页新增“打印计划”按钮（单行布局） | app.md、C-090、阶段 6.4 后续 |
+| 2026-11-18 | `app/.../PrintPlanSession.kt`（新增）、`AppContainer.kt`、`AppRoot.kt` | 计划→打印的内存交接；装配 `PrintSnapshotWriter`（回写 `Question.pageId/qrPayload`）与 `AndroidPrintLauncher`；Home/PlanPreview 新增打印入口，`AppRoute.Print` 渲染打印页 | app.md「DI 与导航」、R-03 |
+| 2026-11-18 | `feature/print/src/test/.../PrintPlanViewModelTest.kt`（新增） | 3 个 JUnit 5 用例：无计划空态、按日汇总与端口转发、打印失败提示 | app.md「Print」 |
+| 2026-11-18 | `feature/print/src/test/.../PrintLayoutTest.kt`、`feature/planning/src/test/.../PlanPreviewViewModelTest.kt`、`feature/planning/src/test/.../FakePlanningPorts.kt` | 新增 PR-02 打印快照映射用例；新增“计划成功发布 PrintJob、失败清空”用例；fake 补 `savePrintSnapshot` | print-template.md、app.md |
+| 2026-11-18 | `evidence/screens/print-01-plan-preview.png` … `print-07-after-save.png`、`evidence/ui/print-*.xml`、`evidence/screens/print-device-verify.txt`、`evidence/print/recollect-6CX9R1.pdf`（新增） | 实体机 `AXRBUT6518000086` 验收：PlanPreview → 打印页 → 系统打印对话框（A4 2 页）→ 保存为 PDF；保存后 4 题 `pageId/qrPayload` 写回计划 `6CX9R1` | app.md「Print」、print-template.md、C-033 |
+| 2026-11-18 | `docs/prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/changelog.md`、`docs/agent-log/2026-11-18.md` | 同步打印计划页落地、系统打印入口、打印快照回写与未决项 | 阶段 6.1 后续、app.md |
+| 2026-11-18 | `docs/conflicts.md` | 新增 C-094：打印“成功”以文档生成（`onWrite`）为准还是以实体打印完成为准；记录用户影响、A/B/C 方案、选型参考、建议与裁决前禁止事项；未修改 specs | print-template.md、app.md、C-033 |
+| 2026-11-18 | `app/.../navigation/AppNavigator.kt` | 返回栈由普通 `ArrayDeque` 改为 `mutableStateListOf` 快照状态；栈顶即 `current`，`canPop` 随栈变化；修复二级页面按返回直接结束 Activity | app.md「DI 与导航」、阶段 5.1 |
+| 2026-11-18 | `app/.../AppRoot.kt` | 顶层显式读取 `current`/`canPop`，并用于 `BackHandler`、标题、返回图标与路由分发；确保 `BackHandler(enabled = ...)` 随入栈/出栈更新 | app.md「DI 与导航」、阶段 5.1 |
+| 2026-11-18 | `app/src/test/.../AppNavigatorTest.kt` | 补充 `canPop` 与 `replace` 断言，导航用例增至 2 个 | app.md「DI 与导航」、阶段 5.1 |
+| 2026-11-18 | `evidence/screens/nav-back-entry.png`、`nav-back-home.png`、`evidence/ui/nav-back-entry.xml`、`nav-back-home.xml`（新增） | 实体机 `AXRBUT6518000086` 验证 Home→Entry 返回一级、Home→PlanPreview→Print 逐级返回与根路由退出应用 | 阶段 5.1、app.md |
+| 2026-11-18 | `docs/prompts.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-18.md` | 同步返回栈实现口径、修复说明与验证记录 | 工作循环 |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt` | 表头由整行字符串改为按列定位的 `headerCells`（序号/知识点/A/B/C）；`knowledgeNameLeftMm` 与 `bubbleLeftMm` 同时供表头与填涂行使用；新增 `PrintTextAlign`（A/B/C 与序号在列内居中） | print-template.md「左侧填涂区」、D-07、R-02 |
+| 2026-11-18 | `feature/print/.../PrintRenderer.kt` | 支持 `PrintTextAlign.Center`；逐格绘制表头，不再绘制整行字符串 | print-template.md |
+| 2026-11-18 | `feature/print/src/test/.../PrintLayoutTest.kt` | 断言表头五格的文本、列 x、宽度与对齐方式，并锁定表头 `leftMm` 与真实气泡/名称文本坐标相等 | print-template.md、D-07 |
+| 2026-11-18 | `evidence/print/recollect-print-K7M2Q9.pdf`、`recollect-print-K7M2Q9-page-1.png`、`page-2.png`（更新） | 设备 `PrintPdfGenerationTest` 重新生成：两页表头的 A/B/C 与填涂格同列、知识点与名称文本左对齐 | print-template.md、R-02 |
+| 2026-11-18 | `evidence/print/recollect-5Z3FEK.pdf`、`evidence/screens/print-header-preview-01.png`、`print-header-save-dialog.png`、`print-header-after-save.png`、`evidence/ui/print-header-print-page.xml`（新增） | App 实机全链路（Home → 计划预览 → 打印页 → 系统打印预览 → 保存为 PDF）证据，确认两页表头对齐 | print-template.md、R-02 |
+| 2026-11-18 | `core/pagination/.../TemplateGeometry.kt` | `dailyTotalFontMm` 改为与图例一致的 3.2mm（`ANNOTATION_FONT_MM`）；`dailyTotalHeightMm` 与绘制 top 不变 | print-template.md、pagination.md、C-063 补充 |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt` | 图例字号改用 `TemplateGeometry.ANNOTATION_FONT_MM`，与「本日共需复习 X 题」共用同一字号来源 | print-template.md |
+| 2026-11-18 | `core/pagination/src/test/.../TemplateGeometryTest.kt`、`feature/print/src/test/.../PrintLayoutTest.kt` | 断言每日总题数字号 3.2mm、高度 3.5mm、top 22.5mm 不变，且字号等于图例 | print-template.md、C-063 |
+| 2026-11-18 | `docs/specs/print-template.md`、`docs/specs/pagination.md`、`docs/conflicts-archive.md`、`docs/prompts.md`、`docs/architecture/overview.md` | 按用户指令回写字号口径与 C-063 补充；高度/top 保持不变 | C-063、print-template.md |
+| 2026-11-18 | `evidence/screens/print-annotation-font-preview.png`、`print-annotation-font-after-save.png`、`evidence/print/recollect-57D6P6.pdf`、`evidence/ui/print-annotation-font-print-page.xml`、`evidence/print/recollect-print-K7M2Q9-page-1.png`（更新） | 实机打印预览与保存 PDF 证据：标签字号与图例一致、与日期标题间距不变；300 DPI 渲染同步更新 | print-template.md、C-063 |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt` | 表头「序号」由列内居中改为左对齐 `contentLeft`，与行序号文本同左边界 | print-template.md、D-07 |
+| 2026-11-18 | `feature/print/src/test/.../PrintLayoutTest.kt` | 断言「序号」左对齐且 `leftMm` 等于 `indexText.leftMm` | print-template.md、D-07 |
+| 2026-11-18 | `evidence/screens/print-index-header-preview.png`、`print-index-header-after-save.png`、`evidence/print/recollect-FZ7N1T.pdf`、`evidence/ui/print-index-header-print-page.xml`、`evidence/print/recollect-print-K7M2Q9-page-1.png`（更新） | 实机打印预览与保存 PDF：表头「序号」与行序号左对齐 | print-template.md、D-07 |
+| 2026-11-18 | `data/room/.../entity/Question.kt` | 新增 `sourcePage`（题目来源页码，非打印稿 pageId），`@ColumnInfo(defaultValue = "''")` | data-model.md、entry.md |
+| 2026-11-18 | `data/room/.../repository/EntryRepository.kt`、`RoomEntryRepository.kt` | `EntryDraft`/`EntrySummary` 增加 `sourcePage`；Repository 事务内校验非空并写入/读取 | entry.md、D-12 双重校验 |
+| 2026-11-18 | `feature/entry/.../EntryViewModel.kt`、`EntryScreen.kt` | 表单新增页码输入（必填），状态层校验；列表显示「页码」，空白页码拒绝保存 | entry.md |
+| 2026-11-18 | `feature/entry/src/test/.../EntryViewModelTest.kt` | 断言页码保存与展示；新增空白页码拒绝用例（3 个用例） | entry.md |
+| 2026-11-18 | `data/room/.../RecollectDatabase.kt`、`migration/RecollectMigrations.kt`、`schemas/4.json`（新增）、`schema/RoomSchemaTest.kt` | schema v4；`MIGRATION_3_4` 添加 `sourcePage TEXT NOT NULL DEFAULT ''`；schema 断言更新 | data-model.md |
+| 2026-11-18 | `docs/specs/data-model.md`、`docs/specs/entry.md`、`docs/architecture/overview.md`、`docs/prompts.md`、`CLAUDE.md` | 同步来源页码字段、双重校验与 schema v4 | entry.md、data-model.md |
+| 2026-11-18 | `evidence/screens/entry-source-page-saved.png`、`entry-source-page-restart.png`、`evidence/ui/entry-source-page-restart.xml`（新增） | 实体机验证 v3→v4 迁移、页码录入、列表展示与重启持久化 | entry.md |
+| 2026-11-18 | `core/pagination/.../RenderableQuestion.kt` | 打印投影增加 `sourcePage`（默认空，不参与分页） | pagination.md |
+| 2026-11-18 | `data/room/.../repository/QuestionRepository.kt`、`mapping/ModelMapping.kt` | 新增 `sourcePages()` 投影；`toRenderableQuestion` 透传来源页 | repository.md、C-067 |
+| 2026-11-18 | `feature/planning/.../GeneratePlanUseCase.kt`、`FakePlanningPorts.kt` | 计划生成读取 `sourcePages()` 并填入打印投影 | planning.md |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt` | 页码只显示两位页序，不再带计划号；右上第一行按需追加「来源页」 | print-template.md、D-09 |
+| 2026-11-18 | `feature/confirm/.../ConfirmStateMachine.kt`、`ConfirmViewModel.kt`、`ConfirmScreen.kt` | 确认行增加来源页码并逐行展示（空值「未填写」） | confirm-flow.md |
+| 2026-11-18 | `feature/print/src/test/.../PrintLayoutTest.kt`、`feature/planning/src/test/.../GeneratePlanUseCaseTest.kt` | 锁定页码格式与来源页透传 | print-template.md |
+| 2026-11-18 | `docs/specs/print-template.md`、`pagination.md`、`confirm-flow.md`、`conflicts.md`、`overview.md`、`prompts.md` | 回写页码/来源页展示；新增 C-095（纸面不显示完整 pageId 后的手动回退） | D-09、print-template.md |
+| 2026-11-18 | `evidence/screens/print-source-page-preview.png`、`confirm-source-page.png`、`evidence/print/recollect-CCJQJ3.pdf`、`evidence/ui/print-source-page-print-page.xml`、`evidence/print/recollect-print-K7M2Q9-page-1.png`（更新） | 实机验证：打印稿页码不含计划号、T-2 显示来源页 P12；确认页显示来源页 P12 | print-template.md、confirm-flow.md |
+| 2026-11-18 | `feature/print/.../PrintPlanModels.kt`、`AndroidPrintLauncher.kt` | `PrintLauncher` 增加文档生成快照回调；适配器不再直接写库 | C-094 方案 B |
+| 2026-11-18 | `feature/print/.../PrintPlanViewModel.kt`、`PrintPlanScreen.kt` | 文档生成后等待「已打印/未打印」确认；确认后写快照，拒绝则丢弃 | C-094 方案 B、app.md |
+| 2026-11-18 | `app/.../AppRoot.kt` | 打印页 ViewModel 注入 `PrintSnapshotWriter`；`AndroidPrintLauncher` 去掉 writer 依赖 | C-094 方案 B、R-03 |
+| 2026-11-18 | `feature/print/src/test/.../PrintPlanViewModelTest.kt` | 新增等待确认、确认写快照、拒绝不写 2 个用例；launcher fake 更新 | C-094 方案 B |
+| 2026-11-18 | `feature/print/.../PrintLayout.kt`、`PrintRenderer.kt` | 页脚 QR 左侧增加 2.2mm 小字完整 pageId | C-095 方案 B、print-template.md |
+| 2026-11-18 | `feature/print/src/test/.../PrintLayoutTest.kt` | 断言 `pageIdLabel` 文本/位置/字号且不压 QR | C-095 方案 B |
+| 2026-11-18 | `docs/specs/print-template.md`、`app.md`、`scan-pipeline.md`、`conflicts.md`、`conflicts-archive.md`、`CLAUDE.md`、`overview.md`、`prompts.md` | 裁决 C-094/C-095 方案 B 并归档；同步打印确认与页脚小字 | C-094、C-095 |
+| 2026-11-18 | `evidence/screens/print-pageid-footer-preview.png`、`print-confirm-after-doc.png`、`print-confirm-recorded.png`、`evidence/print/recollect-XW21BB.pdf`、`evidence/ui/print-confirm-recorded.xml`（新增） | 实机验证：文档生成后等待确认、确认后写快照；页脚小字 pageId 可见 | C-094、C-095 |
+| 2026-11-20 | `data/room/.../entity/KnowledgePointTombstone.kt`、`KnowledgeNumberSequence.kt`、`dao/KnowledgePointTombstoneDao.kt`、`KnowledgeNumberSequenceDao.kt`（新增） | 标签库编号序列与墓碑实体/DAO；编号只增不减，删除知识点写墓碑且不复用（D-12 / C-028） | D-12；C-028；entry.md E-04/E-05/E-10 |
+| 2026-11-20 | `data/room/.../repository/KnowledgePointLibraryRepository.kt`（新增） | 标签库端口与 Room 实现：列表/新增/重命名/删除；事务内分配编号、跳过墓碑；删除前校验未被未归档题目引用；文案面向用户 | D-12；app.md「KnowledgePoints」；entry.md |
+| 2026-11-20 | `data/room/.../dao/KnowledgePointDao.kt` | 新增 `delete(id)`，只删除实体；墓碑由 Repository 在同一事务先写 | D-12 |
+| 2026-11-20 | `data/room/.../repository/EntryRepository.kt`、`RoomEntryRepository.kt` | `EntryDraft` 改为 1～4 个 `knowledgePointIds`；事务内校验存在性/上限、建立关联并重算 `activeQuestionCount/dormant`；新增 `InvalidKnowledgePointLinkException` | D-12；entry.md E-01/E-03 |
+| 2026-11-20 | `data/room/.../RecollectDatabase.kt`、`migration/RecollectMigrations.kt`、`schemas/5.json`（新增）、`schema/RoomSchemaTest.kt` | schema v5；新增两张表与 v4→v5 迁移（序列按现有最大编号种子）；schema 断言更新为 12 个实体 | D-12；data-model.md |
+| 2026-11-20 | `data/room/src/test/.../KnowledgePointLibraryRepositoryTest.kt`、`EntryRepositoryTest.kt`（新增）、`FakeStores.kt` | 锁定编号分配/空序列种子/墓碑跳过/引用不可删/归档不阻止删除/标签排序与计数；锁定录入越界、悬空、空选择拒绝与活跃计数重算 | D-12；entry.md E-01～E-05/E-10 |
+| 2026-11-20 | `feature/entry/.../EntryViewModel.kt`、`EntryScreen.kt` | 录入改为从标签库选择 1～4 个标签；空选择/超限在状态层拦截；题目列表占满页面，表单收进可拖动底部卡片，由悬浮按钮打开 | entry.md；app.md「Entry」 |
+| 2026-11-20 | `feature/entry/.../KnowledgePointLibraryViewModel.kt`、`KnowledgePointLibraryScreen.kt`（新增） | 标签库页面：编号/名称列表、搜索、新增、重命名、删除确认；引用计数与禁用删除；`actionError` 保留列表并提示失败原因 | D-12；app.md「KnowledgePoints」 |
+| 2026-11-20 | `app/.../AppContainer.kt`、`AppRoot.kt` | 装配 `KnowledgePointLibraryRepository`；Entry 传入 `onManageTags`，`AppRoute.KnowledgePoints` 渲染标签库页面 | app.md「DI 与导航」；R-03 |
+| 2026-11-20 | `feature/entry/src/test/.../EntryViewModelTest.kt`、`KnowledgePointLibraryViewModelTest.kt`（新增） | 标签选择、空/超限拒绝、标签库增改删与引用不可删提示；共 9 个 JUnit 5 用例 | entry.md；app.md |
+| 2026-11-20 | `evidence/screens/tag-01-home.png` … `tag-30-saved-sheet-closed.png`、`evidence/ui/tag-*.xml`（新增） | 实体机 `AXRBUT6518000086` 验证：标签库新增/重命名/删除、删除后编号跳到 #7 不复用、录入 T-6 关联 A/Temp、重启持久化、列表占满页面、底部卡片拖动收起与保存 | D-12；app.md；entry.md |
+| 2026-11-20 | `CLAUDE.md`、`docs/architecture/overview.md`、`docs/prompts.md`、`docs/changelog.md`、`docs/agent-log/2026-11-20.md` | 同步标签库/标签式录入/底部卡片与 schema v5；标记 5.4 完成；规格未修改（entry.md/app.md 已支持），无新增冲突 | D-12；工作循环 |
+| 2026-11-20 | `data/room/.../entity/Question.kt`、`dao/QuestionDao.kt`、`repository/SourcePageFormat.kt`（新增） | 来源页码拆为系统编号 `sourcePageCode`（唯一索引、顺序、只读）与可选说明 `sourcePage`；新增 `formatSourcePage`（空说明不带「-」）与 `maxSourcePageCode()` | 2026-11-20 用户要求；data-model.md |
+| 2026-11-20 | `data/room/.../repository/EntryRepository.kt`、`RoomEntryRepository.kt`、`QuestionRepository.kt` | `EntryDraft` 改为可选 `sourcePageLabel`，事务内分配 `sourcePageCode`；`EntrySummary` 携带编号+说明并派生展示串；`sourcePages()` 输出 `编号-说明` | entry.md；print-template.md；confirm-flow.md |
+| 2026-11-20 | `data/room/.../RecollectDatabase.kt`、`migration/RecollectMigrations.kt`、`schemas/6.json`（新增）、`schema/RoomSchemaTest.kt` | schema v6；v5→v6 迁移按 `createdAt` 补 1..N 编号并建唯一索引；schema 断言更新 | data-model.md |
+| 2026-11-20 | `data/room/src/test/.../EntryRepositoryTest.kt`、`FakeStores.kt` | 锁定编号顺序分配、空说明只显示编号、`编号-说明` 展示与 `nextSourcePageCode` | entry.md；2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../EntryViewModel.kt`、`EntryScreen.kt`、`EntryViewModelTest.kt` | 表单改为只读「页码编号」+ 简短「说明（可空）」；说明不再必填；保存后刷新下一编号；用例更新为编号/空说明断言 | entry.md；2026-11-20 用户要求 |
+| 2026-11-20 | `docs/specs/entry.md`、`data-model.md`、`print-template.md`、`confirm-flow.md` | 按用户指令同步页码语义：系统编号 + 可选说明，展示格式 `编号-说明`，迁移补编号 | 2026-11-20 用户要求 |
+| 2026-11-20 | `evidence/screens/page-01-list-migrated.png` … `page-09-home-final.png`、`evidence/ui/page-*.xml`（新增） | 实体机 `AXRBUT6518000086` 验证 v5→v6 迁移补编号、只读下一编号、`8-Workbook`、空说明显示 `9`、重启后下一编号为 10 | 2026-11-20 用户要求 |
+| 2026-11-20 | `CLAUDE.md`、`docs/architecture/overview.md`、`docs/prompts.md`、`docs/agent-log/2026-11-20.md` | 同步来源页码的编号/说明语义与 schema v6 | 工作循环 |
+| 2026-11-20 | `data/room/.../entity/Question.kt`、`dao/QuestionDao.kt`、`repository/EntryRepository.kt`、`RoomEntryRepository.kt` | 页码编号改为用户通过 +/− 调整（最小 1、同页可复用）；默认取最近一次录入的编号且保存后不自增；移除唯一索引；`EntryDraft` 携带 `sourcePageCode` | 2026-11-20 用户要求；entry.md |
+| 2026-11-20 | `data/room/.../RecollectDatabase.kt`、`migration/RecollectMigrations.kt`、`schemas/7.json`（新增）、`schema/RoomSchemaTest.kt` | schema v7；v6→v7 删除 `index_question_sourcePageCode`；schema 断言更新 | data-model.md |
+| 2026-11-20 | `data/room/src/test/.../EntryRepositoryTest.kt`、`FakeStores.kt` | 锁定同页复用编号、默认取最近一次编号、编号小于 1 拒绝 | entry.md；2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../EntryScreen.kt`、`EntryViewModel.kt`、`EntryViewModelTest.kt` | 「页码编号」文本框内置右侧上下堆叠的 +/− 按钮（无外部按钮）；默认沿用上次编号、保存后不自增；状态层拦截编号小于 1 | 2026-11-20 用户要求 |
+| 2026-11-20 | `evidence/screens/pageadj-01-default.png` … `pageadj-13-list-final.png`、`evidence/ui/pageadj-*.xml`（新增） | 实体机验证 +/−（9→10→9）、同页两道题均为 `9-Same`、重开卡片仍为 9；v6→v7 迁移正常 | 2026-11-20 用户要求 |
+| 2026-11-20 | `docs/specs/entry.md`、`data-model.md`、`print-template.md`、`confirm-flow.md`、`CLAUDE.md`、`overview.md`、`prompts.md` | 同步页码编号的用户可调语义与 schema v7（取消唯一索引） | 2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../EntryScreen.kt` | 「页码编号」与「说明」宽度改为 1:2（约 1/3 与 2/3），+/- 仍内置在编号框右侧 | 2026-11-20 用户要求 |
+| 2026-11-20 | `evidence/screens/pageadj-14-ratio.png`、`evidence/ui/pageadj-14-ratio.xml`（新增） | 实体机验证：编号框约占总宽度 1/3（x 56–431），说明框约占 2/3 | 2026-11-20 用户要求 |
+| 2026-11-20 | `data/room/.../repository/EntryRepository.kt`、`RoomEntryRepository.kt` | 新增 `update(questionId, draft)` 与 `archive(questionId)`；更新在事务内覆盖字段、替换标签关联并重算新旧标签活跃计数；删除为归档（D-11）；`EntrySummary` 补标签 id、预估分钟与是否已打印 | entry.md；D-11 |
+| 2026-11-20 | `feature/entry/.../EntryScreen.kt`、`EntryViewModel.kt` | 卡片右侧增加编辑（铅笔）与删除（垃圾桶）图标；铅笔打开同一录入卡片并回填题号/页码/标签/分钟，保存覆盖；删除二次确认；编辑失败在表单内提示；已打印题目显示旧稿失效提示 | entry.md E-08/E-11/E-12；D-11 |
+| 2026-11-20 | `feature/entry/src/main/res/drawable/ic_edit.xml`、`ic_delete.xml`（新增） | 铅笔与垃圾桶矢量图标（无新增依赖） | 2026-11-20 用户要求 |
+| 2026-11-20 | `data/room/src/test/.../EntryRepositoryTest.kt`、`feature/entry/src/test/.../EntryViewModelTest.kt` | 新增更新覆盖、旧/新标签计数、缺失题目拒绝、归档隐藏与持久化、编辑校验与删除用例 | entry.md E-11/E-12 |
+| 2026-11-20 | `evidence/screens/crud-01-list-icons.png` … `crud-07-restart.png`、`evidence/ui/crud-*.xml`（新增） | 实体机验证：回填编辑 T－1→T－1E、页码 1→3、关联 A→A/D；删除 T－4 后 12→11；重启后保持 | 2026-11-20 用户要求 |
+| 2026-11-20 | `docs/specs/entry.md`、`CLAUDE.md`、`overview.md`、`prompts.md` | 同步题库增删改查、编辑回填与归档删除语义 | entry.md；D-11 |
+| 2026-11-20 | `app/.../AppRoot.kt`、`app/src/main/res/drawable/ic_arrow_back.xml`（新增） | 顶栏「返回」文本改为返回箭头图标（contentDescription「返回」） | 2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../EntryScreen.kt`、`src/main/res/drawable/ic_expand_more.xml`（新增） | 录入卡片「收起」文本改为向下箭头图标（contentDescription「收起」） | 2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../KnowledgePointLibraryScreen.kt` | 标签行「重命名」「删除」文本改为铅笔/垃圾桶图标（contentDescription 保留原语义） | 2026-11-20 用户要求 |
+| 2026-11-20 | `evidence/screens/icons-01-entry-back.png` … `icons-03-library-icons.png`、`evidence/ui/icons-*.xml`（新增） | 实体机验证返回箭头、收起箭头与标签库铅笔/垃圾桶图标；确认对应文本不再出现 | 2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../EntryScreen.kt` | 「预估复习时长（分钟）」与「保存」按钮改为同一行（输入框 `weight(1f)`，按钮右侧） | 2026-11-20 用户要求 |
+| 2026-11-20 | `evidence/screens/row-01-minutes-save.png`、`evidence/ui/row-01-minutes-save.xml`（新增） | 实体机验证分钟输入框与保存按钮同排、垂直居中对齐 | 2026-11-20 用户要求 |
+| 2026-11-20 | `feature/entry/.../QuestionEditViewModel.kt`、`QuestionEditScreen.kt`（新增） | 录入/编辑题目改为独立页面：加载标签与待编辑题目、回填、新建/更新保存、表单校验与错误提示 | entry.md「题库增删改查」 |
+| 2026-11-20 | `feature/entry/.../EntryScreen.kt`、`EntryViewModel.kt` | 移除底部卡片与表单；列表页只保留列表、编辑/删除入口与删除确认；悬浮按钮与铅笔改为路由跳转 | 2026-11-20 用户要求 |
+| 2026-11-20 | `app/.../AppRoot.kt` | 接入 `AppRoute.QuestionEdit`（null 新建 / 非空编辑），顶栏标题为「录入题目」或「编辑题目」 | app.md「DI 与导航」 |
+| 2026-11-20 | `feature/entry/src/test/.../QuestionEditViewModelTest.kt`（新增）、`EntryViewModelTest.kt`、`FakeEntryPorts.kt`（新增） | 覆盖加载回填、新建/更新保存、表单校验与缺失题目；列表页覆盖删除与错误提示 | entry.md E-11/E-12 |
+| 2026-11-20 | `evidence/screens/page-01-new-question-page.png` … `page-06-back-unsaved.png`、`evidence/ui/page-*.xml`（新增） | 实体机验证独立新建页、编辑回填 T-7→8-P21、保存返回、返回箭头不保存 | 2026-11-20 用户要求 |
+| 2026-11-20 | `docs/specs/entry.md`、`CLAUDE.md`、`overview.md`、`prompts.md` | 同步独立录入/编辑页面与路由语义 | entry.md；app.md |
+| 2026-11-20 | `data/room/.../dao/ScanSessionDao.kt`、`repository/ScanSessionRepository.kt` | 新增 `latestActive()`/`activeSession()`，扫描页进入或进程重建后恢复最近一次未提交会话 | app.md「全局错误与恢复」；R-03 |
+| 2026-11-20 | `data/room/src/test/.../FakeStores.kt` | `FakeScanSessionDao` 实现 `latestActive()` | 扫描会话恢复 |
+| 2026-11-20 | `feature/scan/.../usecase/ScanPageUseCase.kt` | 新增由 `pageId` 推导 planId 的 `scan(bitmap, engine, noteOcr)`；`Stored` 增加 `replacedPage`，用于重复页提示 | scan-pipeline.md；R-04 |
+| 2026-11-20 | `feature/scan/.../manual/ScanManualCodec.kt`（新增） | 手动回退页面 ID 规范化：大小写不敏感、`I/L→1`、`O→0`、ASCII 字符集、`6 位计划号-2 位页码` | scan-pipeline.md「手动回退」 |
+| 2026-11-20 | `feature/scan/.../usecase/ScanManualEntryUseCase.kt`（新增） | `pageId + 题号` 解析唯一题目并写 `UNREADABLE` 行；不校验 QR 的版本/CRC；阻断路径零写入 | scan-pipeline.md；C-011 方案二；R-04 |
+| 2026-11-20 | `feature/scan/.../io/ScanImageLoader.kt`（新增） | 相机/相册图片解码端口；长边 ≥2480 的 2 的幂采样，IO 线程解码 | app.md「权限与文件」；R-03 |
+| 2026-11-20 | `feature/scan/.../ui/ScanViewModel.kt`、`ScanScreen.kt`（新增） | 扫描回读页：拍照/相册、繁忙态、已扫页列表、进入确认、错误卡片、手动输入表单、重复页/晚扫描/未来日期提示 | app.md「Scan」；scan-pipeline.md |
+| 2026-11-20 | `feature/scan/src/main/AndroidManifest.xml`、`res/xml/scan_file_paths.xml`（新增） | `FileProvider` 缓存目录与 Android 11+ `IMAGE_CAPTURE` 可见性；不申请存储权限 | app.md「权限与文件」；C-096 |
+| 2026-11-20 | `feature/scan/build.gradle.kts` | 开启 Compose 并加入 BOM/runtime/ui/material3/activity-compose（均属既有批准依赖） | app.md「DI 与导航」；R-05 |
+| 2026-11-20 | `app/.../AppContainer.kt`、`AppRoot.kt`、`app/build.gradle.kts` | 装配扫描引擎与用例，只向页面暴露 `ScanRunner`/`ScanManualEntry`；Home 增加「扫描回读」，成功后进入确认页 | app.md；R-03 |
+| 2026-11-20 | `feature/scan/src/test/.../ScanManualCodecTest.kt`、`ScanManualEntryUseCaseTest.kt`、`ScanViewModelTest.kt`（新增） | 覆盖规范化、手动回退阻断/写入、会话恢复与 QR 错误开放手动输入等 20+ 用例 | scan-pipeline.md；app.md |
+| 2026-11-20 | `docs/conflicts.md` | 新增 C-096：取图用系统相机 + FileProvider，未使用 CameraX，待裁决 | scan-pipeline.md；app.md |
+| 2026-11-20 | `CLAUDE.md`、`docs/architecture/overview.md`、`docs/prompts.md`、`docs/changelog.md`、`docs/agent-log/2026-11-20.md` | 同步扫描回读页、手动回退与会话恢复；按要求未做实机验证，未改 `docs/specs/` | 工作循环 |
+| 2026-11-20 | `gradle/libs.versions.toml`、`feature/scan/build.gradle.kts` | 新增 CameraX 1.7.0（core/camera2/lifecycle/view）并作为 `:feature:scan` 依赖；C-096 方案 B | C-096 方案 B；docs/dependency-proposals.md |
+| 2026-11-20 | `feature/scan/.../ui/ScanCameraPane.kt`（新增） | 页内 CameraX 预览与拍摄：A4 长宽比、`COMPATIBLE`/TextureView、`ImageCapture` 写缓存 | C-096 方案 B；app.md「Scan」 |
+| 2026-11-20 | `feature/scan/.../ui/ScanScreen.kt`、`AndroidManifest.xml`、`AndroidScanImageLoader.kt` | 进入扫描页请求 `CAMERA`（拒绝回退相册）；移除系统相机 Intent/`FileProvider` 与 `queries`；相机临时文件读取后删除 | C-096 方案 B；app.md「权限与文件」；R-03 |
+| 2026-11-20 | `evidence/screens/scanA4-03-camera-preview.png`、`scanA4-04-capture-result.png`、`scanA4-28-marker-result.png`、`scanA4-55-manual-stored.png`、`scanA4-58-submitted.png`，`evidence/ui/scanA4-*.xml`（新增） | 实体机验证：A4 取景、CameraX 拍摄、`PAGE_NOT_FOUND`、`QR_NOT_FOUND`、手动补录 `ZQ5FN8-01 + T-2`、确认页提交（0 反馈 / 1 决定日志） | C-096 方案 B；scan-pipeline.md；confirm-flow.md |
+| 2026-11-20 | `docs/conflicts.md`、`docs/conflicts-archive.md`、`docs/dependency-proposals.md`、`docs/prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md` | C-096 裁决为方案 B 并归档；登记 CameraX 版本、体积/16KB 风险与设备验证结论 | C-096；工作循环 |
+| 2026-11-20 | `feature/scan/.../ui/ScanCameraPane.kt`、`ScanScreen.kt` | 「拍摄」与「从相册选择」横排同一行（各占一半宽度）；相机权限被拒绝时相册按钮仍单独保留 | C-096 方案 B；2026-11-20 用户要求 |
+| 2026-11-20 | `evidence/screens/scanB-06-buttons-row.png`、`evidence/ui/scanB-06-buttons-row.xml`（新增） | 实体机验证两个按钮同一 y 范围（2317–2387），左右各占半行 | 2026-11-20 用户要求 |

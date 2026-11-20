@@ -917,8 +917,10 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 ## 阶段 5：App 纵切
 
 > 规格：docs/specs/app.md、entry.md、planning.md。实体机验证，不装模拟器，不使用 android-emu-agent daemon。
+>
+> 状态：**5.1～5.3 均已完成（2026-11-18）**。5.3 的实体机证据见 `evidence/screens/`（Home、Entry 空态、1 题 1 知识点、PlanPreview 1 页 1 条、C-060 空计划）与 `evidence/ui/`。
 
-### 5.1 AppContainer 与导航
+### 5.1 AppContainer 与导航【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -929,7 +931,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 
 【本轮任务】
 - 手写 AppContainer（Repository、UseCase、Scheduler、PagePlanner 单例），只依赖 `core:model` 的 DTO（C-053），不引入 Hilt/Koin、不复制 DTO；
-- 手写 AppNavigator（mutableStateOf + ArrayDeque + BackHandler），不引入 navigation-compose；
+- 手写 AppNavigator（Compose 快照状态返回栈 + BackHandler），不引入 navigation-compose；
 - MainActivity 只创建 AppContainer/AppNavigator/AppRoot，不直接访问 Room/CameraX/PrintManager/ML Kit；
 - `PagePlanner` 的 `Failure` 不得被吞掉或改成空计划，按 C-047 抛 `PlanGenerationException`；
 - 先写导航返回栈的单测（JUnit 5），再写 Compose 壳。
@@ -950,7 +952,9 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 5.2 录入 → 计划
+> 落地说明（2026-11-18）：已创建 `:app`（Compose + android-junit5）。`AppNavigator` 用 `mutableStateListOf` 快照状态返回栈（栈顶即 `current`，`canPop` 随栈变化），返回栈单测 2 个 JUnit 5 用例；`BackHandler` 只在可返回时拦截，根路由交系统结束 Activity。2026-11-18 修复：初版 `current` 用 `mutableStateOf`、返回栈用普通 `ArrayDeque`，`BackHandler(enabled = canPop)` 只在首次组合读到 `false`，二级页面按返回会直接结束 Activity；改为整栈快照状态并在 `AppRoot` 顶层读取 `current`/`canPop` 后，已用实体机验证逐级返回（`evidence/screens/nav-back-*`、`evidence/ui/nav-back-*`）。`AppContainer` 装配现有 `data:room` Repository、`ApplyFeedbackUseCase`、`DefaultScheduler`、`DefaultPagePlanner`，不复制 `core:model` DTO；`GeneratePlanUseCase` 随 5.2 的 `feature/planning` 接入。容器不捕获 `PaginationResult.Failure`/`PlanGenerationException`（C-047 由 `data:room` 的 `PlanDraft.fromPagination` 抛出）。Compose 壳只提供路由占位与返回，不含业务页面。依赖接入见 `docs/dependency-proposals.md` 2026-11-18 条目；5.1 完成时无实体机，设备验证已由 5.3 补做（证据见 `evidence/`）。
+
+### 5.2 录入 → 计划【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -983,7 +987,9 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 5.3 实体机 UI 验证
+> 落地说明（2026-11-18）：已新增 `:feature:entry`/`:feature:planning`，走通 Home → Entry（空态/新建 1 题 1 知识点）→ PlanPreview（1 页 1 条）。`core:common` 补 `UiState`/`UiError`/`PlanIdGenerator`/`KnowledgeTextMeasurer`；`data:room` 补录入事务、`schedulerQuestions()`、`pendingCoolingOverrides()`；`core:pagination` 补 `rightTextWidthMm` 等宽度派生量。C-047 由计划层在写库前抛 `PlanGenerationException`，预览状态映射为 `PLAN_*` 可重试错误；C-060 空计划与全 overflow 返回带提示的空态；C-064 合并去重排序、C-065 中文标签、C-066 文案、C-067 名称数量均有测试锁定。计划生成返回类型与 `planning.md` 的差异已按 C-090 方案 A 裁决并回写：`execute()` 返回 `PlanGenerationOutcome`，成功含 `PrintJob` + 预览投影，空计划含空态与提示。知识点编号序列表/墓碑、`planId` 冲突重试未落，见 agent-log 未决。5.2 完成时无设备；设备安装与截图已由 5.3 补做并通过：Entry 空态 → 1 题 1 知识点 → PlanPreview 1 页 1 条，另验证 C-060 空计划文案，证据见 `evidence/screens/step01_home.png`～`step08_plan_empty.png`。
+
+### 5.3 实体机 UI 验证【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -1017,20 +1023,58 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
+> 落地说明（2026-11-18）：已在实体机 `AXRBUT6518000086`（VKJ-AN00，1264×2728）完成安装与纵切验收。`adb install -r` 成功，冷启动 `MainActivity` 成功；Home → Entry 空态 → 输入 `T－1` / `M` → 保存（`已有 1 道题`）→ 生成计划 → PlanPreview 显示 `计划号 HSBJ4T · 共 1 页`、`第 1 页 · 2026-11-23 · 1 条`、`题号 T－1`。截图在 `evidence/screens/step01_home.png`～`step08_plan_empty.png`，UI 树在 `evidence/ui/`。清空数据后从 Home 直接生成计划，已验证 C-060 空计划文案 `当前没有需要复习的题目；先录入题目和知识点，再来生成计划。`（`step08_plan_empty.png`）。中文 IME 把知识点名称截成 `M`、题号连字符为全角；不影响“1 题 1 知识点”验收。键盘遮挡按钮，用 ESC（keyevent 111）收起；中途一次返回键结束了 Activity，已重启并如实保留 `step03_accidental_exit.png`；一次截图为黑屏（设备休眠），唤醒后重跑。C-061/C-062 的全 overflow 界面路径未在设备上构造（由 JUnit 用例覆盖），打印/扫描仍未开始。2026-11-18 追加：录入表单新增来源页码 `sourcePage`（必填，定位题目在试卷/作业本的第几面，不是打印稿 pageId）；`Question`、`EntryDraft`、`EntrySummary`、状态层与 Repository 双重校验同步；schema v4（`ALTER TABLE question ADD COLUMN sourcePage TEXT NOT NULL DEFAULT ''`），旧题在列表显示「未填写」。同日打印稿右上第一行改为「页码 01　题号 T-1　来源页 P12」，页码只显示页序、不显示计划号；`RenderableQuestion` 增加 `sourcePage`，计划层从 `QuestionRepository.sourcePages()` 填充；确认页逐行显示「来源页」（空值「未填写」）。
+
+### 5.4 知识点标签库与底部录入卡片【done】
+
+```text
+你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
+开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/app.md、docs/specs/entry.md、docs/specs/data-model.md。
+必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
+
+【本轮背景】知识点名称不应以纯文本输入。每个知识点是一个标签，题目从标签库选择标签；
+标签库允许增删改查（app.md「KnowledgePoints」：编号/名称列表、rename、删除；被题目引用不可删、删除确认）。
+D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除写墓碑、编号序列只增不减。
+
+【本轮任务】
+- 标签库：新增/重命名/搜索/删除；删除前校验未被未归档题目引用，否则拒绝并提示；
+- 编号：`KnowledgeNumberSequence` 事务内分配，跳过 `KnowledgePointTombstone`；空序列按现有最大编号种子（E-10）；
+- 录入：Entry 表单从标签库选择 1～4 个标签，UI 与 Repository 双重校验；不再输入知识点名称；
+- 布局：题目列表占满页面；新建/编辑使用独立页面（悬浮按钮或卡片铅笔进入），不再使用底部卡片；
+- 页码：用户通过「页码编号」控件内的 +/− 调整编号（最小 1，默认沿用最近一次使用值，保存后不自增，同一页可复用）+ 用户可编辑说明（可留空）；说明为空时只显示编号、不输出「-」；输入框提示保持简短；
+- 先写 Repository/ViewModel 测试，再写 Compose；Entity 变更同步 schema 导出、迁移与 `RoomSchemaTest`；
+- 实体机上验证增删改查、编号不复用、录入关联与重启持久化，截图与 UI 树存 evidence/。
+
+【固定循环（本轮只走一遍）】
+1. Observe：说明涉及的模块、文件、用例编号与决策编号。
+2. Red/Green/Refactor：按用例逐个推进，测试保持绿。
+3. Verify：./gradlew test verifyCorePurity；:app:assembleDebug；实体机安装并逐项操作验证。
+4. Record：更新 docs/changelog.md 与 docs/agent-log/YYYY-MM-DD.md。
+
+【硬性禁止】
+- 不改 docs/specs/、不修改 D-01～D-13；发现冲突只写 docs/conflicts.md。
+- 不引入 libs.versions.toml 之外的新依赖。
+- 不用 mock/模拟数据充当识别验收证据；不伪造截图。
+- 不为了让测试变绿而放宽断言。
+- 不要 git commit，除非我明确要求。
+```
+
+> 落地说明（2026-11-20）：已落地标签库与标签式录入。`data:room` 新增 `KnowledgePointLibraryRepository`（`tags/create/rename/deleteWithTombstone`）、`KnowledgePointTombstone`、`KnowledgeNumberSequence`、对应 DAO 与 v4→v5 迁移；`RoomEntryRepository.create` 改为接收 1～4 个 `knowledgePointIds`，事务内校验存在性并重算 `activeQuestionCount/dormant`。`feature:entry` 新增标签库页面（搜索、新增、重命名、删除确认、引用计数与禁用删除）与 `KnowledgePointLibraryViewModel`；`EntryScreen` 改为列表占满页面 + 可拖动底部卡片（`ModalBottomSheet`）录入，悬浮按钮打开，FilterChip 选择标签。测试：`data:room` 补标签库与录入事务用例（编号分配/墓碑跳过/空序列种子/引用不可删/越界与悬空拒绝），`feature:entry` 补标签库与录入 ViewModel 用例。实机 `AXRBUT6518000086` 已跑通新增 #6→重命名→删除→新建编号跳到 #7（不复用）、录入 T-6 关联 A/Temp、重启后持久化；证据见 `evidence/screens/tag-*` 与 `evidence/ui/tag-*`。同日按用户要求把来源页码拆为编号 + 可选说明：`Question` 增加 `sourcePageCode`，`sourcePage` 只存说明；展示/打印用 `formatSourcePage` 拼为 `编号-说明`（空说明不带「-」）；schema v6 迁移按创建时间补 1..N 编号。用户随后要求编号不再每题自增，改为在「页码编号」文本框内自带上下堆叠的 +/− 调整（最小 1、默认沿用最近一次使用值、保存后不自增，同一页的多道题共用编号），schema v7 取消唯一索引。实机验证同页两道题均为 `9-Same`、重开卡片仍为 `9`，证据见 `evidence/screens/pageadj-*`。同日补齐题库增删改查：卡片右侧增加编辑（铅笔）与删除（垃圾桶）图标；铅笔打开同一录入卡片并回填题号/页码/标签/分钟，保存覆盖原题；删除为归档（D-11）并二次确认；`EntryRepository.update/archive` 在事务内替换关联、重算标签活跃计数；实机验证 T－1 → T－1E、页码 1→3、关联 A→A/D，删除 T－4 后列表 12→11，重启后保持；证据见 `evidence/screens/crud-*`。entry.md/data-model.md/print-template.md/confirm-flow.md 已按用户要求同步；无新增冲突。随后按用户要求把「录入/编辑题目」从底部卡片改为独立页面：新增 `QuestionEditViewModel`/`QuestionEditScreen`，复用 `AppRoute.QuestionEdit(questionId)`（null 为新建、非空为编辑），Entry 列表只保留列表与删除；实机验证新建页、编辑回填（T-7 → 8-P21）、保存返回与返回箭头不保存，证据见 `evidence/screens/page-*`。
+
 ---
 
 ## 阶段 6：Print / Scan / Confirm（R-01 硬门禁）
 
 > 规格：docs/specs/print-template.md、scan-pipeline.md、confirm-flow.md。C-051 方案 A 已裁决；先完成适配层 spike，再写正式管线。没有真实打印稿回读证据，不得声称完成。
 
-### 6.1 打印几何
+### 6.1 打印几何【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/print-template.md、docs/specs/pagination.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。C-047：分页失败不进入打印；C-060：全溢出日期没有页面，打印层不得补空白页；C-061：两种 overflow 同时成立时归为 `ITEM_TOO_TALL`；C-066：整题过高提示减少关联知识点或缩短描述，不再建议拆分题目；C-062：附加上限仅在 `hasNoteArea=true` 时生效，不得截断附件区。C-063：不绘制“续下页”，每个日期第一页标注“本日共需复习 X 题”（X = 实际打印题目数），总题数字号/高度为日期标题的一半。C-051 方案 A：打印验收以适配层回读为准。本轮只做打印布局，不做回读。
+【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。C-047：分页失败不进入打印；C-060：全溢出日期没有页面，打印层不得补空白页；C-061：两种 overflow 同时成立时归为 `ITEM_TOO_TALL`；C-066：整题过高提示减少关联知识点或缩短描述，不再建议拆分题目；C-062：附加上限仅在 `hasNoteArea=true` 时生效，不得截断附件区。C-063：不绘制“续下页”，每个日期第一页标注“本日共需复习 X 题”（X = 实际打印题目数），总题数字号与图例一致、高度为日期标题行高的一半。C-051 方案 A：打印验收以适配层回读为准。C-091 方案 A 已裁决：生产模板用 `TemplateGeometry.a4Print()`，内容区从 26mm 开始以避开四角标记（规格回写待授权）。本轮只做打印布局，不做回读。
 
 【本轮任务】
 - 按 print-template.md 实现 A4 几何、左侧填涂区、右上信息、右下笔记、QR 预留、四角 ArUco；
@@ -1038,7 +1082,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 用 PrintedPdfDocument 生成 PDF，保存到 evidence/print/；
 - 断言几何参数与 TemplateGeometry 一致；`hasNoteArea=false` 的条目按 `rightBottom=0` 绘制，附件不截断、不补画（C-062）；
 - overflow 条目只输出 warnings，不生成占位行或空白页（C-060/C-061）；
-- 不绘制“续下页”；每个日期的第一页绘制日期大标题（默认 `dateHeadingFontMm=5mm` / `dateHeadingHeightMm=7mm`），并在其下标注“本日共需复习 X 题”（字号/高度各为日期标题的一半：2.5mm / 3.5mm；合计 10.5mm 绘制在默认 12mm 上边距内，不占用内容区），X = 该日期实际打印的题目数，不含 overflow（C-063）；不得在 onLayout 临时压缩行高；
+- 不绘制“续下页”；每个日期的第一页绘制日期大标题（默认 `dateHeadingFontMm=5mm` / `dateHeadingHeightMm=7mm`），并在其下标注“本日共需复习 X 题”（字号与图例一致：3.2mm；高度为日期标题行高的一半：3.5mm；top 不变，合计 10.5mm 绘制在默认 12mm 上边距内，不占用内容区），X = 该日期实际打印的题目数，不含 overflow（C-063）；不得在 onLayout 临时压缩行高；
 - 警告只渲染中文文案/映射标签，不展示内部代码（C-065）；`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并合并（C-064）；overflow 提示文案按 C-066：整题过高提示减少关联知识点/缩短描述，附加超限提示减少附加笔记，不得建议拆分题目。
 
 【固定循环（本轮只走一遍）】
@@ -1057,7 +1101,20 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 6.2 OpenScanVision 回读 spike
+**6.1 落地进度（2026-11-18）**
+
+- 已新增 `:feature:print`：`PrintLayoutBuilder` 只消费 `PlannedPage`/`PlacedItem` 生成毫米布局；`PrintedPdfDocument` + `PrintDocumentAdapter` 已可输出 A4 PDF；`KnowledgeTextMeasurer` 实现迁入该模块。
+- 已用设备 `AXRBUT6518000086` 生成 `evidence/print/recollect-print-K7M2Q9.pdf`（2 页、146878 字节）与 300 DPI PNG；`PrintLayoutTest`（JUnit 5）与设备 `PdfRenderer` 页数断言均通过。
+- **C-091 已按方案 A 裁决并落地（2026-11-18）**：`TemplateGeometry` 新增 `cornerReserveMm` 与生产模板 `a4Print()`；内容区从 26mm 开始（12mm 页边距 + 14mm 预留），宽 158mm、可用高 245mm；`DefaultPagePlanner` 起点改用 `contentTopMm`，`PlanningSettings.template` 默认改用 `a4Print()`。渲染图已确认左上角不再覆盖图例/表头/首行。归档见 `docs/conflicts-archive.md` C-091。
+- **规格已授权回写（2026-11-18）**：`docs/specs/print-template.md` 补四角预留/C-091、日期标题预留带与验收；`docs/specs/pagination.md` 增加 `cornerReserveMm`/`contentLeftMm`/`contentTopMm`/`a4Print()` 与 P-21；`docs/specs/scan-pipeline.md` 的 OMR 左区/列宽改按 `a4Print()`（26mm 起点、3.5mm 框）；`docs/specs/planning.md` 默认模板改为 `a4Print()`。
+- 仍未完成：四角 ArUco 只是标记位占位，`DICT_4X4_50` 实际位图与 QR 载荷生成留到 6.2；本轮未做任何回读，不声称 R-01 通过。
+- 6.2 必须用 `TemplateGeometry.a4Print()` 的几何；不得回退到 12mm 内容区，也不得把标记移到与扫描规格不一致的位置。
+
+**2026-11-18 追加：打印计划页已接入（6.1 后续）**：`:feature:print` 新增 `PrintPlanScreen`/`PrintPlanViewModel` 与 `AndroidPrintLauncher`；PlanPreview 成功生成计划后保留同一份 `PrintJob`，Home 与 PlanPreview 均可进入打印页，点击“打开系统打印”调起系统打印对话框。打印文档写出后不再自动回写：App 内显示「已打印 / 未打印」确认，用户点「已打印」才通过 `PrintSnapshotWriter` 回写 `Question.pageId/qrPayload`（C-094 方案 B）；页脚 QR 左侧以 2.2mm 小字显示完整 `pageId`（C-095 方案 B）。实体机 `AXRBUT6518000086` 已完成 PlanPreview → 打印页 → 系统打印（A4 2 页）→ 保存为 PDF，证据见 `evidence/screens/print-*`、`evidence/print/recollect-XW21BB.pdf` 与 `print-confirm-recorded.xml`。未完成：`PrintPlanSession` 仅内存保存、进程重建后需重新生成计划。
+
+### 6.2 OpenScanVision 回读 spike【done】
+
+> 2026-11-18 完成：真机把 2480×3508 渲染页喂给库，原始输出为 `ARUCO_RAW=none`、`LowConfidence(confidence=0.0)`；库模板写死、只解一个 QR。结论与证据见 `evidence/print/osv-spike/`，已按 C-092 转方案 C（自研引擎）。
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
@@ -1087,14 +1144,14 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-### 6.3 扫描管线
+### 6.3 扫描管线【done】
 
 ```text
 你是本仓库（d:/Engineering/Android/Recollect）的 Android 工程师。
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/scan-pipeline.md、docs/specs/print-template.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Scan），规格 docs/specs/scan-pipeline.md；C-051 方案 A 已裁决（OpenScanVision 根坐标 + `ScanEngine` 适配层）。C-038～C-041：批次实际复习日期、`ScanSession` 多页追加/去重、提前/晚扫描标记。C-052 方案 C：单元测试 JUnit 5、androidTest JUnit 4。R-04：回读只写 `PendingFeedback`，人工确认后才写 `ReviewFeedback`。本轮只做 ScanEngine 适配层。
+【本轮背景】阶段 6（Scan），规格 docs/specs/scan-pipeline.md；**C-092 方案 C 已裁决**：自研 `ScanEngine`（OpenCV 做 ArUco/透视、ML Kit 做逐题 QR、OMR 按规格自采样），OpenScanVision 1.0.0 停用；**C-093 方案 A 已裁决**：回读几何随打印快照持久化（`plan_page.itemGeometry`，schema v3），扫描端不再由调用方传入几何。C-038～C-041：批次实际复习日期、`ScanSession` 多页追加/去重、提前/晚扫描标记。C-052 方案 C：单元测试 JUnit 5、androidTest JUnit 4。R-04：回读只写 `PendingFeedback`，人工确认后才写 `ReviewFeedback`。本轮只做 ScanEngine 适配层。
 
 【本轮任务】
 - 按 scan-pipeline.md 的顺序：ArUco → 透视 → 每题 QR → OMR → OCR → `PendingFeedback`；
@@ -1148,6 +1205,10 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不同时实现多个用例；不为了让测试变绿而放宽断言。
 - 不要 git commit，除非我明确要求。
 ```
+
+**2026-11-18 已落地（【done】）**：新增 `:feature:confirm`（`ConfirmStateMachine` 纯 Kotlin 状态机 + JUnit 5 测试 + Compose 页面）。逐行提供接受/修正/本次未复习/补填，无批量接受；未标记行存在时按钮禁用，提交仍由 `ApplyFeedbackUseCase` 复核；NOT_REVIEWED 只写决定日志（`actualReviewDate=null`），C-050 的 `Float` 边界与 C-088 补填计数由既有 UseCase 承担。实体机 `AXRBUT6518000086` 完成四类决策提交：3 条反馈、4 条决定日志、未复习知识点完全不变；重复打开已提交会话被拒绝。证据见 `evidence/screens/confirm-*` 与 `evidence/screens/confirm-device-verify.txt`。未覆盖：逐行复习日覆盖/LATE_BATCH、冷却覆盖事件、保存为笔记附件、确认页渲染前/提交前完整归属复校验、整题跳过设备样例。扫描回读页已于 2026-11-20 落地，确认页现有普通用户路径：Home → 扫描回读 → 识别成功 → 进入确认页；`MainActivity --es confirmSessionId` 保留为调试入口。
+
+**2026-11-20 追加：扫描回读页【done】**：`AppRoute.Scan` 不再是占位。`:feature:scan` 新增 `ScanViewModel`/`ScanScreen`、手动回退 `ScanManualCodec`/`ScanManualEntryUseCase` 与 `ScanImageLoader`；`ScanPageUseCase` 支持由 `pageId` 推导 planId，并在 `Stored` 返回 `replacedPage`；`data:room` 的 `ScanSessionRepository` 新增 `activeSession()` 以恢复最近一次未提交会话。**C-096 已裁决方案 B（2026-11-20）**：扫描页改用 CameraX 页内取景（`camera-core/camera2/lifecycle/view:1.7.0`），预览容器为 A4 长宽比 `210:297`；进入页面请求 `CAMERA` 权限，拒绝时保留相册选图。页面把 QR 类失败开放「手动输入 pageId + 题号」，`PAGE_*`/`OWNERSHIP_MISMATCH` 只提示重拍或重新打印；重复页、`LATE_BATCH`、未来日期均有提示。`./gradlew test verifyCorePurity` 与 `:app:assembleDebug` 通过（feature:scan 46 个用例）。实体机 `AXRBUT6518000086` 已验证：权限授予、A4 取景、CameraX 拍摄（无纸张时 `PAGE_NOT_FOUND`）、相册选图、仅保留四角标记的渲染页触发 `QR_NOT_FOUND`、手动输入 `ZQ5FN8-01 + T-2`、进入确认页并提交（0 条反馈、1 条决定日志）；证据见 `evidence/screens/scanA4-*`、`evidence/ui/scanA4-*`。**R-01 仍需真实打印稿的纸张照片**，渲染图/相册图不能代替。
 
 ### 6.5 R-01 收尾
 

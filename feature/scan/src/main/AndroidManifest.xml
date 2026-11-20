@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      C-096 方案 B：扫描页内相机预览与拍摄使用 CameraX，只在本页使用 CAMERA 权限；
+      拒绝时页面保留相册选图作为回退（app.md「权限与文件」）。
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+</manifest>

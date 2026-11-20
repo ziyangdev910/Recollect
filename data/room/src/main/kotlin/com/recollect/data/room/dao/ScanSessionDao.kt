@@ -27,6 +27,13 @@ interface ScanSessionDao {
     )
     suspend fun activeForPlan(planId: String): ScanSession?
 
+    /** 扫描页恢复入口：进程重建后按最近一次未提交会话继续追加（app.md「全局错误与恢复」）。 */
+    @Query(
+        "SELECT * FROM scan_session WHERE status IN ('SCANNING', 'READY') " +
+            "ORDER BY startedAt DESC LIMIT 1",
+    )
+    suspend fun latestActive(): ScanSession?
+
     @Query("UPDATE scan_session SET status = 'SUBMITTED', submittedAt = :submittedAt WHERE sessionId = :sessionId")
     suspend fun markSubmitted(sessionId: String, submittedAt: Instant)
 

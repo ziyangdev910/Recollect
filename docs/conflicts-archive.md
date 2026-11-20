@@ -159,6 +159,7 @@
 - **对用户的实际影响**：旧做法会重复提示、占用留白；改成每日总题数后，学生每天只看一个数字，不再纠结某道题在第几页被提示。
 - **裁决**：删去“续下页”标签；每个日期的第一页在日期大标题下方标注“本日共需复习 X 题”。X = 该日期实际打印的题目数（`PlannedPage.items` 总数），不含 overflow 题目（2026-11-17 人类确认）。
 - **几何裁决（2026-11-17）**：每日总题数字体大小为日期标题字体的一半，高度也为一半。
+- **几何裁决补充（2026-11-18）**：用户要求每日总题数字号改为与首页图例一致（3.2mm）；行高仍为 3.5mm、绘制 top 不变，保持与日期大标题的间距。已同步 `TemplateGeometry.dailyTotalFontMm`、`TemplateGeometryTest`、`PrintLayoutTest`、`print-template.md`、`pagination.md` 与 `prompts.md` 6.1。
 - **落地**：`ContinuationMarker`/`PlannedPage.continuationMarkers` 保留为内部移页元数据，KDoc 注明不再渲染；打印规则写入 `print-template.md`；D-08、`overview.md`、`planning.md`、`prompts.md` 6.1 同步。`TemplateGeometry` 新增 `dateHeadingFontMm=5.0`、`dateHeadingHeightMm=7.0`，派生 `dailyTotalFontMm=2.5`、`dailyTotalHeightMm=3.5`、`dateHeadingBlockHeightMm=10.5`；两者绘制在默认 12mm 上边距内，不占用内容区高度。若打印层改到内容区，必须从该日期首页容量扣除该高度并重跑 P-01～P-20。
 - **测试**：核心测试继续锁定 marker 元数据与被移条目一一对应（P-03/P-08/P-09/P-13/P-18）；`TemplateGeometryTest` 锁定 5/7mm、2.5/3.5mm、合计 10.5mm ≤ 12mm 上边距。渲染验收留待 6.1 的真实 PDF/回读。
 - **规格同步**：已回写 `pagination.md`（marker 仅内部元数据、日期标题几何参数与派生量）、`print-template.md`（D-08、页面几何、移除“续下页”）、`planning.md`（marker 内部元数据）。
@@ -436,10 +437,113 @@
 - **落地/测试**：`FeedbackRepositoryTransactionTest` 的成功用例新增 `log.planId/pageId/plannedDate` 与 `feedback.planId/pageId/plannedDate` 断言。
 - **规格同步**：2026-11-17 授权后已回写。`docs/specs/repository.md` 验收补计划号/页号/计划日断言。
 
+## 2026-11-18 已裁决并落地
+
+### C-090 计划生成的返回形态无法同时承载“可打印结果”和“空态/提示”（已裁决：方案 A，2026-11-18）
+
+- **关联决策/规格**：`docs/specs/planning.md`「GeneratePlanUseCase」与固定流程；C-060、C-061、C-062；`docs/specs/app.md`「屏幕清单与状态」。
+- **现象/用户影响**：规格把计划生成的对外结果写成打印输入（计划号、页、题目、笔记、模板），但同一流程又要把“整份计划没有可打印题目”的空态和每道 overflow 题目的原因与建议送到预览页。若只返回打印输入，用户在所有题目都放不下时看不到“哪道题、为什么、该怎么改”，也无法区分“没有到期题目”和“有题目但全部打印不了”。
+- **裁决**：用户选择 **A**——计划生成返回结果包装，成功时内含打印输入，空计划时内含空态文案与提示。
+- **落地**：`feature/planning` 的 `GeneratePlanUseCase.execute()` 返回 `PlanGenerationOutcome`：
+  - `Planned(printJob: PrintJob, preview: PlanPreviewContent)`；
+  - `Empty(message: String, warnings: List<PlanPreviewWarning>)`。
+  `PrintJob` 字段不变，打印层仍只消费它；PlanPreview 只消费 `preview` / `Empty.warnings`，不展示内部代码（C-065 方案 B）。分页 `Failure` 仍在写库前转 `PlanGenerationException`（C-047），不进入结果包装。
+- **测试**：`GeneratePlanUseCaseTest` 覆盖 1 页 1 条、失败不写库、空计划空态、全 overflow 保留题目与原因、文字溢出标签、C-064 去重排序、C-067 名称数量/顺序；`PlanPreviewViewModelTest` 覆盖成功、空态、可重试错误。
+- **规格同步**：2026-11-18 用户明确授权回写。`docs/specs/planning.md` 的 `GeneratePlanUseCase` 返回类型、`PlanGenerationOutcome`/预览投影类型、固定流程第 4～6 步与验收已同步为方案 A。
+- **裁决前禁止事项（已解除）**：不得把分页失败吞成空计划；不得删除或只保留 `pages` 而丢掉警告；不得为迁就单一返回类型删掉 C-060/C-061 的用户提示。
+
+### C-091 四角定位标记与打印内容区重叠（已裁决：方案 A，2026-11-18）
+
+- **关联决策/规格**：`docs/specs/print-template.md`「ArUco 与 QR 几何」「页面几何」；`docs/specs/pagination.md`「可用高度」；D-07、D-08、D-09。
+- **现象/用户影响**：左上 ArUco 按“距页边 12mm”绘制，4mm 白边外沿到 8mm、内沿到 26mm；内容区也从 12mm 开始。按原几何生成的 PDF 中，标记/白边覆盖首页图例、「本日共需复习 X 题」、表头与首行知识点（第二页首行“相似三角形”只剩“以三角形”），用户可能读不到当天总题数与第一行知识点。
+- **裁决**：用户选择 **A**——在模板几何中为四角标记预留区域，扩大内容区起点，由分页器按新几何重算。
+- **落地**：
+  - `TemplateGeometry` 新增 `cornerReserveMm`（默认 0，保持纯几何语义），并派生 `contentLeftMm`/`contentTopMm`；`usableHeightMm` 与 `contentWidthMm` 扣除两侧预留。
+  - 新增生产模板 `TemplateGeometry.a4Print()`：A4 默认值 + `cornerReserveMm = 14.0`，内容区从 26mm 开始（12mm 页边距 + 14mm 预留），宽 158mm、可用高 245mm。
+  - `DefaultPagePlanner` 的 `yOffset` 起点改为 `contentTopMm`；`PlanningSettings.template` 默认改为 `a4Print()`；打印布局使用 `contentLeftMm`/`contentTopMm`，日期标题块绘制在预留带内（15.5–26mm）。
+  - 证据重新生成：`evidence/print/recollect-print-K7M2Q9.pdf`（2 页、146878 字节）与 2480×3508 PNG，左上角不再覆盖图例/表头/首行。
+- **测试**：`TemplateGeometryTest.print template reserves corner area for aruco markers` 锁定 26/158/245/230 等派生值与“内容区越过白边外沿”；`PrintLayoutTest` 改用 `a4Print()` 并断言内容区左/上边界 26mm、条目起点 41/33mm、日期标题块不进入内容区；设备 `PrintPdfGenerationTest` 仍通过 `PdfRenderer` 页数断言。
+- **规格同步**：2026-11-18 授权后已回写。`print-template.md` 新增四角预留/C-091、日期标题预留带、ArUco 不重叠与验收；`pagination.md` 的 `TemplateGeometry` 增加 `cornerReserveMm`/`contentLeftMm`/`contentTopMm`/`a4Print()`，更新 `usableHeightMm`/`contentWidthMm`/`yOffset` 并新增 P-21；`scan-pipeline.md` 的 OMR 左区/列宽/框中心改用 `a4Print()` 与 3.5mm 框；`planning.md` 的 `PlanningSettings` 默认模板改为 `a4Print()`。
+- **裁决前禁止事项（已解除）**：不得静默移动标记位置、缩小标记或改扫描规格；实现已按 A 预留内容区，R-01 实际回读仍按 C-051 另验。
+
+### C-092 OpenScanVision 1.0.0 无法承接本项目模板（已裁决：方案 C，2026-11-18）
+
+- **关联决策/规格**：D-09；`docs/specs/scan-pipeline.md`「C-051 方案 A」「验收」；`docs/specs/print-template.md`「验收」；C-051。
+- **现象/用户影响**：6.2 spike 实测（证据 `evidence/print/osv-spike/`）——库的参考画面固定 850×540 横向，四角标记参考位置与**唯一一个**二维码区域写死，自定义模板类型在库内部包、模块外不可构造；本项目需要 A4 纵向 + 每题一个 QR + 按知识点行分组。真机把 2480×3508 渲染页喂给库，返回「ArUco 未检测到、置信度 0.0」。用户侧后果：拍回打印稿拿不到任何一行 A/B/C，也无法靠二维码自动确认题号，只能退回手动输入 pageId + 题号。另，OpenCV 与 ML Kit 条码原生库为 4KB 对齐，Android 15+ 16KB 页设备无法加载（C-051 风险实测确认）。
+- **裁决**：用户选择 **C——自研引擎**（2026-11-18）：ArUco/透视直接用 OpenCV，逐题 QR 用 ML Kit 条码，OMR 按 `scan-pipeline.md` 已冻结的几何与阈值自采样；`openscanvision:1.0.0` 停用（坐标保留供 spike 复现）。
+- **落地**：
+  - 新增 `:feature:scan`：`ScanEngine` 接口与 `PageDetection`/`QrResult`/`ItemBlockGeometry`/`OmrRow`/`ScanException` 数据（与规格同形）。
+  - `QrPayloadCodec`：`version|planId|pageId|questionId|CRC-32`，Crockford Base32、`pageId` 归属 planId、UTF-8 CRC-32（8 位大写十六进制）；解码失败分 `FIELD_COUNT`/`VERSION`/`CHARSET`/`CHECKSUM`。
+  - `OmrClassifier`：暗像素比例 `>30%` 命中、`<10%` 未命中、`10%–30%` 不可判定；行状态 `OK`/`NO_MARK`/`CONFLICT`/`UNREADABLE`，档位 A=掌握、B=较熟悉、C=不会。
+  - `OpenCvScanEngine`：`DICT_4X4_50` 四角定位（0/1/2/3 = 左上/右上/右下/左下）→ 按标记中心与打印几何做单应性变换 → 2480×3508；ML Kit 条码逐题 QR；2.5mm 采样窗按 8/34/3.5/2mm 列宽采样。
+  - `:feature:print` 新增 `ArucoPattern`：把 `DICT_4X4_50` 的 0～3 号图案（6×6 模块）固化为纯 Kotlin 常量，四角改为真实标记，不再画空框。
+  - `libs.versions.toml` 登记 `opencv-contrib:4.5.3.0`（原 `openscanvision` 的传递依赖，版本不变）；`docs/dependency-proposals.md` 记录直连用途、体积与 16KB 风险。
+- **后续落地（同日）**：打印层改用 ZXing core 3.5.3 生成每题 QR（版本 5/纠错 M，载荷按 C-030）；QR 载荷编解码迁到 `core:common` 供打印与扫描共用；新增归属校验 `ScanOwnershipValidator`（页面存在、planId/pageId 一致、题号在页、行快照非空）与 `ScanSessionAccumulator`（去重保留最新、未来日期行单列、`planEnd+7` 后 `LATE_BATCH`）。
+- **测试**：`feature:scan` 单测 12 个（`QrPayloadCodecTest` 1、`QrPayloadValidationTest` 6、`OmrClassifierTest` 2、`ScanOwnershipValidatorTest` 6、`ScanSessionAccumulatorTest` 4，其中 QR 两项位于 `core:common`）；`feature:print` 新增 `PrintQrPayloadTest` 与 `ArucoPatternTest`；设备 `OpenCvScanEngineDeviceTest` 用真实打印页断言四角坐标 `(200.5,200.5)/(2280,200.5)/(2280,3310)/(200.5,3310)`、`rotation=0`、矫正图 2480×3508、未涂页面 3 行全 `NO_MARK`、未生成 QR 时抛 `QR_NOT_FOUND`；证据 `evidence/scan/`。
+- **规格同步**：2026-11-18 用户授权后已回写。`scan-pipeline.md` 改为「C-092 方案 C：自研回读引擎」（OpenCV `DICT_4X4_50` 定位与透视、ML Kit 逐题 QR、自采样 OMR），「引擎版本与配置」固定 `opencv-contrib:4.5.3.0` 与 `barcode-scanning:17.2.0`，验收改为四角/透视/QR/OMR 的 `evidence/scan/` 原始输出；`print-template.md` 的验收与四角标记表述改为真实图案绘制与自研引擎回读。
+- **裁决前禁止事项（已解除）**：不得把降采样结果当作 R-01 证据、不得在规格中声称 850×540 已通过、不得用占位框冒充实标记。
+- **遗留（不改变裁决）**：QR 成功解码路径尚无二维码生成器可测（本轮只验证 `QR_NOT_FOUND`）；归属校验与 `ScanSession` 多页/去重/早晚标记属于会话层，本轮未实现；R-01 仍需真实打印稿照片。
+
+### C-093 回读所需的题块与笔记区几何没有落库（已裁决：方案 A，2026-11-18）
+
+- **关联决策/规格**：D-09；`docs/specs/scan-pipeline.md`「OMR 采样几何与阈值」「QR 与题块绑定」；`plan_page` 持久化结构。
+- **现象/用户影响**：打印页快照只存页码、题目顺序、知识点行快照与条目数，没有题块位置/高度与笔记书写区矩形；这些几何只在生成计划的内存对象里。用户重启或隔天再拍同一张纸时无法定位左侧行与笔记区，回读只对“当场扫描”可用。
+- **裁决**：用户选择 **A**——把回读几何作为打印快照持久化，允许 schema 迁移。
+- **落地**：
+  - `TemplateGeometry` 增加 `noteTitleHeightMm`（默认 5mm），打印布局不再用私有常量。
+  - `core:pagination` 新增 `ScanGeometryProjection`（`ScanItemGeometry`/`NoteWritingArea`）：按分页条目与打印投影推导题块位置、行数与笔记书写区，打印与计划共用同一公式。
+  - `PlanDraft.geometryByPage`；`feature:planning` 在生成计划时按 `ScanGeometryProjection.of(...)` 冻结每页几何。
+  - `plan_page` 新增 `itemGeometry`（JSON，旧行/迁移默认 `"[]"`），schema 升到 v3，`MIGRATION_2_3` 用 `ALTER TABLE ... DEFAULT '[]'`；`ItemGeometryJson` 严格编解码。
+  - `ScanPageUseCase` 改为从 `PlanPageFacts.items` 读取几何（不再由调用方传入）；无几何快照的旧稿按不可回读处理（`OWNERSHIP_MISMATCH`），与 C-072 口径一致。
+- **测试**：`ScanGeometryProjectionTest` 3 个（题块/书写区、附件高度、无笔记区）；`PlanRepositoryTransactionTest` 新增几何冻结落库 1 个；`ScanSessionRepositoryTest` 新增几何解码与旧稿空快照 2 个；`ScanPageUseCaseTest` 改用快照几何后 9 个仍通过；`RoomSchemaTest` 改为 v3 并断言 `itemGeometry` 列；真机 `OpenCvScanEngineDeviceTest` 整链通过（`STORE_OUTCOME=Stored(... rowCount=3 ...)`）。
+- **规格同步**：**待授权**。`data-model.md` 的 `PlanPage` 字段、`pagination.md` 的 `TemplateGeometry`（`noteTitleHeightMm`）与 `scan-pipeline.md` 的几何来源（快照而非调用方传入）需回写后才能与代码一致。
+- **裁决前禁止事项（已解除）**：不得在扫描端猜几何、不得未授权改 schema、不得按当前关联重算行序。
+- **遗留**：迁移脚本尚未在带旧数据的设备上实跑（仓库无设备级迁移测试）；旧稿 `itemGeometry='[]'` 时回读会被拒绝，需重新生成计划并重印。
+
+### C-094 打印“成功”以文档生成为准还是以实体打印完成为准（已裁决：方案 B）
+
+- **关联决策/规格**：`docs/specs/print-template.md`「打印成功写 `Question.pageId/qrPayload`」；`docs/specs/app.md`「Print 屏幕」。
+- **现象**：系统 `PrintDocumentAdapter.onWrite` 只表示文档写出成功，无法区分用户随后是否真的打印了纸张；原实现会在 `onWrite` 后立即写快照。
+- **裁决（2026-11-18）**：用户选择 **B**——文档生成后，App 内增加「已打印 / 未打印」确认，只有用户点「已打印」才写快照。
+- **落地**：
+  - `PrintLauncher.launch(input, onDocumentGenerated)` 把文档生成后的快照回调给 ViewModel；`AndroidPrintLauncher` 不再直接持有 `PrintSnapshotWriter`，回调切回主线程。
+  - `PrintPlanViewModel` 暂存 `pendingSnapshots`，状态增加 `awaitingPrintedConfirmation`；`confirmPrinted()` 调 `PrintSnapshotWriter.save`，`declinePrinted()` 丢弃快照。
+  - `PrintPlanScreen` 在等待确认时显示说明与「已打印」「未打印」按钮；`AppRoot` 把 `printSnapshotWriter` 注入 ViewModel。
+- **测试**：`PrintPlanViewModelTest` 增至 5 个用例（原 3 个 + 文档生成后等待确认、确认写快照、拒绝不写）。实体机验证：保存 PDF 后数据库仍为上一次快照（`CCJQJ3-01`），点「已打印」后更新为 `XW21BB-01/-02`。
+- **规格同步**：已回写 `print-template.md`（打印成功判据）、`app.md`（Print 状态）；`overview.md`、`prompts.md`、`CLAUDE.md`、`changelog.md`、agent-log 已同步。
+- **用户影响**：预览或取消打印不会再被误记为“已打印”；代价是打印后多一次确认点击。
+- **裁决前禁止事项（已解除）**：不得在 `onWrite` 后自动写快照；不得把“已打印”确认做成默认通过。
+
+### C-095 纸面页码不再显示计划号后的手动回退（已裁决：方案 B）
+
+- **关联决策/规格**：D-09；`docs/specs/scan-pipeline.md`「QR 失败走手动输入 pageId + 题号」；`docs/specs/print-template.md`「页脚」。
+- **现象**：打印稿右上「页码」只显示页序（如 `01`），扫码失败时用户无法从纸面获得完整 `pageId`。
+- **裁决（2026-11-18）**：用户选择 **B**——在页脚 QR 旁用 2.2mm 小字显示完整 `pageId`；右上页码保持只显示页序与来源页。
+- **落地**：`QrReservationLayout.pageIdLabel`；`PrintLayoutBuilder` 在 QR 左侧生成小字文本；`PrintRenderer` 绘制。文本左边界与内容区对齐，宽度不越过 QR 左边界。
+- **测试**：`PrintLayoutTest` 断言 `pageIdLabel` 文本为完整 `K7M2Q9-01`、字号 2.2mm、位于 footer 内且不压 QR；实体机打印预览与 PDF 可见 `XW21BB-01`、`XW21BB-02`。
+- **规格同步**：已回写 `print-template.md`（页脚小字 pageId）、`scan-pipeline.md`（手动回退提示）；`overview.md`、`prompts.md`、`changelog.md`、agent-log 已同步。
+- **用户影响**：二维码不可读时仍可从纸面小字手动输入完整 pageId；右上仍保持简洁。
+- **裁决前禁止事项（已解除）**：不在右上恢复完整 pageId；不删除 QR 中的 planId/pageId。
+
+### C-096 扫描页取图未使用 CameraX（已裁决：方案 B，2026-11-20）
+
+- **关联决策/规格**：D-09；`docs/specs/scan-pipeline.md`「顺序」第 1 步「CameraX 取帧（或相册选图）」；`docs/specs/app.md`「权限与文件」。
+- **现象**：2026-11-20 首次落地扫描页时，为遵守 R-05（版本目录外不新增依赖）使用系统相机 Intent + `FileProvider`，没有页内预览，也没有声明 `CAMERA` 权限。
+- **裁决（2026-11-20）**：用户选择 **B**——引入 CameraX 做页内预览与拍摄；拒绝相机权限时保留相册选图。
+- **落地**：
+  - `libs.versions.toml` 新增 `camerax = "1.7.0"` 与 `camera-core`/`camera-camera2`/`camera-lifecycle`/`camera-view` 四个坐标；`:feature:scan` 显式声明。
+  - `ScanCameraPane`：页内 `PreviewView`（`COMPATIBLE`/TextureView，兼容 Compose 滚动容器）绑定后置相机；`ImageCapture` 写 app 缓存；预览容器使用 A4 长宽比 `210:297`，`FIT_CENTER` 保留完整传感器画面。
+  - `ScanScreen`：进入页面自动请求一次 `CAMERA` 权限，之后由卡片按钮重试；拒绝时隐藏取景框、保留「从相册选择」；不再使用 `FileProvider` 与系统相机 Intent（manifest 移除对应 provider/queries）。
+  - `AndroidScanImageLoader` 读取相机缓存的 `file://` 图后立即删除临时文件（原始帧不落盘）。
+- **测试/证据**：`./gradlew test verifyCorePurity` 与 `:app:assembleDebug` 通过；实体机 `AXRBUT6518000086` 完成权限授予、A4 取景预览、CameraX 拍摄（无纸张时 `PAGE_NOT_FOUND`）、相册选图、仅保留四角标记的渲染页触发 `QR_NOT_FOUND`、手动输入 `ZQ5FN8-01 + T-2` 写入会话、进入确认页并提交（0 条反馈、1 条决定日志）。截图与 UI 树见 `evidence/screens/scanA4-*`、`evidence/ui/scanA4-*`。
+- **规格同步**：无需修改。`scan-pipeline.md` 第 1 步本就要求 CameraX 取帧，`app.md` 的 `CAMERA` 权限与“拒绝时允许相册选图”已在实现中落地；R-01（真实打印稿照片）仍未通过，不因本裁决而改变。
+- **用户可见变化**：扫描页内可直接取景，预览为 A4 比例；相机权限被拒绝时仍可从相册选图。拍照不再跳到系统相机。
+- **裁决前禁止事项（已解除）**：不引入 CameraX 之外的相机库、不申请存储权限、不把相机权限用于扫描页以外。
+
 ## 已裁决但待验证（非新冲突）
 
 - C-050 的 `Double` 内部算术与 `Float` 边界转换，需在 `ApplyFeedbackUseCase` 实现后用 U-01～U-19 验证。
-- C-051 方案 A 的 R-01 spike 结果待验证：850×540 → 2480×3508 适配后的 OMR/QR 精度必须用真实打印稿判断；不达标时按 `scan-pipeline.md` 转方案 B（fork）。这不改变已裁决的 A 方案，只记录验证门禁。
+- C-051 方案 A 已由 C-092 方案 C 取代；R-01 的 850×540 适配问题不再适用，改为「自研引擎 + 真实打印稿」验收：OMR/QR 精度必须用纸张照片判断，不得以 PDF 光栅位图代替（`scan-pipeline.md`「验收」）。
 
 ## 历史引用
 

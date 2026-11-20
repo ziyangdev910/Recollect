@@ -1,7 +1,7 @@
 # 分页规划器规格（core/pagination）
 
 关联决策：D-07、D-08
-关联裁决：C-013、C-015、C-016、C-025、C-027、C-047、C-048、C-060、C-061、C-062、C-063、C-064、C-065、C-066、C-067、C-068、C-069
+关联裁决：C-013、C-015、C-016、C-025、C-027、C-047、C-048、C-060、C-061、C-062、C-063、C-064、C-065、C-066、C-067、C-068、C-069、C-091
 
 ## 冻结决策（D-07、D-08）
 
@@ -26,7 +26,8 @@ data class RenderableQuestion(
     val knowledgeNames: List<String>,         // 全称，按 number 升序；与左侧同一 printable 集合，数量 = knowledgeCount（计划/数据层保证，C-067）
     val knowledgeLineCount: Int,              // 右上全称换行后的视觉行数，由 feature/print 计算
     val attachmentCount: Int,                 // 0..3
-    val hasNoteArea: Boolean = true
+    val hasNoteArea: Boolean = true,
+    val sourcePage: String = ""               // 题目来源页码（试卷/作业本第几面），打印稿与确认页展示；不参与分页
 )
 
 data class TemplateGeometry(
@@ -48,16 +49,21 @@ data class TemplateGeometry(
     val qrPaddingMm: Double = 3.0,
     val maxAttachmentHeightRatio: Double = 0.30,  // C-027
     val dateHeadingFontMm: Double = 5.0,          // 日期大标题字号；总题数字号为其一半（C-063）
-    val dateHeadingHeightMm: Double = 7.0         // 日期大标题行高；总题数高度为其一半（C-063）
+    val dateHeadingHeightMm: Double = 7.0,        // 日期大标题行高；总题数高度为其一半（C-063）
+    val cornerReserveMm: Double = 0.0             // C-091 方案 A：四角标记预留；默认 0 保持纯几何语义
 ) {
     val qrFooterHeightMm: Double
         get() = qrSizeMm + qrPaddingMm
+    val contentLeftMm: Double
+        get() = horizontalMarginMm + cornerReserveMm
+    val contentTopMm: Double
+        get() = topMarginMm + cornerReserveMm
     val usableHeightMm: Double
-        get() = pageHeightMm - topMarginMm - bottomMarginMm
+        get() = pageHeightMm - topMarginMm - bottomMarginMm - 2 * cornerReserveMm
     val firstPageUsableHeightMm: Double
         get() = usableHeightMm - legendHeightMm
     val contentWidthMm: Double
-        get() = pageWidthMm - 2 * horizontalMarginMm
+        get() = pageWidthMm - 2 * horizontalMarginMm - 2 * cornerReserveMm
     val leftAreaWidthMm: Double
         get() = contentWidthMm * leftRatio
     val rightAreaWidthMm: Double
@@ -67,11 +73,21 @@ data class TemplateGeometry(
     val maxAttachmentHeightMm: Double
         get() = usableHeightMm * maxAttachmentHeightRatio
     val dailyTotalFontMm: Double
-        get() = dateHeadingFontMm / 2
+        get() = 3.2 // 与图例同字号（2026-11-18 用户要求）
     val dailyTotalHeightMm: Double
         get() = dateHeadingHeightMm / 2
     val dateHeadingBlockHeightMm: Double
         get() = dateHeadingHeightMm + dailyTotalHeightMm
+
+    companion object {
+        /** ArUco 内码 10mm + 白边 4mm、距页边 12mm → 内容区从 26mm 开始（C-091 方案 A）。 */
+        const val PRINT_CORNER_RESERVE_MM: Double = 14.0
+
+        /** 生产打印模板：A4 默认值 + 四角标记预留；计划、分页、打印必须共用本模板。 */
+        fun a4Print(): TemplateGeometry = TemplateGeometry(
+            cornerReserveMm = PRINT_CORNER_RESERVE_MM
+        )
+    }
 }
 
 sealed interface PaginationResult {
@@ -134,8 +150,9 @@ enum class PaginationWarningCode {
 
 ## 可用高度（C-025 方案一）
 
-- `usableHeightMm = pageHeightMm - topMarginMm - bottomMarginMm`，所有容量判断的基准，不再使用 `pageHeightMm * 0.70`。
+- `usableHeightMm = pageHeightMm - topMarginMm - bottomMarginMm - 2 * cornerReserveMm`，所有容量判断的基准，不再使用 `pageHeightMm * 0.70`。
 - `firstPageUsableHeightMm = usableHeightMm - legendHeightMm`，仅文档首页使用；后续页不扣图例。
+- **四角标记预留（C-091 方案 A）**：`cornerReserveMm` 为四角 ArUco 预留的额外内缩量；`contentLeftMm = horizontalMarginMm + cornerReserveMm`、`contentTopMm = topMarginMm + cornerReserveMm`，`contentWidthMm` 同时扣除左右两侧预留。生产模板 `a4Print()` 取 `cornerReserveMm = 14.0`：内容区从 26mm 开始，避开内码 10mm + 白边 4mm 的标记区域；默认 `cornerReserveMm = 0` 保持原有纯几何值。`contentLeftMm`/`contentTopMm` 是内容区边界，表头、条目与 OMR 采样都必须以此为准，不得直接用页边距。
 - **每页实际内容区高度**（用于放置条目与 `ITEM_TOO_TALL` 判定）：
   - `contentHeightMm = usableHeightMm - headerRowHeightMm`
   - `firstPageContentHeightMm = firstPageUsableHeightMm - headerRowHeightMm`
@@ -143,7 +160,7 @@ enum class PaginationWarningCode {
 - `maxAttachmentHeightMm = usableHeightMm * maxAttachmentHeightRatio`（默认 30%）；该上限与首页/后续页无关，首页空间不足由条目高度判定处理。
 - 模板参数必须满足 `usableHeightMm > 0` 且 `firstPageContentHeightMm > 0`；否则返回 `PaginationResult.Failure(PaginationFailureCode.INVALID_TEMPLATE_GEOMETRY, ...)`，不得静默产生负高度页。
 - 校验顺序（C-068 方案 A）：模板几何 → 输入计数 → 空态/分页。模板非法时，即使计数字段越界或 `dailyGroups` 为空，也返回 `Failure(INVALID_TEMPLATE_GEOMETRY)`，不得改为抛 `IllegalArgumentException` 或返回空 `Success`。
-- 日期大标题与每日总题数（C-063）：日期标题字号/行高取 `dateHeadingFontMm`（默认 5mm）/ `dateHeadingHeightMm`（默认 7mm）；总题数字号与高度各为其一半（`dailyTotalFontMm` = 2.5mm、`dailyTotalHeightMm` = 3.5mm）。两者合计 `dateHeadingBlockHeightMm` = 10.5mm，默认绘制在上边距 12mm 内，**不占用内容区高度**。若打印层改到内容区，必须从该日期首页容量扣除该高度并重跑 P-01～P-20。
+- 日期大标题与每日总题数（C-063）：日期标题字号/行高取 `dateHeadingFontMm`（默认 5mm）/ `dateHeadingHeightMm`（默认 7mm）；总题数字号与图例一致（`dailyTotalFontMm` = 3.2mm），高度为日期标题行高的一半（`dailyTotalHeightMm` = 3.5mm）。两者合计 `dateHeadingBlockHeightMm` = 10.5mm，绘制在 `contentTopMm` 之前的预留带内（`a4Print()` 下为 15.5–26mm），**不占用内容区高度**；每日总题数的 top 不变，保持与日期大标题的间距。若打印层改到内容区，必须从该日期首页容量扣除该高度并重跑 P-01～P-21。
 
 ## 单题高度公式（必须原样实现并测试）
 
@@ -179,7 +196,7 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 
 ## 放置语义（C-048，必须原样实现）
 
-- `PlacedItem.yOffsetMm = topMarginMm + (pageNumber == 1 ? legendHeightMm : 0) + headerRowHeightMm + Σ(当页已放置条目的 itemHeight)`；从页面顶边起算。
+- `PlacedItem.yOffsetMm = contentTopMm + (pageNumber == 1 ? legendHeightMm : 0) + headerRowHeightMm + Σ(当页已放置条目的 itemHeight)`；从页面顶边起算。`contentTopMm = topMarginMm + cornerReserveMm`（C-091 方案 A），不得直接用 `topMarginMm`。
 - `PlacedItem.heightMm = itemHeight`（含 `itemSpacingMm`）。
 - 当前页按输入顺序尝试放置；**遇到第一条放不下的条目就结束当前页**，该条及后续条目按原顺序进入下一页；不得跳过该条去填更小的后续条目。
 - 每条被移走的条目在来源页生成一个 `ContinuationMarker`：`fromPageId=来源页`、`toPageId=实际放置页`、`order` 按该页被移条目的题目顺序从 0 递增；不画填涂框、不绘制“续下页”文本（C-063，marker 仅作内部元数据）。
@@ -212,6 +229,7 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 | P-18 | `itemHeight` 落在 `(contentHeightMm, usableHeightMm]` | 必须进入 `ITEM_TOO_TALL`；不得出现「既放不下又不在 overflow」的区间 |
 | P-19 | QR 预留区 | `itemHeight` 包含 `qrFooterHeightMm`；QR 不挤占笔记书写区；`template.qrFooterHeightMm = qrSizeMm + qrPaddingMm` |
 | P-20 | 非法计数字段 | `knowledgeCount`/`attachmentCount`/`knowledgeLineCount` 越界时抛 `IllegalArgumentException`，不静默截断或补 0 |
+| P-21 | C-091 方案 A：四角标记预留 | `a4Print()` 的 `contentLeftMm`/`contentTopMm` = 26mm，`contentWidthMm` = 158mm，`usableHeightMm` = 245mm，`firstPageContentHeightMm` = 230mm；`yOffset` 从 `contentTopMm` 起算；内容区越过标记白边外沿 |
 
 ## 验收门禁
 
@@ -219,6 +237,7 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 - 属性测试通过（JUnit `@RepeatedTest(100)` + `kotlin.random.Random` 手写实现，种子固定以保证可复现；不引入 jqwik/kotest 等属性测试库，C-002）
 - 测试中不出现任何 `android.*` import
 - 输入乱序、首页/后续页、30% 附加区、单题超高四个边界必须有独立用例
+- C-091 方案 A 的四角标记预留必须有独立用例：`a4Print()` 的内容区边界/宽度/可用高度与 `yOffset` 起点（P-21）
 - `PaginationResult.Failure` 覆盖 `INVALID_TEMPLATE_GEOMETRY` 与 `PLAN_TOO_LONG`；非法计数字段抛 `IllegalArgumentException`
 
 ## 明确不做的事

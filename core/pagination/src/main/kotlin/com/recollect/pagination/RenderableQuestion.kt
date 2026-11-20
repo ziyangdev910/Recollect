@@ -7,6 +7,7 @@ package com.recollect.pagination
  * @property knowledgeNames 全称，按 KnowledgePoint.number 升序（C-013/C-015）
  * @property knowledgeLineCount 右上全称换行后的视觉行数，由 feature/print 计算，本模块不猜测换行
  * @property attachmentCount 0..3
+ * @property sourcePage 题目来源页码（试卷/作业本第几面），用于打印稿与确认页定位；不是 pageId
  */
 data class RenderableQuestion(
     val questionId: String,
@@ -16,4 +17,5 @@ data class RenderableQuestion(
     val knowledgeLineCount: Int,
     val attachmentCount: Int,
     val hasNoteArea: Boolean = true,
+    val sourcePage: String = "",
 )
