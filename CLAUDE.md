@@ -5,7 +5,7 @@
 
 ## 技术栈（不得擅自变更）
 - Kotlin + Jetpack Compose，minSdk 26，targetSdk 以 libs.versions.toml 为准
-- Room 持久化；JDK 17；Gradle Wrapper 命令行构建
+- Room 持久化；JDK 17；Gradle Wrapper 命令行构建；release 开启 R8 代码压缩与资源裁剪，并只打包 `arm64-v8a`/`armeabi-v7a`（去掉模拟器 x86/x86_64 原生库）；`compile_and_install.bat` 构建并安装 release APK（本地沿用 debug 签名）
 - ML Kit 中文离线 OCR：text-recognition-chinese:16.0.0 + vision-common:17.3.0
 - 扫描页相机：CameraX 1.7.0（camera-core/camera2/lifecycle/view；C-096 方案 B），仅扫描页使用 `CAMERA` 权限，拒绝时回退相册选图
 - 回读引擎（C-092 方案 C，自研 `ScanEngine`）：ArUco 定位与透视矫正用 OpenCV（`com.quickbirdstudios:opencv-contrib:4.5.3.0`），逐题 QR 用 ML Kit `barcode-scanning:17.2.0`，OMR 三档识别按 `docs/specs/scan-pipeline.md` 的几何与阈值自行采样；打印层每题二维码用 ZXing core 3.5.3 生成（版本 5、纠错 M），四角 ArUco 图案以纯 Kotlin 常量绘制；`openscanvision:1.0.0` 已停用（坐标保留供 spike 复现）

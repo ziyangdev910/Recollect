@@ -18,6 +18,10 @@ android {
         versionName = "0.1.0"
         // 设备证据准备用例沿用平台 runner（同 :feature:print/:feature:scan），不引入 androidx.test。
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
+        ndk {
+            // 仅打包真机 ABI，去掉 x86/x86_64 模拟器原生库，显著减小 APK。
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildFeatures {
@@ -26,6 +30,13 @@ android {
 
     buildTypes {
         release {
+            // 代码压缩与资源裁剪：减小 DEX/资源体积；规则见 proguard-rules.pro。
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // 本地测试安装：release 构建沿用 debug 签名（~/.android/debug.keystore），
             // 便于 adb install；正式分发前必须替换为正式 keystore。
             signingConfig = signingConfigs.getByName("debug")

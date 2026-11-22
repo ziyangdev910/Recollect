@@ -788,3 +788,6 @@
 | 2026-11-22 | `evidence/2026-11-22-export/47-new-package.png`、`48-new-package-export.png`、`49-new-package-share.png`（新增） | 真机验证：安装为 `org.recollect` 并正常启动；`cmd package query-activities` 显示新包注册 json 打开入口；导出并分享在 `org.recollect.fileprovider` 下正常打开系统分享面板 | 2026-11-22 用户要求 |
 | 2026-11-22 | `compile_and_install.bat`、`app/build.gradle.kts` | 安装脚本改为构建并安装 release APK（`:app:assembleRelease` → `app-release.apk`）；为便于本地 adb 安装，release 构建类型沿用 debug 签名（`signingConfigs.getByName("debug")`） | 2026-11-22 用户要求 |
 | 2026-11-22 | `evidence/2026-11-22-export/50-release-build.png`（新增） | 运行脚本：`BUILD SUCCESSFUL`、安装成功；`dumpsys package org.recollect` 的 flags 不含 `DEBUGGABLE`，应用正常启动 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/build.gradle.kts`、`app/proguard-rules.pro`（新增） | release 开启 R8（`isMinifyEnabled`）与资源裁剪（`isShrinkResources`）；新增 OpenCV JNI 保留规则与 ML Kit 缺失类忽略；`ndk.abiFilters` 只保留 `arm64-v8a`/`armeabi-v7a` | 2026-11-22 用户要求「应用压缩」 |
+| 2026-11-22 | `evidence/2026-11-22-export/51-minified-release.png`～`61-minified-scan-result.png`（新增） | 真机验证压缩包：APK 246MB → 82.8MB；启动、导入（Room）、计划预览、导出分享、扫描识别（OpenCV ArUco + ML Kit QR/OCR，样张读出计划 769N80 3 行）均正常 | 2026-11-22 用户要求 |
+| 2026-11-22 | `CLAUDE.md`、`docs/specs/app.md`、`docs/agent-log/2026-11-22.md` | 回写 release 压缩、ABI 过滤与本地签名说明 | 2026-11-22 用户要求 |
