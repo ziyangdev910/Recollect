@@ -1437,6 +1437,20 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 
 ---
 
+## 追加：首页「管理题目来源」入口（2026-11-22）【done】
+
+【本轮背景】用户要求在主界面增加「管理题目来源」卡片，链接到「来源标签」页面，并保持首页排版合理。
+
+【本轮任务】
+- 新增 `AppRoute.SourceTags` 与「来源标签」标题，`AppRoot` 渲染独立 `SourceTagLibraryScreen`；
+- 首页「快捷操作」顶部改为通栏 `WideActionCard`「录入题目」；下方 2×2 为左上「扫描回读」、右上「查看复习进度」、左下「管理知识点」、右下「管理题目来源」；
+- 收紧纵向留白使五张卡片首次进入即完整显示；新增 `ic_home_source`、`ic_chevron_right` 矢量图标；同步 `docs/specs/app.md`、changelog、agent-log；
+- 实体机验证首页排版、点击右下「管理题目来源」进入来源标签页与返回。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :app:compileDebugKotlin :app:test` 与 `./gradlew :app:assembleDebug` 通过；实体机验证通过，证据见 `evidence/screens/sourcehome-2026-11-22-*.png`。
+
+---
+
 ## 附录：固定循环速查
 
 ```text

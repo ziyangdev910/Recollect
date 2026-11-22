@@ -43,6 +43,7 @@ sealed interface AppRoute {
     data object Entry : AppRoute
     data class QuestionEdit(val questionId: String?) : AppRoute
     data object KnowledgePoints : AppRoute
+    data object SourceTags : AppRoute
     data object Progress : AppRoute
     data object PlanPreview : AppRoute
     data object Print : AppRoute
@@ -74,11 +75,12 @@ sealed interface UiState<out T> {
 
 | 屏幕 | 内容 | 关键状态 |
 |---|---|---|
-| Home | 仪表盘式布局：顶部本周计划主卡（周窗口、状态“未生成/待打印/已打印/已完成”，按状态显示“生成本周计划/查看并打印本周计划”）；其下为题目/知识点/已逾期/7 天内概览（读取失败显示“—”，不阻塞入口）；再下为 2×2 快捷操作卡片（录入题目 / 查看复习进度 / 扫描回读 / 管理知识点），每张卡片含语义化图标与一句说明 | 无计划、计划已完成、待扫描、统计加载失败、`LATE_BATCH` |
+| Home | 仪表盘式布局：顶部本周计划主卡（周窗口、状态“未生成/待打印/已打印/已完成”，按状态显示“生成本周计划/查看并打印本周计划”）；其下为题目/知识点/已逾期/7 天内概览（读取失败显示“—”，不阻塞入口）；再下为「快捷操作」：顶部通栏「录入题目」，下方 2×2 卡片左上「扫描回读」、右上「查看复习进度」、左下「管理知识点」、右下「管理题目来源」，每张卡片含语义化图标与一句说明 | 无计划、计划已完成、待扫描、统计加载失败、`LATE_BATCH` |
 | Progress | 复习进度可视化（只读）：题目总数/已逾期/今天到期/7 天内统计、未来 14 天到期分布、逐题题号/来源页/上次复习/最早到期与每个知识点的档位、连续掌握度、下次到期日、冷启动或半衰期 | 空题库、加载失败（可重试） |
 | Entry | 题目列表、搜索（题号/页码/知识点）、归档筛选、新建 | 空题库、无匹配、加载失败 |
 | QuestionEdit | 题号与页码编号同行并排、各占一半；来源（单选标签，可空）、关联知识点（≤4）、预估分钟、笔记附件 | 关联超限、已打印旧稿提示、来源标签库为空 |
 | KnowledgePoints | 编号/名称列表、rename、删除 | 被题目引用不可删、删除确认 |
+| SourceTags | `AppRoute.SourceTags` 独立页面（顶部标题「来源标签」）：名称列表、搜索、新增、rename、删除确认；由首页快捷操作 2×2 右下方的「管理题目来源」卡片进入 | 被题目引用不可删、名称重复、空库 |
 | 来源标签（录入页内全屏窗口） | 导航栏与「知识点」页一致（左侧语义关闭图标 + 标题的 TopAppBar）；名称列表、搜索、新增、rename、删除确认；关闭后录入页保留未保存内容 | 被题目引用不可删、名称重复、空库 |
 | PlanPreview | 计划页、overflow 警告、每日容量、打印入口（打印页只从此进入）；“重新生成本周计划”为二次确认的显式操作 | 容量不足、`KNOWLEDGE_TEXT_OVERFLOW`、`ITEM_TOO_TALL`、`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG` |
 
@@ -108,6 +110,7 @@ sealed interface UiState<out T> {
 - 进程重建：`ScanSession`/`PendingFeedback`/`Confirm` 状态可恢复；`PlanPreview` 可重新生成。
 - Entry → QuestionEdit → 返回 Entry：复用 ViewModel 与 `LazyListState`，不重新加载、保留滚动位置；保存后静默刷新列表。
 - QuestionEdit 内「管理来源」：来源标签库以全屏窗口（`Dialog`）打开，不进入返回栈；关闭后仅刷新来源候选，题号/页码/来源选择/知识点/预估分钟等未保存内容保持原样。
+- Home → SourceTags：首页快捷操作 2×2 右下方的「管理题目来源」卡片进入独立的来源标签页（`AppRoute.SourceTags`，顶部标题「来源标签」），返回首页由全局返回栈处理；从该页返回后再进入 Entry/QuestionEdit 时会重新读取来源候选。
 - Home → PlanPreview：本周已有 GENERATED/PRINTED 计划时进入预览复用同一计划号；不会再次点击首页按钮就生成新计划。只有预览页的“重新生成本周计划”经确认后才生成新计划号并替代旧计划（C-097）。
 - 打印确认：App 内“已记录本次打印”只在计划仍为当前计划时出现；若计划已被重新生成替代，显示“本次计划已被新的计划替代，未更新打印快照。”
 - PlanPreview → Print → 返回 PlanPreview 复用同一份计划，不重新生成、计划号不变；只有再次从 Home/Entry 点击“生成本周计划”才生成新计划。

@@ -53,6 +53,7 @@ import com.recollect.feature.entry.KnowledgePointLibraryScreen
 import com.recollect.feature.entry.KnowledgePointLibraryViewModel
 import com.recollect.feature.entry.QuestionEditScreen
 import com.recollect.feature.entry.QuestionEditViewModel
+import com.recollect.feature.entry.SourceTagLibraryScreen
 import com.recollect.feature.entry.SourceTagLibraryViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
 import com.recollect.feature.planning.PlanPreviewViewModel
@@ -195,6 +196,7 @@ fun AppRoot(
                         dueWithinWeekCount = dueWithinWeekCount,
                         onEntry = { navigator.push(AppRoute.Entry) },
                         onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
+                        onManageSources = { navigator.push(AppRoute.SourceTags) },
                         onProgress = { navigator.push(AppRoute.Progress) },
                         onPlanPreview = openPlanPreview,
                         onScan = { navigator.push(AppRoute.Scan) },
@@ -240,6 +242,13 @@ fun AppRoot(
                             KnowledgePointLibraryViewModel(container.knowledgePointLibraryRepository)
                         }
                         KnowledgePointLibraryScreen(viewModel)
+                    }
+
+                    AppRoute.SourceTags -> {
+                        val viewModel = remember(container) {
+                            SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
+                        }
+                        SourceTagLibraryScreen(viewModel)
                     }
 
                     AppRoute.Progress -> {
@@ -332,14 +341,16 @@ private fun HomeScreen(
     dueWithinWeekCount: Int?,
     onEntry: () -> Unit,
     onManageKnowledgePoints: () -> Unit,
+    onManageSources: () -> Unit,
     onProgress: () -> Unit,
     onPlanPreview: () -> Unit,
     onScan: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        // 2×2 主操作 + 通栏「管理题目来源」在常见屏幕高度内完整显示；更小屏幕仍可滚动。
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             PlanHeroCard(
@@ -365,15 +376,27 @@ private fun HomeScreen(
             )
         }
         item {
+            // 2026-11-22 用户要求：录入题目作为「快捷操作」顶部的通栏主入口。
+            WideActionCard(
+                iconRes = R.drawable.ic_home_entry,
+                title = "录入题目",
+                subtitle = "添加新题与知识点",
+                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                onClick = onEntry,
+            )
+        }
+        item {
+            // 上排：操作类入口。
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuickActionCard(
                     modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_entry,
-                    title = "录入题目",
-                    subtitle = "添加新题与知识点",
-                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    onClick = onEntry,
+                    iconRes = R.drawable.ic_home_scan,
+                    title = "扫描回读",
+                    subtitle = "拍照回读填涂结果",
+                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    onClick = onScan,
                 )
                 QuickActionCard(
                     modifier = Modifier.weight(1f),
@@ -387,16 +410,8 @@ private fun HomeScreen(
             }
         }
         item {
+            // 下排：管理类入口（共用 surfaceVariant，形成成组语义）。
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_scan,
-                    title = "扫描回读",
-                    subtitle = "拍照回读填涂结果",
-                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    onClick = onScan,
-                )
                 QuickActionCard(
                     modifier = Modifier.weight(1f),
                     iconRes = R.drawable.ic_home_knowledge,
@@ -405,6 +420,15 @@ private fun HomeScreen(
                     iconContainer = MaterialTheme.colorScheme.surfaceVariant,
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = onManageKnowledgePoints,
+                )
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_source,
+                    title = "管理题目来源",
+                    subtitle = "维护来源标签库",
+                    iconContainer = MaterialTheme.colorScheme.surfaceVariant,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onManageSources,
                 )
             }
         }
@@ -425,8 +449,8 @@ private fun PlanHeroCard(
         colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -501,7 +525,7 @@ private fun HomeStatsCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 16.dp),
+                .padding(horizontal = 4.dp, vertical = 12.dp),
         ) {
             HomeStat(
                 label = "题目",
@@ -570,8 +594,8 @@ private fun QuickActionCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -596,6 +620,67 @@ private fun QuickActionCard(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 通栏管理入口：图标在左、标题与说明居中、右侧箭头提示可进入。
+ * 用于在不打破 2×2 主操作网格的前提下增加次要管理入口。
+ */
+@Composable
+private fun WideActionCard(
+    iconRes: Int,
+    title: String,
+    subtitle: String,
+    iconContainer: Color,
+    iconTint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -641,6 +726,7 @@ private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Entry -> "题库"
     is AppRoute.QuestionEdit -> if (route.questionId == null) "录入题目" else "编辑题目"
     AppRoute.KnowledgePoints -> "知识点"
+    AppRoute.SourceTags -> "来源标签"
     AppRoute.Progress -> "复习进度"
     AppRoute.PlanPreview -> "计划预览"
     AppRoute.Print -> "打印"

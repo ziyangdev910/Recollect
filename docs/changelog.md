@@ -734,3 +734,6 @@
 | 2026-11-22 | `feature/entry/.../QuestionEditScreen.kt` | 「预估复习时长（分钟）」增加合法性校验：必须为 `>= 1` 的整数；为空、0 或超出整数范围时输入框显示错误态、下方提示「预估复习时长必须输入不小于 1 的整数。」并禁用保存按钮 | 2026-11-22 用户要求；entry.md |
 | 2026-11-22 | `evidence/screens/minutes-2026-11-22-zero.png`、`minutes-2026-11-22-one.png`、`evidence/ui/minutes-2026-11-22-*.xml`（新增） | 实体机验证：输入 0 时保存禁用并显示错误提示；改为 1 后保存恢复可用 | 2026-11-22 用户要求 |
 | 2026-11-22 | `docs/specs/entry.md`、`docs/agent-log/2026-11-22.md` | 同步预估复习时长的 `>= 1` 整数校验与保存禁用规则 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/.../navigation/AppNavigator.kt`、`AppRoot.kt`、`res/drawable/ic_home_source.xml`、`ic_chevron_right.xml`（新增） | 新增 `AppRoute.SourceTags` 与「来源标签」标题；首页「快捷操作」顶部改为通栏「录入题目」，下方 2×2 调整为左上「扫描回读」、右上「查看复习进度」、左下「管理知识点」、右下「管理题目来源」；收紧纵向留白使五张卡片首次进入即完整显示 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/app.md`、`docs/architecture/overview.md` | 回写 Home 的「快捷操作」通栏录入 + 2×2 布局、`AppRoute.SourceTags` 独立页面与 Home → SourceTags 返回/刷新语义 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/screens/sourcehome-2026-11-22-home.png`、`sourcehome-2026-11-22-sourcetags.png`（新增） | 实体机验证：首页通栏录入题目 + 2×2 顺序正确且首次进入即完整显示；点击右下「管理题目来源」进入「来源标签」页（3 个来源），返回首页正常 | 2026-11-22 用户要求 |

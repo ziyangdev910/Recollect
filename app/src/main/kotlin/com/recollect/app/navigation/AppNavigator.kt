@@ -12,6 +12,7 @@ sealed interface AppRoute {
     data object Entry : AppRoute
     data class QuestionEdit(val questionId: String?) : AppRoute
     data object KnowledgePoints : AppRoute
+    data object SourceTags : AppRoute
     data object Progress : AppRoute
     data object PlanPreview : AppRoute
     data object Print : AppRoute
