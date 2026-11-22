@@ -39,4 +39,5 @@ include(
     ":feature:print",
     ":feature:scan",
     ":feature:confirm",
+    ":feature:backup",
 )

@@ -45,14 +45,20 @@
     "questionKnowledgeCrossRefs": [],
     "reviewFeedbacks": [],
     "confirmationDecisionLogs": [],
+    "plans": [],
     "planPages": [],
     "noteAttachments": [],
-    "noteAttachmentItems": [],
     "knowledgePointTombstones": [],
-    "knowledgeNumberSequences": []
+    "knowledgeNumberSequences": [],
+    "sourceTags": []
   }
 }
 ```
+
+> 2026-11-22 回写：v8 的计划头 `plan` 与 v9 的来源标签库 `source_tag` 纳入导出，
+> 分别对应 `plans` 与 `sourceTags`；旧数组键名与字段名不变。单一笔记条目表在实现中
+> 为 `note_attachment_item`，导出键统一写作 `noteAttachments`（原规格中
+> `noteAttachments` / `noteAttachmentItems` 并列是早期草案，现以本文件为准）。
 
 - 数组键名固定为小驼峰复数；每个元素字段名与 `data-model.md` 的 Kotlin 属性名一致。
 - `LocalDate` 用 `"YYYY-MM-DD"`；`Instant` 用 ISO-8601 UTC 字符串 `"YYYY-MM-DDTHH:mm:ssZ"`。
@@ -88,10 +94,35 @@ data class ImportReport(
 ## 导出/导入 UI（C-043）
 
 - 导出：`IDLE → PICK_TARGET → EXPORTING → DONE/ERROR`；SAF 选择目标文件；失败保留本地数据。
+- 2026-11-22 用户要求的「导出并分享数据库」入口：Home 顶部导航栏右侧「导出数据库」+ 图标进入
+  `AppRoute.Backup`（同日按用户要求与导入图标互换：导出显示原导入的上传图形）；页面状态机
+  `IDLE → EXPORTING → EXPORTED/ERROR`。`EXPORTED` 展示文件名、大小与
+  备份格式版本（2026-11-22 用户要求不展示导出范围与各实体行数）；分享结果与导出结果分开展示，
+  分享失败只允许重试分享、不重新读库。
+  - 导出先写入应用缓存 `backup-exports/`（保留最近 5 份），再经 `FileProvider` 以 `ACTION_SEND`
+    打开系统分享面板；`file_paths.xml` 仅暴露该缓存子目录，不申请存储权限。
+  - SAF 保存仍是规格内的可选导出路径；分享路径不改变 JSON 内容、白名单与文件名约定。
 - 导入：`IDLE → PICK_FILE → PREVIEW → CONFIRM_REPLACE → IMPORTING → DONE/ERROR`。
   - `PREVIEW` 显示版本、导出时间、实体数量、预计覆盖范围、旧打印稿失效提示。
   - `CONFIRM_REPLACE` 必须二次确认；用户取消则回到 `IDLE`。
   - `IMPORTING` 单事务；失败回滚并显示错误。
+- 2026-11-22 用户要求的「导入数据库」入口与实现状态机：`IDLE → READING → CONFIRMING → IMPORTING → SUCCESS/ERROR`。
+  - 入口一：Home 顶部导航栏「导出数据库」标签左侧的「导入数据库」标签（标签右侧图标与导出互换，
+    显示原导出的下载图形；2026-11-22 用户要求），点击后用 SAF `ACTION_OPEN_DOCUMENT` 选择文件。
+  - 入口二：系统「用其他方式打开」json 文件时显示「导入到拾知数据库」（`ACTION_VIEW` +
+    `application/json`）；拾知直接读取该 content URI，跳过选择文件的步骤。该入口导入成功并显示
+    Toast 后自动退出应用（`finishAndRemoveTask`），回到打开前的应用；应用内 SAF 入口不退出
+    （2026-11-22 用户要求）。
+  - `READING`：读取并校验；不合法（JSON 结构/版本不支持/编号重复或与墓碑冲突/字段类型错误）进入
+    `ERROR`，以「导入失败」对话框展示可读原因，本地数据不变。
+  - `CONFIRMING`：以对话框呈现预览摘要（实体数量、跨 schema 降级提示）并提示「将覆盖当前数据，是否继续？」；
+    取消回到 `IDLE`。
+  - `IMPORTING`：单事务清空白名单表、`PendingFeedback`、`ScanSession`、`CoolingOverrideEvent` 后写入；
+    失败整体回滚并提示「导入失败」。
+  - `SUCCESS`：不弹对话框，显示带对勾的自定义 Toast「导入成功」；随后所有展示数据的内存状态失效：
+    首页概览与计划状态立即重读；题库列表标记待刷新（当前停留时也立即重读）；知识点、来源标签与
+    复习进度页的 ViewModel 重建；计划预览丢弃缓存并清空打印交接，避免打印导入前的旧计划。
+  - 读取上限 20MB，超过时提示「文件过大」并拒绝；不做分片。
 - 备份大小超过 20MB 时提示“文件较大，建议先导出/清理历史”；不自动分片。
 
 ## 导出
@@ -103,11 +134,12 @@ data class ImportReport(
   - `QuestionKnowledgeCrossRef`
   - `ReviewFeedback`
   - `ConfirmationDecisionLog`
+  - `Plan`（v8 计划头）
   - `PlanPage`
-  - `NoteAttachment`
-  - `NoteAttachmentItem`
+  - `NoteAttachmentItem`（导出键 `noteAttachments`）
   - `KnowledgePointTombstone`
   - `KnowledgeNumberSequence`
+  - `SourceTag`（v9 来源标签库）
 - **不导出** `PendingFeedback` 与 `CoolingOverrideEvent`：前者是人工确认前的临时状态，未确认决策不得通过备份绕过 R-04（C-031 明确排除）；后者是一次性冷却覆盖操作，导入后重新触发即可（C-008 方案二）。
 - 含归档与休眠状态。
 - 位置：通过 SAF 让用户选择；默认建议 `Downloads/Recollect/recollect-YYYYMMDD-HHmm.json`
@@ -141,7 +173,9 @@ data class ImportReport(
 | QuestionKnowledgeCrossRef | 全部 | 恢复 | 恢复；任一端缺失则跳过该行并警告 |
 | ReviewFeedback | 全部 | 恢复 | **不恢复**（历史反馈丢弃，提示用户） |
 | ConfirmationDecisionLog | 全部 | 恢复 | **不恢复** |
+| Plan | 全部 | 恢复 | **不恢复**（跨版本旧打印稿整体失效） |
 | PlanPage | 全部 | 恢复 | **不恢复**；pageId 由新计划重新生成 |
+| SourceTag | `id` / `name` / `createdAt` | 恢复 | 恢复 |
 | NoteAttachment | `attachToPrint` | 恢复 | 恢复 |
 | NoteAttachment | `attachmentCount` | 恢复 | 按恢复后的 `NoteAttachmentItem` 条数重算为 `min(3, 条数)` |
 | NoteAttachmentItem | `text` / `order` / `createdAt` / `imageUri` | 恢复 | 恢复（笔记内容保留）；`imageUri` 若指向本地文件，需随备份打包或置空并警告 |

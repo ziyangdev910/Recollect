@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 导出数据库时临时写入应用缓存，再通过 FileProvider 交给系统分享面板。 -->
+    <cache-path name="backup_exports" path="backup-exports/" />
+</paths>

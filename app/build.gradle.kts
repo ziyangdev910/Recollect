@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.recollect.app"
+    namespace = "org.ziyangdev910.recollect"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.recollect"
+        applicationId = "org.recollect"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -22,6 +22,14 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    buildTypes {
+        release {
+            // 本地测试安装：release 构建沿用 debug 签名（~/.android/debug.keystore），
+            // 便于 adb install；正式分发前必须替换为正式 keystore。
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {
@@ -50,6 +58,7 @@ dependencies {
     implementation(project(":feature:print"))
     implementation(project(":feature:scan"))
     implementation(project(":feature:confirm"))
+    implementation(project(":feature:backup"))
     // `RecollectDatabase` 的父类 `RoomDatabase` 出现在公共构造签名中，app 需要该运行时类型。
     implementation(libs.room.runtime)
 

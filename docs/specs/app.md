@@ -36,6 +36,8 @@
 - **不使用 Hilt/Koin**，避免引入设计决策外的新依赖（R-05）。`app` 内使用手写 `AppContainer` 持有 Repository、UseCase、Scheduler、PagePlanner、ScanEngine、TextMeasurer 等单例。
 - **不引入 navigation-compose**。`AppNavigator` 用 `mutableStateOf<AppRoute>` + 简单返回栈实现；`BackHandler` 处理返回。
 - `MainActivity` 只创建 `AppContainer`、`AppNavigator` 和 `AppRoot`；不直接访问 Room/CameraX/PrintManager/ML Kit（R-03）。
+- 界面固定竖屏：`MainActivity` 声明 `android:screenOrientation="portrait"`，即使系统开启自动旋转也不切换横屏
+  （2026-11-22 用户要求）。
 
 ```kotlin
 sealed interface AppRoute {
@@ -89,12 +91,16 @@ sealed interface UiState<out T> {
 | Scan | 相机/相册、当前 `ScanSession`、已扫页 | 一页一拍、`PAGE_*` 错误、重复页提示 |
 | Confirm | plan 级多页确认、批次实际复习日期、逐行决策 | `UNMARKED`、`LATE_BATCH`、未来日期行只能 NOT_REVIEWED |
 | Settings | 每日分钟、计划周、扫描窗口、保留策略 | 见 `settings.md` |
-| Backup | 导出/导入、预览、覆盖确认、结果 | 见 `backup.md` 的 SAF 状态机 |
+| Backup | 由 Home 顶部导航栏右侧「导出数据库」进入（标签右侧图标与导入互换后显示上传图形，2026-11-22 用户要求）；页面展示导出说明，主按钮「导出并分享」生成 JSON 后打开系统分享面板，导出完成后展示文件名、大小、备份格式版本与分享结果（不展示导出范围与各实体行数，2026-11-22 用户要求）；分享失败可只重试分享。导入入口为同一导航栏「导出数据库」左侧的「导入数据库」（图标互换后显示下载图形）：SAF 选文件或系统「用其他方式打开」json 文件，校验合法后弹「将覆盖当前数据，是否继续？」，确认后覆盖并以带对勾 Toast 提示「导入成功」，同时刷新首页/题库/知识点/来源/复习进度/计划预览的数据缓存 | 见 `backup.md` 的导出/导入状态机（`IDLE → EXPORTING → EXPORTED/ERROR`；`IDLE → READING → CONFIRMING → IMPORTING → SUCCESS/ERROR`） |
 
 ## 权限与文件
 
 - `CAMERA`：仅扫描页使用；拒绝时允许相册选图。
-- 文件导入/导出使用 SAF，不申请存储权限。
+- 文件导入/导出使用 SAF，不申请存储权限。「导出并分享」只写应用私有缓存并经 `FileProvider` 授予一次性读权限。
+- 导入还支持系统 `ACTION_VIEW` + `application/json`（`android:label="导入到拾知数据库"`）：文件管理器以
+  content URI 打开 json 时直接进入 `AppRoot` 的导入流程，跳过 SAF 选择；URI 由 `MainActivity` 处理后交给
+  `ImportViewModel`，消费后立即清空以避免重复触发。该入口导入成功、Toast 显示后由 `MainActivity`
+  调用 `finishAndRemoveTask()` 退出应用（2026-11-22 用户要求）；应用内 SAF 导入不退出。
 - 笔记图片使用 Photo Picker 或 SAF，复制到 app 私有目录。
 - 不申请网络权限；端侧推理。
 

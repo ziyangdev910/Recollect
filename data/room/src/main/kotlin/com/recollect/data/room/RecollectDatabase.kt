@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.recollect.data.room.dao.BackupDao
+import com.recollect.data.room.dao.BackupRestoreDao
 import com.recollect.data.room.dao.ConfirmationDecisionLogDao
 import com.recollect.data.room.dao.CoolingOverrideEventDao
 import com.recollect.data.room.dao.KnowledgeNumberSequenceDao
@@ -63,11 +65,17 @@ import com.recollect.data.room.migration.RecollectMigrations
         Plan::class,
         SourceTag::class,
     ],
-    version = 10,
+    version = RecollectDatabase.SCHEMA_VERSION,
     exportSchema = true,
 )
 @TypeConverters(RoomTypeConverters::class)
 abstract class RecollectDatabase : RoomDatabase() {
+
+    /** 备份导出的只读全表入口（backup.md 白名单）。 */
+    abstract fun backupDao(): BackupDao
+
+    /** 备份导入的清空与批量写入入口（覆盖式导入，单事务由 `RoomDatabaseImporter` 保证）。 */
+    abstract fun backupRestoreDao(): BackupRestoreDao
 
     abstract fun knowledgePointDao(): KnowledgePointDao
 
@@ -98,6 +106,9 @@ abstract class RecollectDatabase : RoomDatabase() {
     abstract fun noteAttachmentItemDao(): NoteAttachmentItemDao
 
     companion object {
+        /** Room schema 版本；备份 JSON 的 `roomSchemaVersion` 直接取此值（backup.md）。 */
+        const val SCHEMA_VERSION = 10
+
         const val DATABASE_NAME = "recollect.db"
 
         fun build(context: Context): RecollectDatabase =

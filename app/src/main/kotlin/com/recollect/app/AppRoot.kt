@@ -1,6 +1,8 @@
 package com.recollect.app
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,12 +28,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +48,11 @@ import androidx.compose.ui.unit.dp
 import com.recollect.app.navigation.AppNavigator
 import com.recollect.app.navigation.AppRoute
 import com.recollect.data.room.repository.PlanStatus
+import com.recollect.feature.backup.BackupScreen
+import com.recollect.feature.backup.BackupViewModel
+import com.recollect.feature.backup.ImportDialogs
+import com.recollect.feature.backup.ImportState
+import com.recollect.feature.backup.ImportViewModel
 import com.recollect.feature.confirm.ConfirmScreen
 import com.recollect.feature.confirm.ConfirmSubmitter
 import com.recollect.feature.confirm.ConfirmViewModel
@@ -70,6 +79,9 @@ import com.recollect.scan.ui.ScanScreen
 import com.recollect.scan.ui.ScanViewModel
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import org.ziyangdev910.recollect.R
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Compose 壳（阶段 5.1/5.2）。
@@ -82,6 +94,10 @@ import kotlinx.coroutines.CancellationException
 fun AppRoot(
     container: AppContainer,
     navigator: AppNavigator,
+    importUri: String? = null,
+    onImportUriConsumed: () -> Unit = {},
+    /** 由系统「用其他方式打开」触发的导入成功并留下 Toast 后，退出整个应用。 */
+    onExternalImportFinished: () -> Unit = {},
 ) {
     // 在 AppRoot 顶层读取导航状态，让顶层作用域订阅返回栈变化：
     // 页面 push 后 BackHandler 才会被启用，pop 回根路由后再交还系统。
@@ -102,6 +118,37 @@ fun AppRoot(
         )
     }
 
+    // 导入会整体替换数据：homeRefreshKey 触发首页统计重读，dataRevision 让题库之外
+    // 的页面级 ViewModel（知识点、来源、进度）在下次打开（或当前停留）时重建并重读。
+    var homeRefreshKey by remember(container) { mutableStateOf(0) }
+    var dataRevision by remember(container) { mutableStateOf(0) }
+
+    // 导入数据库：两个入口（导航栏「导入数据库」与系统「用其他方式打开」）
+    // 共用同一个状态机；覆盖确认、失败提示与成功 Toast 都由它驱动。
+    val importScope = rememberCoroutineScope()
+    val importViewModel = remember(container) {
+        ImportViewModel(
+            fileReader = container.backupFileReader,
+            importer = container.databaseImporter,
+        )
+    }
+    // 本次导入是否来自系统「用其他方式打开」：成功后需要自动退出应用（SAF 入口不退出）。
+    var importFromExternal by remember(container) { mutableStateOf(false) }
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            importFromExternal = false
+            importScope.launch { importViewModel.prepare(it.toString()) }
+        }
+    }
+    LaunchedEffect(importUri) {
+        if (!importUri.isNullOrBlank()) {
+            importFromExternal = true
+            // 先完成读取/校验再清空 URI：若先清空，importUri 变化会取消本协程，
+            // 状态会停在「正在校验」。
+            importViewModel.prepare(importUri)
+            onImportUriConsumed()
+        }
+    }
     // 计划预览页的 ViewModel 归 AppRoot 顶层所有：路由分支离开组合后，
     // 分支内 remember 的 ViewModel 会被丢弃；若在分支内创建，从打印页返回
     // 预览页时会重建 ViewModel 并触发 LaunchedEffect 重新生成计划，计划号随之变化。
@@ -129,7 +176,7 @@ fun AppRoot(
     var overdueCount by remember(container) { mutableStateOf<Int?>(null) }
     var dueWithinWeekCount by remember(container) { mutableStateOf<Int?>(null) }
 
-    LaunchedEffect(current, container) {
+    LaunchedEffect(current, container, homeRefreshKey) {
         if (current != AppRoute.Home) return@LaunchedEffect
         val today = LocalDate.now(container.clock)
         val settings = defaultPlanningSettings(today)
@@ -162,6 +209,28 @@ fun AppRoot(
     }
     val entryListState = rememberLazyListState()
 
+    // 导入成功：提示后让所有展示数据的页面失效。
+    // 首页统计与题库立即重读；知识点/来源/进度页的 ViewModel 以 dataRevision 为键重建；
+    // 计划预览丢弃缓存并清空打印交接，避免继续打印导入前的旧计划。
+    val importState = importViewModel.state
+    LaunchedEffect(importState) {
+        if (importState is ImportState.Success) {
+            showImportSuccessToast(printContext)
+            homeRefreshKey++
+            dataRevision++
+            entryViewModel.markNeedsRefresh()
+            planPreviewGeneration++
+            container.printPlanSession.update(null)
+            if (importFromExternal) {
+                // 2026-11-22 用户要求：从系统「用其他方式打开」导入成功后，
+                // 让 Toast 先显示，再退出应用（应用内 SAF 导入不退出）。
+                delay(800)
+                onExternalImportFinished()
+            }
+            importViewModel.consumeSuccess()
+        }
+    }
+
     MaterialTheme {
         Scaffold(
             topBar = {
@@ -173,6 +242,34 @@ fun AppRoot(
                                 Icon(
                                     painter = painterResource(R.drawable.ic_arrow_back),
                                     contentDescription = "返回",
+                                )
+                            }
+                        }
+                    },
+                    // 2026-11-22 用户要求：主界面导航栏右侧提供「导入数据库」「导出数据库」
+                    // 入口，标签文字在左、对应语义图标固定在标签最右侧。
+                    actions = {
+                        if (current == AppRoute.Home) {
+                            // 2026-11-22 用户要求：导入与导出的图标互换
+                            // （导入用原导出图形、导出用原导入图形）。
+                            TextButton(
+                                onClick = { importPicker.launch(IMPORT_MIME_TYPES) },
+                            ) {
+                                Text("导入数据库")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_export),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            TextButton(onClick = { navigator.push(AppRoute.Backup) }) {
+                                Text("导出数据库")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_import),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }
@@ -202,15 +299,19 @@ fun AppRoot(
                         onScan = { navigator.push(AppRoute.Scan) },
                     )
 
-                    AppRoute.Entry -> EntryScreen(
-                        viewModel = entryViewModel,
-                        listState = entryListState,
-                        onCreatePlan = openPlanPreview,
-                        onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
-                        onEditQuestion = { questionId ->
-                            navigator.push(AppRoute.QuestionEdit(questionId))
-                        },
-                    )
+                    AppRoute.Entry -> {
+                        // 导入成功时 markNeedsRefresh 已置位；当前正停留题库页时也立即重读。
+                        LaunchedEffect(dataRevision) { entryViewModel.refreshIfNeeded() }
+                        EntryScreen(
+                            viewModel = entryViewModel,
+                            listState = entryListState,
+                            onCreatePlan = openPlanPreview,
+                            onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
+                            onEditQuestion = { questionId ->
+                                navigator.push(AppRoute.QuestionEdit(questionId))
+                            },
+                        )
+                    }
 
                     is AppRoute.QuestionEdit -> {
                         val viewModel = remember(container, route.questionId) {
@@ -242,21 +343,22 @@ fun AppRoot(
                     }
 
                     AppRoute.KnowledgePoints -> {
-                        val viewModel = remember(container) {
+                        // 导入成功后重建并重读标签库，打开该页即显示新数据。
+                        val viewModel = remember(container, dataRevision) {
                             KnowledgePointLibraryViewModel(container.knowledgePointLibraryRepository)
                         }
                         KnowledgePointLibraryScreen(viewModel)
                     }
 
                     AppRoute.SourceTags -> {
-                        val viewModel = remember(container) {
+                        val viewModel = remember(container, dataRevision) {
                             SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
                         }
                         SourceTagLibraryScreen(viewModel)
                     }
 
                     AppRoute.Progress -> {
-                        val viewModel = remember(container) {
+                        val viewModel = remember(container, dataRevision) {
                             ReviewProgressViewModel(
                                 repository = container.reviewProgressRepository,
                                 clock = container.clock,
@@ -299,6 +401,16 @@ fun AppRoot(
                         )
                     }
 
+                    AppRoute.Backup -> {
+                        val viewModel = remember(container) {
+                            BackupViewModel(
+                                exporter = container.databaseExporter,
+                                sharer = container.backupSharer,
+                            )
+                        }
+                        BackupScreen(viewModel)
+                    }
+
                     is AppRoute.Confirm -> {
                         val viewModel = remember(container, route.sessionId) {
                             ConfirmViewModel(
@@ -325,8 +437,23 @@ fun AppRoot(
                 }
             }
         }
+
+        // 覆盖确认与失败提示叠加在任意当前页之上；成功不弹窗，只显示带对勾的 Toast。
+        ImportDialogs(
+            state = importViewModel.state,
+            onConfirm = { importScope.launch { importViewModel.confirm() } },
+            onCancel = { importViewModel.cancel() },
+            onDismissError = { importViewModel.dismissError() },
+        )
     }
 }
+
+/** 导入文件选择的 MIME 过滤：json 优先，同时容纳被文件管理器标成文本/二进制的 json。 */
+private val IMPORT_MIME_TYPES = arrayOf(
+    "application/json",
+    "text/plain",
+    "application/octet-stream",
+)
 
 /**
  * 首页仪表盘：本周计划主卡 + 数据概览 + 2×2 快捷操作。
@@ -737,5 +864,5 @@ private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Scan -> "扫描"
     is AppRoute.Confirm -> "确认"
     AppRoute.Settings -> "设置"
-    AppRoute.Backup -> "备份"
+    AppRoute.Backup -> "导出数据库"
 }

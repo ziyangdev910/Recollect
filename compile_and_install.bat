@@ -2,7 +2,7 @@
 setlocal
 
 set "PROJECT_DIR=D:\Engineering\Android\Recollect"
-set "APK=%PROJECT_DIR%\app\build\outputs\apk\debug\app-debug.apk"
+set "APK=%PROJECT_DIR%\app\build\outputs\apk\release\app-release.apk"
 set "SERIAL="
 
 if not exist "%PROJECT_DIR%\gradlew.bat" (
@@ -23,8 +23,8 @@ if not defined SERIAL (
 )
 echo Using device: %SERIAL%
 
-echo [2/3] Building Debug APK...
-call "%PROJECT_DIR%\gradlew.bat" :app:assembleDebug
+echo [2/3] Building Release APK...
+call "%PROJECT_DIR%\gradlew.bat" :app:assembleRelease
 if errorlevel 1 (
     echo [ERROR] Gradle build failed.
     exit /b 1

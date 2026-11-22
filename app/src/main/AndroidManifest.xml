@@ -9,15 +9,36 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Recollect">
 
+        <!-- 2026-11-22 用户要求：应用固定竖屏，不随系统自动旋转切成横屏。 -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.recollect.app.MainActivity"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 在系统「用其他方式打开」json 文件时提供「导入到拾知数据库」入口；
+                 app 直接读取该文件的 content URI，跳过再次选择文件。 -->
+            <intent-filter android:label="@string/import_to_recollect">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
         </activity>
+
+        <!-- 导出并分享数据库：把缓存目录中的 JSON 以只读 content URI 交给系统分享面板。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

@@ -3,6 +3,10 @@ package com.recollect.app
 import android.content.Context
 import com.recollect.common.CrockfordPlanIdGenerator
 import com.recollect.data.room.RecollectDatabase
+import com.recollect.data.room.export.DatabaseExporter
+import com.recollect.data.room.export.DatabaseImporter
+import com.recollect.data.room.export.RoomDatabaseExporter
+import com.recollect.data.room.export.RoomDatabaseImporter
 import com.recollect.data.room.repository.EntryRepository
 import com.recollect.data.room.repository.FeedbackRepository
 import com.recollect.data.room.repository.KnowledgePointLibraryRepository
@@ -32,6 +36,8 @@ import com.recollect.data.room.repository.ReviewProgressRepository
 import com.recollect.data.room.repository.RoomTransactionRunner
 import com.recollect.data.room.usecase.ApplyFeedbackUseCase
 import com.recollect.data.room.usecase.MaimemoNextDueCalculator
+import com.recollect.feature.backup.BackupFileReader
+import com.recollect.feature.backup.BackupSharer
 import com.recollect.feature.planning.DefaultPlanSession
 import com.recollect.feature.planning.GeneratePlanUseCase
 import com.recollect.feature.planning.LoadPlanUseCase
@@ -85,6 +91,42 @@ class AppContainer(context: Context) {
     val printPlanSession = PrintPlanSession()
 
     private val database by lazy { RecollectDatabase.build(applicationContext) }
+
+    /** 导出数据库（backup.md 白名单）；版本号只作诊断，不参与兼容判断。 */
+    val databaseExporter: DatabaseExporter by lazy {
+        RoomDatabaseExporter(
+            backupDao = database.backupDao(),
+            appVersionName = appVersionName(),
+            clock = clock,
+        )
+    }
+
+    /** 导出后的系统分享；`FileProvider` 与 `Intent` 只停留在 app 层（R-03）。 */
+    val backupSharer: BackupSharer by lazy { AndroidBackupSharer(applicationContext) }
+
+    /** 覆盖式导入：解析、校验与单事务恢复都在 data:room，app 层只负责装配。 */
+    val databaseImporter: DatabaseImporter by lazy {
+        RoomDatabaseImporter(
+            restoreDao = database.backupRestoreDao(),
+            transactionRunner = RoomTransactionRunner(database),
+            clock = clock,
+        )
+    }
+
+    /** 读取 SAF / 分享意图传入的备份文件；`ContentResolver` 只停留在 app 层。 */
+    val backupFileReader: BackupFileReader by lazy {
+        AndroidBackupFileReader(applicationContext)
+    }
+
+    private fun appVersionName(): String = try {
+        @Suppress("DEPRECATION")
+        applicationContext.packageManager
+            .getPackageInfo(applicationContext.packageName, 0)
+            .versionName
+            ?: "unknown"
+    } catch (e: Exception) {
+        "unknown"
+    }
 
     val knowledgePointRepository: KnowledgePointRepository by lazy {
         RoomKnowledgePointRepository(database.knowledgePointDao())

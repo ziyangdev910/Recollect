@@ -754,3 +754,37 @@
 | 2026-11-22 | `feature/confirm/.../ConfirmScreen.kt` | 「本次未复习」后该行复习效果标签改为「复习效果：本次未复习」；其余行的识别结果文案不变 | 2026-11-22 用户要求 |
 | 2026-11-22 | `evidence/ui/confirmdone-04-notreviewed-label.xml`（新增） | 实体机验证：标记本次未复习的行显示「复习效果：本次未复习」，对勾与禁用状态保持；未操作行仍显示「复习效果：较熟悉」 | 2026-11-22 用户要求 |
 | 2026-11-22 | `docs/specs/confirm-flow.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/prompts.md`、`docs/agent-log/2026-11-22.md` | 同步本次未复习后的复习效果文案 | 2026-11-22 用户要求 |
+| 2026-11-22 | `data/room/.../dao/BackupDao.kt`、`export/BackupJson.kt`、`export/DatabaseExporter.kt`、`RecollectDatabase.kt`（新增/修改） | 导出白名单只读查询（含 v8 `plan` 与 v9 `source_tag`）；纯 Kotlin JSON writer 与 `RoomDatabaseExporter`；`SCHEMA_VERSION = 10` 作为 `roomSchemaVersion` 唯一来源；临时态不导出 | 2026-11-22 用户要求；`backup.md`、C-031、C-043 |
+| 2026-11-22 | `feature/backup/`（新增模块：`BackupViewModel.kt`、`BackupScreen.kt`、`BackupSharer.kt`、`build.gradle.kts`） | 「导出并分享数据库」页：`IDLE → EXPORTING → EXPORTED/ERROR`，展示文件名/大小/格式版本/各实体行数/分享结果；分享失败可只重试分享；ViewModel 不持 Context（R-03） | 2026-11-22 用户要求；`backup.md` |
+| 2026-11-22 | `settings.gradle.kts`、`app/build.gradle.kts` | 登记并依赖 `:feature:backup` | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/.../navigation/AppNavigator.kt`（无改动，路由已存在）、`AppRoot.kt`、`AppContainer.kt`、`AndroidBackupSharer.kt`（新增） | Home 顶部导航栏右侧新增「导出数据库」+ 导出语义图标入口，进入 `AppRoute.Backup`；`FileProvider` + `ACTION_SEND` 分享实现留在 app 层；缓存保留最近 5 份导出 | 2026-11-22 用户要求；R-03 |
+| 2026-11-22 | `app/src/main/res/drawable/ic_export.xml`、`res/xml/file_paths.xml`、`AndroidManifest.xml`（新增/修改） | 导出图标（Material file_download）；只暴露 `cache/backup-exports/` 的 FileProvider 路径，不申请存储权限 | 2026-11-22 用户要求 |
+| 2026-11-22 | `data/room/src/test/.../export/RoomDatabaseExporterTest.kt`、`feature/backup/src/test/.../BackupViewModelTest.kt`（新增） | 顶层字段/白名单/日期格式/转义/空库与状态机用例；JUnit 5 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/01-home.png`、`02-backup-page.png`、`03-share-sheet.png`、`04-exported-card.png`（新增） | 真机 AXRBUT6518000086：首页右上角入口、导出页、系统分享面板（`recollect-20261122-1703.json`，11.52 kB，可选 QQ/微信/钉钉）、导出完成明细（知识点 3/题目 4/关联 4）；`run-as` 读取 JSON 确认顶层字段与 `roomSchemaVersion=10` | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/backup.md`、`app.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-22.md` | 同步「导出并分享」页面入口/状态机、JSON 白名单新增 `plans`/`sourceTags` 与逐字段矩阵；`noteAttachments` 键名以实现为准 | 2026-11-22 用户要求 |
+| 2026-11-22 | `feature/backup/.../BackupScreen.kt` | 删除「导出内容」卡片与导出完成卡片的「数据行数」列表；页面保留导出说明、文件名/大小/格式版本与分享结果 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/05-backup-page-no-scope.png`、`06-exported-card-no-counts.png`（新增） | 真机复验：导出页无「导出内容」卡片；导出完成卡只显示文件名、11.3 KB、格式版本 1 与分享状态 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/backup.md`、`app.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-22.md` | 同步删除导出范围与实体行数展示 | 2026-11-22 用户要求 |
+| 2026-11-22 | `data/room/.../export/BackupJsonParser.kt`、`export/DatabaseImporter.kt`、`dao/BackupRestoreDao.kt`、`RecollectDatabase.kt`（新增/修改） | 导入链路：纯 Kotlin JSON 解析、字段/版本/编号校验、B-01 跨 schema 降级、单事务清空白名单表与临时表并批量写入；`backupRestoreDao()` 注册 | 2026-11-22 用户要求；B-01、R-04 |
+| 2026-11-22 | `feature/backup/.../BackupFileReader.kt`、`ImportViewModel.kt`、`ImportDialogs.kt`（新增） | 导入端口与状态机 `IDLE → READING → CONFIRMING → IMPORTING → SUCCESS/ERROR`；失败/确认/进度对话框；成功不弹窗，由调用方 Toast | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/.../AndroidBackupFileReader.kt`、`ImportToast.kt`（新增）、`MainActivity.kt`、`AppRoot.kt`、`AppContainer.kt` | 导航栏「导入数据库」（导出左侧、上传图标）；SAF 选择与系统 `ACTION_VIEW` 两个入口共用状态机；带对勾 Toast「导入成功」；导入成功后刷新首页统计 | 2026-11-22 用户要求；R-03 |
+| 2026-11-22 | `app/src/main/AndroidManifest.xml`、`res/values/strings.xml`、`res/drawable/ic_import.xml`、`ic_import_success_check.xml`（新增/修改） | json 文件「用其他方式打开」注册 `ACTION_VIEW + application/json`，标签「导入到拾知数据库」；上传与成功对勾图标 | 2026-11-22 用户要求 |
+| 2026-11-22 | `data/room/src/test/.../export/RoomDatabaseImporterTest.kt`、`feature/backup/src/test/.../ImportViewModelTest.kt`（新增） | 合法/非法/版本过高/编号冲突/悬空关联/降级恢复/覆盖写入与状态机用例；JUnit 5 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/07-home-import-entry.png`～`31-restored-home.png`（新增） | 真机 AXRBUT6518000086：导航栏双入口、SAF 选择、覆盖确认、带对勾 Toast、失败提示、`ACTION_VIEW` content URI 直接进入确认、导入后首页统计由 3/3 变为 3/1 再恢复；`pm disable-user` 期间验证 recollect 是 json 处理者，`cmd package query-activities` 输出确认注册 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/backup.md`、`app.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-22.md` | 回写导入入口、状态机、系统打开方式、20MB 上限与成功 Toast 口径 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/src/main/AndroidManifest.xml` | `MainActivity` 增加 `android:screenOrientation="portrait"`，应用固定竖屏，系统自动旋转时不切横屏 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/32-portrait-locked.png`、`33-portrait-forced-rotation.png`（新增） | 真机复验：应用回到竖屏；把系统 `user_rotation` 强制为 1 后应用仍保持竖屏 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/app.md`、`docs/agent-log/2026-11-22.md` | 回写固定竖屏约束 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/.../AppRoot.kt` | 导航栏「导入数据库」「导出数据库」图标互换：导入使用原导出的下载图形，导出使用原导入的上传图形 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/34-icons-swapped.png`（新增） | 真机复验：导入标签右侧为向下箭头、导出标签右侧为向上箭头 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/backup.md`、`app.md`、`CLAUDE.md`、`docs/agent-log/2026-11-22.md` | 同步图标互换后的入口描述 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/.../AppRoot.kt` | 导入成功后的全量失效：`dataRevision` 触发知识点/来源/进度页 ViewModel 重建，题库 `markNeedsRefresh` 并在进入/停留时重读，计划预览递增 generation 且清空 `PrintPlanSession`；首页统计沿用 `homeRefreshKey` | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/36-refresh-home.png`～`41-restored-after-refresh-test.png`（新增） | 真机验证：导入后首页变为「未生成 / 题目 2」；题库 2 道题、知识点名称与来源标签为新值；计划预览按新数据生成 C7VNBY（2 条）；随后导入完整备份恢复原始状态 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/backup.md`、`app.md`、`CLAUDE.md`、`docs/agent-log/2026-11-22.md` | 回写导入成功后的刷新范围 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/.../AppRoot.kt`、`MainActivity.kt` | 记录导入来源：系统「用其他方式打开」(`ACTION_VIEW`) 导入成功后先显示 Toast，延时 800ms 再回调 `finishAndRemoveTask()` 退出应用；应用内 SAF 导入不退出 | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/42-external-import-toast-then-exit.png`、`43-external-import-exited.png`、`45-saf-confirm.png`、`46-saf-import-stays.png`（新增） | 真机验证：外部导入后 Toast 显示并回到文件管理器（前台不再是拾知）；SAF 导入后仍停留在首页 | 2026-11-22 用户要求 |
+| 2026-11-22 | `docs/specs/backup.md`、`app.md`、`docs/agent-log/2026-11-22.md` | 回写外部打开导入成功后自动退出的规则 | 2026-11-22 用户要求 |
+| 2026-11-22 | `app/build.gradle.kts`、`app/src/main/AndroidManifest.xml`、`app/.../AppRoot.kt`、`ImportToast.kt` | `namespace` 改为 `org.ziyangdev910.recollect`、`applicationId` 改为 `org.recollect`；Manifest 的 Activity 改用全限定名 `com.recollect.app.MainActivity`（源码包保持不变），app 源码显式导入新命名空间的 `R` | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/47-new-package.png`、`48-new-package-export.png`、`49-new-package-share.png`（新增） | 真机验证：安装为 `org.recollect` 并正常启动；`cmd package query-activities` 显示新包注册 json 打开入口；导出并分享在 `org.recollect.fileprovider` 下正常打开系统分享面板 | 2026-11-22 用户要求 |
+| 2026-11-22 | `compile_and_install.bat`、`app/build.gradle.kts` | 安装脚本改为构建并安装 release APK（`:app:assembleRelease` → `app-release.apk`）；为便于本地 adb 安装，release 构建类型沿用 debug 签名（`signingConfigs.getByName("debug")`） | 2026-11-22 用户要求 |
+| 2026-11-22 | `evidence/2026-11-22-export/50-release-build.png`（新增） | 运行脚本：`BUILD SUCCESSFUL`、安装成功；`dumpsys package org.recollect` 的 flags 不含 `DEBUGGABLE`，应用正常启动 | 2026-11-22 用户要求 |

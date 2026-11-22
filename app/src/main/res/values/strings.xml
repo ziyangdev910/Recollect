@@ -2,4 +2,6 @@
 <resources>
     <!-- 桌面与应用信息中显示的名称；修改这里即可统一改桌面标签。 -->
     <string name="app_name">拾知</string>
+    <!-- 「用其他方式打开」json 文件时显示的入口名称。 -->
+    <string name="import_to_recollect">导入到拾知数据库</string>
 </resources>
