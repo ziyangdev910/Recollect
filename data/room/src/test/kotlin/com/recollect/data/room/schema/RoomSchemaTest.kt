@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/8.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/9.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,7 +39,7 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(8, database.required("version").asInt(), "schema 版本")
+        assertEquals(9, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
@@ -56,9 +56,10 @@ class RoomSchemaTest {
                 "knowledge_point_tombstone",
                 "knowledge_number_sequence",
                 "plan",
+                "source_tag",
             ),
             entities.keys,
-            "v8 应落 data-model.md 已定义的 13 个实体（含计划头）",
+            "v9 应落 data-model.md 已定义的 14 个实体（含来源标签库）",
         )
 
         assertTable(
@@ -281,6 +282,20 @@ class RoomSchemaTest {
             ),
             primaryKey = listOf("planId"),
             autoGenerate = false,
+        )
+
+        assertTable(
+            table = "source_tag",
+            columns = mapOf(
+                "id" to Column("TEXT", true),
+                "name" to Column("TEXT", true),
+                "createdAt" to Column("INTEGER", true),
+            ),
+            primaryKey = listOf("id"),
+            autoGenerate = false,
+            indices = mapOf(
+                "index_source_tag_name" to IndexSpec(listOf("name"), unique = true),
+            ),
         )
 
         // C-050：两个状态字段必须落库为 Float（schema 中为 REAL），不得退化为 REAL 以外类型。

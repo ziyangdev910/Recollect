@@ -19,10 +19,14 @@ interface EntryRepository {
     suspend fun summaries(): List<EntrySummary>
 
     /**
-     * 录入卡片默认显示的来源页码编号：沿用已使用的最大值（无数据时为 1）。
-     * 编号不会在保存后自增；用户通过 +/− 自行调整，同一页的多道题共用编号。
+     * 录入卡片默认显示的来源页码编号，按题目是否带来源**分别记忆**（无数据时为 1）。
+     *
+     * - `hasSource = false`：最近一条无来源题目使用的编号；无来源录入只通过 +/− 调整。
+     * - `hasSource = true`：最近一条有来源题目使用的编号；选中来源后允许键盘输入。
+     *
+     * 编号不会在保存后自增；同一页的多道题可共用编号。
      */
-    suspend fun defaultSourcePageCode(): Int
+    suspend fun defaultSourcePageCode(hasSource: Boolean): Int
 }
 
 data class EntryDraft(

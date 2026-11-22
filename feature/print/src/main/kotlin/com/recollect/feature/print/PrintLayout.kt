@@ -11,7 +11,8 @@ import java.time.LocalDate
  *
  * 本层只把 `PagePlanner` 的 `PlannedPage`/`PlacedItem` 映射成可绘制的毫米坐标：
  * - 条目位置与高度原样取自 `PlacedItem`，不重新分页、不压缩行高（R-02）；
- * - 日期大标题与「本日共需复习 X 题」绘制在上边距内，不占内容区（C-063）；
+ * - 日期大标题绘制在上边距内，不占内容区（C-063；2026-11-22 删除「本日共需复习 X 题」）；
+ * - 填涂框上方的表头直接标注「掌握 / 较熟悉 / 不会」，每页重复，不再绘制 A/B/C 图例；
  * - `hasNoteArea=false` 时不生成笔记区与附件（C-062）；
  * - overflow 条目不在 `pages` 中，因此不会产生占位行或空白页（C-060/C-061）。
  */
@@ -34,11 +35,9 @@ data class PrintPageLayout(
     val rightAreaWidthMm: Double,
     val rightTextWidthMm: Double,
     val dateHeading: PrintText?,
-    val dailyTotal: PrintText?,
-    val legend: PrintText?,
     /**
-     * 表头「序号 / 知识点 / A / B / C」按列拆开：知识点列与左侧名称文本左对齐，
-     * A/B/C 分别对齐每行三个填涂格，避免整行字符串的字体宽度造成错位。
+     * 表头「序号 / 知识点 / 掌握 / 较熟悉 / 不会」按列拆开：知识点列与左侧名称文本左对齐，
+     * 三个档位文字分别以对应填涂格中心居中，避免整行字符串的字体宽度造成错位。
      */
     val headerCells: List<PrintText>,
     val items: List<PrintItemLayout>,
@@ -76,7 +75,9 @@ data class BubbleLayout(
     val label: String, // A / B / C
     val leftMm: Double,
     val topMm: Double,
-    val sizeMm: Double,
+    /** 答题卡式 16:9 宽格（2026-11-22 用户要求）。 */
+    val widthMm: Double,
+    val heightMm: Double,
 )
 
 data class RightTopLayout(
@@ -128,7 +129,7 @@ data class PrintText(
     val maxLines: Int = 1,
     /** 逐级降字号候选（print-template.md：3.2 → 3.0 → 2.8mm）；空表示不降字号。 */
     val fontFallbacksMm: List<Double> = emptyList(),
-    /** 水平对齐；默认左对齐，表头的序号与 A/B/C 在各自列宽内居中。 */
+    /** 水平对齐；默认左对齐，表头的三个档位文字在各自列宽内居中。 */
     val align: PrintTextAlign = PrintTextAlign.Left,
 )
 
@@ -164,13 +165,6 @@ object PrintLayoutBuilder {
         noteTexts: Map<String, List<String>>,
         template: TemplateGeometry,
     ): PrintLayout {
-        val firstPageNumberByDate = pages
-            .groupBy { it.date }
-            .mapValues { (_, datePages) -> datePages.minOf { it.pageNumber } }
-        val itemCountByDate = pages
-            .groupBy { it.date }
-            .mapValues { (_, datePages) -> datePages.sumOf { it.items.size } }
-
         return PrintLayout(
             planId = planId,
             pages = pages.map { page ->
@@ -180,8 +174,6 @@ object PrintLayoutBuilder {
                     questions = questions,
                     noteTexts = noteTexts,
                     template = template,
-                    firstPageNumber = firstPageNumberByDate.getValue(page.date),
-                    itemCount = itemCountByDate.getValue(page.date),
                 )
             },
         )
@@ -193,21 +185,18 @@ object PrintLayoutBuilder {
         questions: Map<String, RenderableQuestion>,
         noteTexts: Map<String, List<String>>,
         template: TemplateGeometry,
-        firstPageNumber: Int,
-        itemCount: Int,
     ): PrintPageLayout {
         val contentLeft = template.contentLeftMm
-        val contentTop = template.contentTopMm +
-            if (page.pageNumber == 1) template.legendHeightMm else 0.0
+        val contentTop = template.contentTopMm
         val contentWidth = template.contentWidthMm
         val leftAreaWidth = template.leftAreaWidthMm
         val rightAreaLeft = contentLeft + leftAreaWidth
         val rightAreaWidth = template.rightAreaWidthMm
 
-        val firstPageOfDate = page.pageNumber == firstPageNumber
         // 日期标题块绘制在内容区上边界之前的预留带内，不占用内容区高度（C-063/C-091）。
         val headingBlockTop = template.contentTopMm - template.dateHeadingBlockHeightMm
-        // 每个日期第一页绘制日期大标题；同日后续页只重复日期小标题，不重复总题数（print-template.md）。
+        // 每个日期第一页绘制日期大标题；同日后续页重复日期小标题（print-template.md）。
+        // 2026-11-22：删除「本日共需复习 X 题」，标题块只剩日期本身。
         val dateHeading = PrintText(
             text = formatDate(page.date),
             leftMm = contentLeft,
@@ -217,36 +206,15 @@ object PrintLayoutBuilder {
             fontMm = template.dateHeadingFontMm,
             bold = true,
         )
-        val dailyTotal = if (firstPageOfDate) {
-            PrintText(
-                text = "本日共需复习 $itemCount 题",
-                leftMm = contentLeft,
-                topMm = headingBlockTop + template.dateHeadingHeightMm,
-                widthMm = contentWidth,
-                heightMm = template.dailyTotalHeightMm,
-                fontMm = template.dailyTotalFontMm,
-            )
-        } else {
-            null
-        }
 
-        val legend = if (page.pageNumber == 1) {
-            PrintText(
-                text = LEGEND_TEXT,
-                leftMm = contentLeft,
-                topMm = template.contentTopMm,
-                widthMm = contentWidth,
-                heightMm = template.legendHeightMm,
-                fontMm = TemplateGeometry.ANNOTATION_FONT_MM,
-            )
-        } else {
-            null
-        }
-
-        // 表头与左侧填涂行共用列几何：知识点左对齐名称列，A/B/C 对齐三格。
+        // 表头与左侧填涂行共用列几何：知识点左对齐名称列，三个档位文字对齐三格中心。
+        // 以本页第一条题目的实际起点为锚：新计划为 contentTop + headerRowHeight，
+        // 旧计划即使保留了旧图例偏移，表头也会贴着该页第一条题目。
+        val firstItemTopMm = page.items.firstOrNull()?.yOffsetMm
+            ?: (contentTop + template.headerRowHeightMm)
         val headerCells = buildHeaderCells(
             contentLeft = contentLeft,
-            topMm = contentTop,
+            firstItemTopMm = firstItemTopMm,
             template = template,
         )
 
@@ -264,8 +232,6 @@ object PrintLayoutBuilder {
             rightAreaWidthMm = rightAreaWidth,
             rightTextWidthMm = template.rightTextWidthMm,
             dateHeading = dateHeading,
-            dailyTotal = dailyTotal,
-            legend = legend,
             headerCells = headerCells,
             items = page.items.map { placed ->
                 val question = requireNotNull(questions[placed.questionId]) {
@@ -326,19 +292,19 @@ object PrintLayoutBuilder {
                     text = (index + 1).toString(),
                     leftMm = contentLeft,
                     topMm = rowTop,
-                    widthMm = INDEX_COLUMN_WIDTH_MM,
+                    widthMm = template.indexColumnWidthMm,
                     heightMm = template.rowHeightMm,
                     fontMm = 3.2,
                 ),
                 nameText = PrintText(
                     text = displayName,
-                    leftMm = knowledgeNameLeftMm(contentLeft),
+                    leftMm = knowledgeNameLeftMm(contentLeft, template),
                     topMm = rowTop,
-                    widthMm = NAME_COLUMN_WIDTH_MM,
+                    widthMm = template.knowledgeColumnWidthMm,
                     heightMm = template.rowHeightMm,
                     fontMm = 3.2,
                 ),
-                bubbles = bubbleLayouts(rowTop, contentLeft, template),
+                bubbles = bubbleLayouts(rowTop, template),
             )
         }
 
@@ -491,40 +457,47 @@ object PrintLayoutBuilder {
     }
 
     /**
-     * 表头单元格：列 x 与左侧填涂行完全共用 [bubbleLeftMm] 与名称列偏移，
+     * 表头单元格：列 x 与左侧填涂行完全共用 `TemplateGeometry.bubbleLeftMm` 与名称列偏移，
      * 因此文字始终落在实际列上，不依赖整行字符串的字体度量。
      */
     private fun buildHeaderCells(
         contentLeft: Double,
-        topMm: Double,
+        firstItemTopMm: Double,
         template: TemplateGeometry,
     ): List<PrintText> {
+        // 2026-11-22 用户要求：表头贴近第一道题，不再在表头带内垂直居中。
+        // 表头文字底边贴住本页第一条知识点行的上沿，行内留白只存在于文字上方。
+        val headerTextTop = firstItemTopMm - HEADER_TEXT_HEIGHT_MM
         val cells = mutableListOf(
             PrintText(
                 text = "序号",
                 leftMm = contentLeft,
-                topMm = topMm,
-                widthMm = INDEX_COLUMN_WIDTH_MM,
-                heightMm = template.headerRowHeightMm,
+                topMm = headerTextTop,
+                // 表头字号 3.0mm 的「序号」约 6mm 宽；序号列收窄到 6mm 后，
+                // 表头单独给 7mm 余量，避免 breakText 因浮点舍入截断成「序…」。
+                widthMm = HEADER_INDEX_WIDTH_MM,
+                heightMm = HEADER_TEXT_HEIGHT_MM,
                 fontMm = 3.0,
                 align = PrintTextAlign.Left,
             ),
             PrintText(
                 text = "知识点",
-                leftMm = knowledgeNameLeftMm(contentLeft),
-                topMm = topMm,
-                widthMm = NAME_COLUMN_WIDTH_MM,
-                heightMm = template.headerRowHeightMm,
+                leftMm = knowledgeNameLeftMm(contentLeft, template),
+                topMm = headerTextTop,
+                widthMm = template.knowledgeColumnWidthMm,
+                heightMm = HEADER_TEXT_HEIGHT_MM,
                 fontMm = 3.0,
             ),
         )
-        BUBBLE_LABELS.forEachIndexed { index, label ->
+        HEADER_TIER_LABELS.forEachIndexed { index, label ->
+            // 档位文字比填涂框宽（「较熟悉」约 9mm > 5.7mm）：以框中心居中绘制，
+            // 单元格宽度单独给足以免被 breakText 截断；相邻文字靠加大的 bubbleGapMm 分开。
             cells += PrintText(
                 text = label,
-                leftMm = bubbleLeftMm(index, contentLeft),
-                topMm = topMm,
-                widthMm = BUBBLE_SIZE_MM,
-                heightMm = template.headerRowHeightMm,
+                leftMm = template.bubbleCenterXMm(index) - HEADER_TIER_LABEL_WIDTH_MM / 2,
+                topMm = headerTextTop,
+                widthMm = HEADER_TIER_LABEL_WIDTH_MM,
+                heightMm = HEADER_TEXT_HEIGHT_MM,
                 fontMm = 3.0,
                 align = PrintTextAlign.Center,
             )
@@ -534,27 +507,22 @@ object PrintLayoutBuilder {
 
     private fun bubbleLayouts(
         rowTop: Double,
-        contentLeft: Double,
         template: TemplateGeometry,
     ): List<BubbleLayout> {
-        val bubbleTop = rowTop + (template.rowHeightMm - BUBBLE_SIZE_MM) / 2
+        val bubbleTop = rowTop + (template.rowHeightMm - template.bubbleHeightMm) / 2
         return BUBBLE_LABELS.mapIndexed { index, label ->
             BubbleLayout(
                 label = label,
-                leftMm = bubbleLeftMm(index, contentLeft),
+                leftMm = template.bubbleLeftMm(index),
                 topMm = bubbleTop,
-                sizeMm = BUBBLE_SIZE_MM,
+                widthMm = template.bubbleWidthMm,
+                heightMm = template.bubbleHeightMm,
             )
         }
     }
 
-    private fun knowledgeNameLeftMm(contentLeft: Double): Double =
-        contentLeft + INDEX_COLUMN_WIDTH_MM + COLUMN_GAP_MM
-
-    private fun bubbleLeftMm(index: Int, contentLeft: Double): Double =
-        knowledgeNameLeftMm(contentLeft) +
-            NAME_COLUMN_WIDTH_MM + COLUMN_GAP_MM +
-            index * (BUBBLE_SIZE_MM + BUBBLE_GAP_MM)
+    private fun knowledgeNameLeftMm(contentLeft: Double, template: TemplateGeometry): Double =
+        contentLeft + template.indexColumnWidthMm + template.columnGapMm
 
     private fun arucoMarkers(template: TemplateGeometry): List<ArucoMarkerLayout> {
         val width = template.pageWidthMm
@@ -598,14 +566,12 @@ internal fun truncateForLeftArea(name: String): String {
 private fun formatDate(date: LocalDate): String =
     "$date ${WEEKDAY_NAMES[date.dayOfWeek.value - 1]}"
 
-private const val LEGEND_TEXT = "A—掌握　B—较熟悉　C—不会"
 private const val NAME_SEPARATOR = " / "
 private const val MAX_LEFT_NAME_CODE_POINTS = 10
-private const val INDEX_COLUMN_WIDTH_MM = 8.0 // scan-pipeline.md：序号列 8mm
-private const val NAME_COLUMN_WIDTH_MM = 34.0 // scan-pipeline.md：知识点列 34mm
-private const val COLUMN_GAP_MM = 2.0 // scan-pipeline.md：列间距 2mm
-private const val BUBBLE_SIZE_MM = 3.5 // print-template.md：3.5–4mm
-private const val BUBBLE_GAP_MM = 2.0 // scan-pipeline.md：框间距 2mm
+private const val HEADER_INDEX_WIDTH_MM = 7.0 // 表头「序号」的显示余量；行号列宽见 TemplateGeometry
+private const val HEADER_TIER_LABEL_WIDTH_MM = 10.0 // 「较熟悉」约 9mm，留 1mm 余量
+private const val HEADER_TEXT_HEIGHT_MM = 3.5 // 3.0mm 表头字的视觉行高；底边贴住第一条知识点行
+
 private const val WRITING_LINE_COUNT = 3
 private const val ATTACHMENT_LINES = 2
 private const val QR_QUIET_ZONE_MODULES = 4
@@ -615,4 +581,5 @@ private const val ARUCO_QUIET_ZONE_MM = 4.0
 private const val ARUCO_INSET_MM = 12.0
 
 private val BUBBLE_LABELS = listOf("A", "B", "C")
+private val HEADER_TIER_LABELS = listOf("掌握", "较熟悉", "不会")
 private val WEEKDAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")

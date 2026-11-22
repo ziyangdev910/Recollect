@@ -6,15 +6,15 @@ import java.time.LocalDate
  * 分页实现：按 `docs/specs/pagination.md` 的单题高度公式算高，并按 C-048 放置语义分页。
  *
  * 已实现：日期升序、每天从新页起步、按容量逐页放置、遇到第一条放不下的条目就结束当前页、
- * 被移条目在来源页生成 `ContinuationMarker`（P-01、P-03、P-08）；首页扣图例与页级表头、
- * 后续页只扣页级表头（P-10）；首页放不下但后续页放得下时保留空首页以承载图例（P-13）；
+ * 被移条目在来源页生成 `ContinuationMarker`（P-01、P-03、P-08）；每页只扣一次页级表头
+ * （2026-11-22 删除首页图例，所有页面容量相同）；
  * 单题高于 `contentHeightMm` 时整条进入 `overflowItems(ITEM_TOO_TALL)`（P-14、P-18）；
  * 打印笔记书写区时，附加面积超过 `usableHeightMm × maxAttachmentHeightRatio` 时整条进入
  * `overflowItems(ATTACHMENT_OVER_LIMIT)`（P-05、P-11、C-027）。两条同时成立时按
  * C-061 方案 B 归为 `ITEM_TOO_TALL`；不打印笔记区时附加数量不参与上限判定（C-062 方案 B）。
  * overflow 条目不打印、不拆分、不压缩、不生成 marker，但仍给出 warnings。
  *
- * 验收门禁：模板几何非法（`usableHeightMm <= 0` 或 `firstPageContentHeightMm <= 0`）返回
+ * 验收门禁：模板几何非法（`usableHeightMm <= 0` 或 `contentHeightMm <= 0`）返回
  * `Failure(INVALID_TEMPLATE_GEOMETRY)`；页数超过 99 返回 `Failure(PLAN_TOO_LONG)`；
  * 非法计数字段抛 `IllegalArgumentException`（P-20），不静默截断或补 0。
  */
@@ -25,11 +25,11 @@ class DefaultPagePlanner : PagePlanner {
         template: TemplateGeometry,
     ): PaginationResult {
         // 模板校验先于输入计数校验：几何非法时无法计算任何高度，直接返回 Failure。
-        if (!(template.usableHeightMm > 0.0) || !(template.firstPageContentHeightMm > 0.0)) {
+        if (!(template.usableHeightMm > 0.0) || !(template.contentHeightMm > 0.0)) {
             return PaginationResult.Failure(
                 code = PaginationFailureCode.INVALID_TEMPLATE_GEOMETRY,
                 message = "模板几何非法：可用高度 ${template.usableHeightMm}mm、" +
-                    "首页内容区 ${template.firstPageContentHeightMm}mm，均必须大于 0；请检查模板参数。",
+                    "内容区 ${template.contentHeightMm}mm，均必须大于 0；请检查模板参数。",
             )
         }
 
@@ -134,7 +134,7 @@ class DefaultPagePlanner : PagePlanner {
         var cursor = 0
         while (cursor < paginable.size) {
             val pageNumber = startPageNumber + indicesByPage.size
-            val capacity = contentCapacityMm(pageNumber, template)
+            val capacity = template.contentHeightMm
 
             val placedOnPage = mutableListOf<Int>()
             var usedHeight = 0.0
@@ -148,16 +148,11 @@ class DefaultPagePlanner : PagePlanner {
                 position++
             }
 
-            if (placedOnPage.isEmpty()) {
-                // 只剩「首页扣图例后放不下、空白后续页放得下」这一种情况（P-13、C-048）：
-                // 保留首页以承载图例，条目留到下一页。
-                // 进入本函数的条目都不高于 contentHeightMm，后续页容量恰为 contentHeightMm，必定能放下。
-                check(pageNumber == 1) {
-                    "page $pageNumber (capacity $capacity mm) fits no paginable item; " +
-                        "items above contentHeightMm must be filtered into overflowItems"
-                }
-                indicesByPage.add(emptyList())
-                continue
+            // 进入本函数的条目都不高于 contentHeightMm，而每页容量都是 contentHeightMm，
+            // 因此新页一定能放下第一条（2026-11-22 删除首页图例后不再存在空首页分支）。
+            check(placedOnPage.isNotEmpty()) {
+                "page $pageNumber (capacity $capacity mm) fits no paginable item; " +
+                    "items above contentHeightMm must be filtered into overflowItems"
             }
 
             indicesByPage += placedOnPage
@@ -167,9 +162,7 @@ class DefaultPagePlanner : PagePlanner {
         return indicesByPage.mapIndexed { pageIndex, indices ->
             val pageNumber = startPageNumber + pageIndex
             val pageId = pageIdOf(planId, pageNumber)
-            var itemCursor = template.contentTopMm +
-                (if (pageNumber == 1) template.legendHeightMm else 0.0) +
-                template.headerRowHeightMm
+            var itemCursor = template.contentTopMm + template.headerRowHeightMm
 
             val items = indices.map { index ->
                 val item = PlacedItem(
@@ -204,10 +197,6 @@ class DefaultPagePlanner : PagePlanner {
 
     private fun pageIdOf(planId: String, pageNumber: Int): String =
         "$planId-${pageNumber.toString().padStart(2, '0')}"
-
-    /** 首页扣图例后的内容区高度；后续页只扣页级表头（C-025、C-001）。 */
-    private fun contentCapacityMm(pageNumber: Int, template: TemplateGeometry): Double =
-        if (pageNumber == 1) template.firstPageContentHeightMm else template.contentHeightMm
 
     /**
      * 用户可读提示：只描述原因与可执行的修改方向，不改写条目高度，也不建议拆分题目（C-066）。

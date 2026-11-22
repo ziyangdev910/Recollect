@@ -5,13 +5,16 @@ import com.recollect.data.room.repository.EntryRepository
 import com.recollect.data.room.repository.EntrySummary
 import com.recollect.data.room.repository.KnowledgePointLibraryRepository
 import com.recollect.data.room.repository.KnowledgePointTag
+import com.recollect.data.room.repository.SourceTagItem
+import com.recollect.data.room.repository.SourceTagLibraryRepository
 
 /** 录入端口的内存 fake：只模拟列表/新建/更新/归档，不伪造调度或分页结果。 */
 internal class FakeEntryRepository(
     initial: List<EntrySummary> = emptyList(),
 ) : EntryRepository {
     val rows = initial.toMutableList()
-    var defaultSourcePageCodeValue = 1
+    var defaultSourcePageCodeWithoutSource = 1
+    var defaultSourcePageCodeWithSource = 1
     var createCalls = 0
     var updateCalls = 0
     var archiveCalls = 0
@@ -60,7 +63,8 @@ internal class FakeEntryRepository(
         return rows.toList()
     }
 
-    override suspend fun defaultSourcePageCode(): Int = defaultSourcePageCodeValue
+    override suspend fun defaultSourcePageCode(hasSource: Boolean): Int =
+        if (hasSource) defaultSourcePageCodeWithSource else defaultSourcePageCodeWithoutSource
 }
 
 /** 标签库端口的内存 fake。 */
@@ -91,6 +95,37 @@ internal class FakeLibraryRepository(
         stored.removeAll { it.id == knowledgePointId }
     }
 }
+
+/** 来源标签库端口的内存 fake。 */
+internal class FakeSourceTagRepository(
+    initial: List<SourceTagItem> = emptyList(),
+) : SourceTagLibraryRepository {
+    val stored = initial.toMutableList()
+
+    override suspend fun tags(): List<SourceTagItem> = stored.toList()
+
+    override suspend fun create(name: String): SourceTagItem {
+        val item = SourceTagItem(
+            id = "source-${stored.size + 1}",
+            name = name.trim(),
+            linkedQuestionCount = 0,
+        )
+        stored += item
+        return item
+    }
+
+    override suspend fun rename(sourceTagId: String, name: String) {
+        val index = stored.indexOfFirst { it.id == sourceTagId }
+        stored[index] = stored[index].copy(name = name.trim())
+    }
+
+    override suspend fun delete(sourceTagId: String) {
+        stored.removeAll { it.id == sourceTagId }
+    }
+}
+
+internal fun sourceTag(id: String, name: String, linkedQuestionCount: Int = 0) =
+    SourceTagItem(id = id, name = name, linkedQuestionCount = linkedQuestionCount)
 
 internal fun tag(id: String, number: Int, name: String) =
     KnowledgePointTag(id = id, number = number, name = name, linkedQuestionCount = 0)

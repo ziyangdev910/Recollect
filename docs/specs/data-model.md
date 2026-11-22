@@ -58,12 +58,13 @@ data class Question(
     val estimatedReviewMinutes: Int = 15,      // 单位：分钟；缺失按 15（C-017）
     val createdAt: Instant,
     val archivedAt: Instant?,
-    val sourcePage: String = "",               // 来源页码说明（可空，如「作业本」）；旧文本迁移到这里
-    val sourcePageCode: Int = 0                // 来源页码编号；用户通过 +/− 调整，默认沿用上次使用值，同页可复用（2026-11-20 用户要求）
+    val sourcePage: String = "",               // 来源标签名称（可空，如「作业本」）；旧文本迁移到这里
+    val sourcePageCode: Int = 0                // 来源页码编号；带来源可键盘输入、无来源用 +/−；默认按有无来源分别记忆，同页可复用（2026-11-22 用户要求）
 )
 ```
 
-- 来源页码 = `sourcePageCode`（用户可调编号，最小 1；默认沿用最近一次使用的值，保存后不自增）+ `sourcePage`（用户可编辑说明，可留空）。同一页的多道题共用同一编号。展示格式为 `编号-说明`；说明为空时只显示编号，不输出 `-`。用于定位题目在试卷或作业本的哪一面，**不是**复习打印稿的 `pageId`。迁移时旧 `sourcePage` 文本保留为说明，并按 `createdAt` 顺序补 1..N 编号（2026-11-20 用户要求）。
+- 来源页码 = `sourcePageCode`（用户可调编号，最小 1；默认沿用最近一次使用的值，保存后不自增）+ `sourcePage`（从来源标签库单选，可留空）。同一页的多道题共用同一编号。展示格式为 `编号-来源`；来源为空时只显示编号，不输出 `-`。用于定位题目在试卷或作业本的哪一面，**不是**复习打印稿的 `pageId`。迁移时旧 `sourcePage` 文本保留为来源，并按 `createdAt` 顺序补 1..N 编号（2026-11-20 用户要求）。
+- `sourcePage` 保存标签名称而不是 id：来源标签重命名由 `data:room` 在同一事务内更新题目引用；旧题中不在标签库的自由文本来源仍可显示与保存（2026-11-22 用户要求）。
 - `Question` 实体没有 `linkedKnowledgeIds` 列；调度 DTO `SchedulerQuestion.linkedKnowledgeIds` 由 `data/room` 从 `QuestionKnowledgeCrossRef` 按 `KnowledgePoint.number` 升序构造（C-046/C-049）。
 
 ### CoolingOverrideEvent（C-008 方案二）
@@ -230,6 +231,25 @@ data class Plan(
 - 迁移 v7→v8 只建表，不回填历史 `plan_page`；旧页仍可按 `pageId` 回读，但不再参与“当前计划”复用。
 - `plan_page` 保持页面快照与题块几何；计划头与页面在 `savePlan` 同一事务写入。
 
+### SourceTag（来源标签库，schema v9）
+
+```kotlin
+@Entity(
+    tableName = "source_tag",
+    indices = [Index(value = ["name"], unique = true)]
+)
+data class SourceTag(
+    @PrimaryKey val id: String,
+    val name: String,
+    val createdAt: Instant
+)
+```
+
+- 名称唯一（忽略首尾空格）；录入页以单选标签填写题目来源，题目只保存名称。
+- 重命名在同一事务内更新 `question.sourcePage`（含归档题目），避免引用悬空。
+- 删除前校验未被未归档题目引用；归档题目的来源不阻止删除，历史文本保留。
+- 迁移 v8→v9 建表并与唯一索引，同时把已有 `question.sourcePage` 去重后种入标签库（空白不种入）。
+
 ### PlanPage
 
 ```kotlin
@@ -332,6 +352,7 @@ data class KnowledgeNumberSequence(
 - `knowledge_point` 新增可空列 `difficulty: Int?`、`halfLifeDays: Float?`、`createdAt: Instant`（C-018/C-037）；旧数据 `difficulty/halfLifeDays` 为 `null`，`createdAt` 用迁移时间回填。
 - 新增表：`confirmation_decision_log`、`note_attachment_item`、`knowledge_point_tombstone`、`knowledge_number_sequence`、`cooling_override_event`、`scan_session`；`knowledge_number_sequence` 迁移时种入 `(1, max(number, 0))`。
 - 新增唯一索引 `knowledge_point.number` 与 `plan_page.pageId` 前必须先清理重复值；迁移脚本遇到重复应失败并提示，不得静默重编号。
+- 新增表：`plan`（schema v8）、`source_tag`（schema v9）。v8→v9 的 `source_tag.name` 唯一索引在迁移内先按 `trim(sourcePage)` 去重种入再创建，不会因历史重复触发冲突。
 - `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时不得按当前关联 + `number` 升序重算，应视为「无快照」并在回读/确认时阻断，提示重新生成计划并按新稿打印，同时记录警告（C-072 方案 A）。
 - 导出 JSON 的范围以 `backup.md` 的白名单为准，不再表述为「全部实体」；`PendingFeedback`、`ScanSession` 与 `CoolingOverrideEvent` 不导出（C-031/C-040/C-008）。
 

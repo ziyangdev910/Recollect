@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -52,6 +51,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
+    sourceTagViewModel: SourceTagLibraryViewModel,
     questionId: String?,
     onManageTags: () -> Unit,
     onSaved: () -> Unit,
@@ -90,6 +90,7 @@ fun QuestionEditScreen(
 
         is UiState.Content -> QuestionForm(
             viewModel = viewModel,
+            sourceTagViewModel = sourceTagViewModel,
             content = state.data,
             onManageTags = onManageTags,
             onSaved = onSaved,
@@ -101,6 +102,7 @@ fun QuestionEditScreen(
 @Composable
 private fun QuestionForm(
     viewModel: QuestionEditViewModel,
+    sourceTagViewModel: SourceTagLibraryViewModel,
     content: QuestionEditContent,
     onManageTags: () -> Unit,
     onSaved: () -> Unit,
@@ -108,15 +110,49 @@ private fun QuestionForm(
     val scope = rememberCoroutineScope()
 
     var questionNumber by remember(content) { mutableStateOf(content.questionNumber) }
-    var sourcePageCode by remember(content) { mutableStateOf(content.sourcePageCode) }
-    var sourcePageLabel by remember(content) { mutableStateOf(content.sourcePageLabel) }
+    // 页码编号用文本保存：带来源时允许键盘输入（含清空中间态），无来源时只读 + +/−。
+    var pageCodeText by remember(content) { mutableStateOf(content.sourcePageCode.toString()) }
+    // 用户手动改过编号后，切换来源不再自动套用另一类默认值。
+    var pageCodeTouched by remember(content) { mutableStateOf(false) }
+    // 来源以标签 id 记录选中，窗口内重命名后仍保持选中；旧题自由文本来源用 legacyName 承载。
+    var selectedSourceId by remember(content) {
+        mutableStateOf(
+            content.sourceTags.firstOrNull { it.name == content.sourcePageLabel }?.id,
+        )
+    }
+    var legacySourceName by remember(content) {
+        mutableStateOf(
+            content.sourcePageLabel.takeIf { label ->
+                label.isNotBlank() && content.sourceTags.none { it.name == label }
+            }.orEmpty(),
+        )
+    }
     var minutes by remember(content) {
         mutableStateOf(content.estimatedReviewMinutes.toString())
+    }
+    val hasSource = selectedSourceId != null || legacySourceName.isNotBlank()
+    val currentPageCode = pageCodeText.toIntOrNull() ?: 0
+    // 2026-11-22 用户要求：预估复习时长必须是 >= 1 的整数，否则禁用保存。
+    val reviewMinutesValid = minutes.toIntOrNull()?.let { it >= 1 } == true
+
+    /** 新建页切换「有无来源」时，在用户未手改编号的前提下套用对应类的默认记忆。 */
+    fun applyDefaultCodeForSource(hasSource: Boolean) {
+        if (content.questionId == null && !pageCodeTouched) {
+            val target = if (hasSource) {
+                content.defaultSourcePageCodeWithSource
+            } else {
+                content.defaultSourcePageCodeWithoutSource
+            }
+            pageCodeText = target.toString()
+        }
     }
     var selectionLimitReached by remember(content) { mutableStateOf(false) }
     val selectedIds = remember(content) {
         mutableStateListOf<String>().apply { addAll(content.selectedKnowledgePointIds) }
     }
+    // 来源候选独立于 content：窗口内增删改后只刷新候选，不重建表单。
+    var sourceTags by remember(content) { mutableStateOf(content.sourceTags) }
+    var showSourceManager by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -134,32 +170,36 @@ private fun QuestionForm(
             )
         }
 
-        OutlinedTextField(
-            value = questionNumber,
-            onValueChange = { questionNumber = it },
-            label = { Text("题号，例如 T-1") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        // 页码 = 用户可调的编号 + 可选说明；同一页的多道题可保持同一编号。
+        // 题号与页码编号同行并排，各占一半宽度。
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 页码编号控件自带 +/−（文本框右侧上下堆叠，与输入区等高）。
             OutlinedTextField(
-                value = sourcePageCode.toString(),
-                onValueChange = {},
+                value = questionNumber,
+                onValueChange = { questionNumber = it },
+                label = { Text("题号，例如 T-1") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+
+            // 页码编号：带来源时可直接用键盘输入；无来源时只读，靠右侧 +/− 调整。
+            OutlinedTextField(
+                value = pageCodeText,
+                onValueChange = { input ->
+                    if (hasSource) {
+                        pageCodeText = input.filter(Char::isDigit).take(5)
+                        pageCodeTouched = true
+                    }
+                },
                 label = { Text("页码编号") },
                 singleLine = true,
-                readOnly = true,
-                // 约占总宽度的 1/3；说明字段占 2/3。
+                readOnly = !hasSource,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.weight(1f),
                 trailingIcon = {
+                    // 文本框右侧上下堆叠的 +/−，与输入区等高。
                     Column(
                         modifier = Modifier
                             .width(28.dp)
@@ -169,15 +209,23 @@ private fun QuestionForm(
                         PageCodeStepButton(
                             label = "+",
                             enabled = true,
-                            onClick = { sourcePageCode++ },
+                            onClick = {
+                                pageCodeText = (maxOf(currentPageCode, 0) + 1).toString()
+                                pageCodeTouched = true
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
                         )
                         PageCodeStepButton(
                             label = "−",
-                            enabled = sourcePageCode > 1,
-                            onClick = { if (sourcePageCode > 1) sourcePageCode-- },
+                            enabled = currentPageCode > 1,
+                            onClick = {
+                                if (currentPageCode > 1) {
+                                    pageCodeText = (currentPageCode - 1).toString()
+                                    pageCodeTouched = true
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
@@ -185,12 +233,77 @@ private fun QuestionForm(
                     }
                 },
             )
-            OutlinedTextField(
-                value = sourcePageLabel,
-                onValueChange = { sourcePageLabel = it },
-                label = { Text("说明（可空）") },
-                singleLine = true,
-                modifier = Modifier.weight(2f),
+        }
+        if (hasSource && currentPageCode < 1) {
+            Text(
+                text = "请输入不小于 1 的页码编号。",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        // 来源：与知识点一样从标签库单选（可空），点击已选标签可取消选择。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "来源（可不选）",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { showSourceManager = true }) { Text("管理来源") }
+        }
+        val selectedSourceName = sourceTags.firstOrNull { it.id == selectedSourceId }?.name
+            ?: legacySourceName
+        // 旧题目的自由文本来源可能不在标签库中：保留为可取消选中的临时标签。
+        val hasLegacyChip = legacySourceName.isNotBlank() &&
+            sourceTags.none { it.name == legacySourceName }
+        if (sourceTags.isEmpty() && !hasLegacyChip) {
+            Text(
+                text = "来源标签库为空。请先到来源标签库添加标签，再回来选择。",
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                sourceTags.forEach { tag ->
+                    val selected = tag.id == selectedSourceId
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            if (selected) {
+                                selectedSourceId = null
+                                applyDefaultCodeForSource(hasSource = false)
+                            } else {
+                                selectedSourceId = tag.id
+                                legacySourceName = ""
+                                applyDefaultCodeForSource(hasSource = true)
+                            }
+                        },
+                        label = { Text(tag.name) },
+                    )
+                }
+                if (hasLegacyChip) {
+                    val selected = selectedSourceId == null
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            if (selected) {
+                                legacySourceName = ""
+                                applyDefaultCodeForSource(hasSource = false)
+                            }
+                        },
+                        label = { Text(legacySourceName) },
+                    )
+                }
+            }
+            Text(
+                text = "已选来源：${selectedSourceName.ifBlank { "未选择" }}",
+                style = MaterialTheme.typography.bodySmall,
             )
         }
 
@@ -208,7 +321,7 @@ private fun QuestionForm(
         }
         if (content.tags.isEmpty()) {
             Text(
-                text = "标签库为空。请先到标签库添加知识点标签，再回来关联。",
+                text = "知识点标签库为空。请先到知识点标签库添加知识点标签，再回来关联。",
                 color = MaterialTheme.colorScheme.error,
             )
         } else {
@@ -253,7 +366,9 @@ private fun QuestionForm(
         }
 
         val canSave = questionNumber.isNotBlank() &&
-            selectedIds.size in 1..EntryDraft.MAX_KNOWLEDGE_POINTS
+            selectedIds.size in 1..EntryDraft.MAX_KNOWLEDGE_POINTS &&
+            currentPageCode >= 1 &&
+            reviewMinutesValid
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -264,6 +379,7 @@ private fun QuestionForm(
                 onValueChange = { minutes = it.filter(Char::isDigit) },
                 label = { Text("预估复习时长（分钟）") },
                 singleLine = true,
+                isError = !reviewMinutesValid,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.weight(1f),
             )
@@ -273,8 +389,9 @@ private fun QuestionForm(
                     scope.launch {
                         val saved = viewModel.save(
                             questionNumber = questionNumber,
-                            sourcePageCode = sourcePageCode,
-                            sourcePageLabel = sourcePageLabel,
+                            sourcePageCode = currentPageCode,
+                            sourcePageLabel = sourceTags.firstOrNull { it.id == selectedSourceId }?.name
+                                ?: legacySourceName,
                             knowledgePointIds = selectedIds.toList(),
                             estimatedReviewMinutes = minutes.toIntOrNull()
                                 ?: EntryDraft.DEFAULT_REVIEW_MINUTES,
@@ -286,6 +403,39 @@ private fun QuestionForm(
                 Text("保存")
             }
         }
+        if (!reviewMinutesValid) {
+            Text(
+                text = "预估复习时长必须输入不小于 1 的整数。",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+
+    if (showSourceManager) {
+        SourceTagManagerDialog(
+            viewModel = sourceTagViewModel,
+            onDismiss = {
+                showSourceManager = false
+                // 窗口内可能新增/重命名/删除来源：关闭时同步最新候选，已填表单保持不变。
+                val latest = (sourceTagViewModel.state as? UiState.Content)?.data?.tags
+                    ?: sourceTags
+                sourceTags = latest
+                if (selectedSourceId != null && latest.none { it.id == selectedSourceId }) {
+                    // 已选来源被删除：清空选择，避免保存出不在标签库中的名称。
+                    selectedSourceId = null
+                    applyDefaultCodeForSource(hasSource = false)
+                }
+                if (legacySourceName.isNotBlank()) {
+                    // 旧文本来源恰好被新增为标签：直接采纳为新标签的选中项。
+                    latest.firstOrNull { it.name == legacySourceName }?.let { tag ->
+                        selectedSourceId = tag.id
+                        legacySourceName = ""
+                        applyDefaultCodeForSource(hasSource = true)
+                    }
+                }
+            },
+        )
     }
 }
 

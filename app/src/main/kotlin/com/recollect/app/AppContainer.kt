@@ -22,9 +22,13 @@ import com.recollect.data.room.repository.RoomNoteAttachmentRepository
 import com.recollect.data.room.repository.RoomPlanRepository
 import com.recollect.data.room.repository.RoomScanSessionRepository
 import com.recollect.data.room.repository.ScanSessionRepository
+import com.recollect.data.room.repository.SourceTagLibraryRepository
 import com.recollect.data.room.repository.RoomQuestionLookupRepository
 import com.recollect.data.room.repository.RoomQuestionRepository
 import com.recollect.data.room.repository.RoomReviewFeedbackHistoryRepository
+import com.recollect.data.room.repository.RoomSourceTagLibraryRepository
+import com.recollect.data.room.repository.RoomReviewProgressRepository
+import com.recollect.data.room.repository.ReviewProgressRepository
 import com.recollect.data.room.repository.RoomTransactionRunner
 import com.recollect.data.room.usecase.ApplyFeedbackUseCase
 import com.recollect.data.room.usecase.MaimemoNextDueCalculator
@@ -99,6 +103,16 @@ class AppContainer(context: Context) {
         )
     }
 
+    /** 来源标签库（录入页单选来源、标签库增删改查）。 */
+    val sourceTagLibraryRepository: SourceTagLibraryRepository by lazy {
+        RoomSourceTagLibraryRepository(
+            transactionRunner = RoomTransactionRunner(database),
+            sourceTagDao = database.sourceTagDao(),
+            questionDao = database.questionDao(),
+            clock = clock,
+        )
+    }
+
     val reviewFeedbackHistoryRepository: ReviewFeedbackHistoryRepository by lazy {
         RoomReviewFeedbackHistoryRepository(database.reviewFeedbackDao())
     }
@@ -109,6 +123,15 @@ class AppContainer(context: Context) {
 
     val questionRepository: QuestionRepository by lazy {
         RoomQuestionRepository(
+            questionDao = database.questionDao(),
+            crossRefDao = database.questionKnowledgeCrossRefDao(),
+            knowledgePointDao = database.knowledgePointDao(),
+        )
+    }
+
+    /** 复习进度页的只读投影（2026-11-22 用户要求）；不参与调度计算。 */
+    val reviewProgressRepository: ReviewProgressRepository by lazy {
+        RoomReviewProgressRepository(
             questionDao = database.questionDao(),
             crossRefDao = database.questionKnowledgeCrossRefDao(),
             knowledgePointDao = database.knowledgePointDao(),

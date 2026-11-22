@@ -35,6 +35,7 @@ include(
     ":data:room",
     ":feature:entry",
     ":feature:planning",
+    ":feature:progress",
     ":feature:print",
     ":feature:scan",
     ":feature:confirm",

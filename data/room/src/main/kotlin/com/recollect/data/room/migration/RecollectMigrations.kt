@@ -12,6 +12,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 2. 在创建任一唯一索引前调用 [SchemaMigrationRules.requireUniqueColumn]，
  *    遇重复直接失败并提示用户，不得静默重编号；
  * 3. 迁移完成后同步更新 schema 导出与 `RoomSchemaTest`。
+ *
+ * v9 的 `source_tag.name` 唯一索引在迁移内先 `GROUP BY trim(sourcePage)` 去重种入，
+ * 再建索引，不会触发唯一冲突。
  */
 object RecollectMigrations {
 
@@ -139,6 +142,35 @@ object RecollectMigrations {
         }
     }
 
+    /**
+     * v8 → v9：新增来源标签库 `source_tag`（名称唯一）。
+     *
+     * 旧题目的来源说明（`question.sourcePage`）是自由文本；迁移时去重后种入标签库，
+     * 使升级后的录入页仍能单选这些历史来源。空白说明不种入。
+     */
+    val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `source_tag` (" +
+                    "`id` TEXT NOT NULL, " +
+                    "`name` TEXT NOT NULL, " +
+                    "`createdAt` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_source_tag_name` " +
+                    "ON `source_tag` (`name`)",
+            )
+            db.execSQL(
+                "INSERT OR IGNORE INTO `source_tag` (`id`, `name`, `createdAt`) " +
+                    "SELECT lower(hex(randomblob(16))), trim(`sourcePage`), " +
+                    "CAST(strftime('%s', 'now') AS INTEGER) * 1000 " +
+                    "FROM `question` WHERE trim(`sourcePage`) <> '' " +
+                    "GROUP BY trim(`sourcePage`)",
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -147,5 +179,6 @@ object RecollectMigrations {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     )
 }

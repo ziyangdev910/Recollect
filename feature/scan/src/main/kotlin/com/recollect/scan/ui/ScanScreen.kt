@@ -202,7 +202,7 @@ private fun CameraPermissionCard(
                 text = if (denied) {
                     "相机权限已被拒绝。可再次授权，或直接使用下方的「从相册选择」。"
                 } else {
-                    "扫描打印稿需要使用相机；授权后才能在本页取景拍摄。"
+                    "扫描打印稿需要授权使用相机权限。"
                 },
             )
             Button(onClick = onRequestPermission) {

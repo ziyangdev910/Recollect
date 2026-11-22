@@ -18,6 +18,7 @@ import com.recollect.data.room.dao.QuestionDao
 import com.recollect.data.room.dao.QuestionKnowledgeCrossRefDao
 import com.recollect.data.room.dao.ReviewFeedbackDao
 import com.recollect.data.room.dao.ScanSessionDao
+import com.recollect.data.room.dao.SourceTagDao
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.CoolingOverrideEvent
 import com.recollect.data.room.entity.KnowledgeNumberSequence
@@ -31,6 +32,7 @@ import com.recollect.data.room.entity.Question
 import com.recollect.data.room.entity.QuestionKnowledgeCrossRef
 import com.recollect.data.room.entity.ReviewFeedback
 import com.recollect.data.room.entity.ScanSession
+import com.recollect.data.room.entity.SourceTag
 import com.recollect.data.room.migration.RecollectMigrations
 
 /**
@@ -39,7 +41,8 @@ import com.recollect.data.room.migration.RecollectMigrations
  * 阶段 4.2 起登记 10 个实体；v5 增加标签库编号序列与墓碑
  * （`KnowledgeNumberSequence`、`KnowledgePointTombstone`，D-12 / C-028）；
  * v6 为题目来源页码增加编号 `sourcePageCode`；v7 取消其唯一索引，允许同一页的多道题共用编号；
- * v8 增加 `plan` 计划头（本周计划单例与打印状态），避免再次生成时静默替换当前计划。
+ * v8 增加 `plan` 计划头（本周计划单例与打印状态），避免再次生成时静默替换当前计划；
+ * v9 增加 `source_tag` 来源标签库，并把已有题目的来源说明去重后作为初始标签。
  * 不允许 destructive migration。
  */
 @Database(
@@ -57,8 +60,9 @@ import com.recollect.data.room.migration.RecollectMigrations
         KnowledgePointTombstone::class,
         KnowledgeNumberSequence::class,
         Plan::class,
+        SourceTag::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(RoomTypeConverters::class)
@@ -87,6 +91,8 @@ abstract class RecollectDatabase : RoomDatabase() {
     abstract fun planPageDao(): PlanPageDao
 
     abstract fun planDao(): PlanDao
+
+    abstract fun sourceTagDao(): SourceTagDao
 
     abstract fun noteAttachmentItemDao(): NoteAttachmentItemDao
 

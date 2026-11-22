@@ -127,7 +127,7 @@ private fun ConfirmContent(
             style = MaterialTheme.typography.titleMedium,
         )
         Text(
-            text = "逐行核对纸面填涂；每一行都必须单独标记。",
+            text = "请逐题核对纸面填涂的识别结果。",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -202,24 +202,22 @@ private fun ConfirmRowCard(
                 style = MaterialTheme.typography.bodySmall,
             )
 
+            // 2026-11-22 用户要求：卡片直接展示该知识点的复习效果识别结果（不再叫“OMR”）。
             Text(
-                text = omrLabel(row),
+                text = detectionLabel(row),
                 style = MaterialTheme.typography.bodySmall,
             )
 
-            row.detectedRawOcr?.let { raw ->
-                Text("识别原文（只读）", style = MaterialTheme.typography.labelSmall)
-                Text(raw, style = MaterialTheme.typography.bodySmall)
-            }
-
+            // 只保留一个可编辑文本框，默认填入 OCR 识别文本；原始 OCR 仍在数据库单独保存。
             OutlinedTextField(
                 value = row.correctedText.orEmpty(),
                 onValueChange = { viewModel.setCorrectedText(row, it) },
                 enabled = enabled,
-                label = { Text("修正文本（可编辑）") },
+                label = { Text("请核对笔记识别结果") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
-                maxLines = 3,
+                minLines = 3,
+                maxLines = 6,
             )
 
             Row(
@@ -387,11 +385,23 @@ private fun knowledgeLabel(row: ConfirmRowView): String {
     return "$number · $name"
 }
 
-private fun omrLabel(row: ConfirmRowView): String = when (row.detectionStatus) {
-    DetectionStatus.OK -> "OMR：${tierLabel(row.detectedTier)}"
-    DetectionStatus.NO_MARK -> "OMR：未填涂"
-    DetectionStatus.CONFLICT -> "OMR：填涂冲突"
-    DetectionStatus.UNREADABLE -> "OMR：无法识别"
+/**
+ * 复习效果识别结果：用户核对纸面填涂与识别是否一致（2026-11-22 用户要求）。
+ *
+ * 不再显示内部术语“OMR”；可直接读取「掌握 / 较熟悉 / 不会」。
+ */
+private fun detectionLabel(row: ConfirmRowView): String = when (row.detectionStatus) {
+    DetectionStatus.OK -> "复习效果识别：${tierName(row.detectedTier)}"
+    DetectionStatus.NO_MARK -> "复习效果识别：未填涂"
+    DetectionStatus.CONFLICT -> "复习效果识别：填涂冲突（无法判定）"
+    DetectionStatus.UNREADABLE -> "复习效果识别：无法识别"
+}
+
+private fun tierName(tier: Tier?): String = when (tier) {
+    Tier.MASTERED -> "掌握"
+    Tier.FAMILIAR -> "较熟悉"
+    Tier.UNKNOWN -> "不会"
+    null -> "未选择"
 }
 
 private fun decisionLabel(row: ConfirmRowView): String = when (row.decision) {

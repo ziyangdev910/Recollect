@@ -329,7 +329,7 @@
 【本轮背景】阶段 2（core:pagination），规格 docs/specs/pagination.md；C-047（sealed PaginationResult）与 C-048（放置语义）已裁决，不要自行选择其它放置策略。本轮只做 TemplateGeometry 的派生量测试，不实现 PagePlanner。
 
 【本轮任务】
-- 用默认参数断言：usableHeightMm=273.0、firstPageUsableHeightMm=265.0、contentHeightMm=266.0、firstPageContentHeightMm=258.0、maxAttachmentHeightMm=81.9、qrFooterHeightMm=21.0。
+- 用默认参数断言：usableHeightMm=273.0、contentHeightMm=266.0、maxAttachmentHeightMm=81.9、qrFooterHeightMm=27.0、dateHeadingBlockHeightMm=7.0（2026-11-22 起删除首页图例与每日总题数，不再有 `firstPage*` 派生量）。
 - 先写失败测试（可以先用 TODO/临时实现让编译通过），再补 TemplateGeometry。
 - 注意：默认几何下 P-05/P-11/P-13/P-14/P-18 不可达；后续这些用例必须显式传自定义 template。
 
@@ -419,12 +419,11 @@
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/pagination.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 2（core:pagination），规格 docs/specs/pagination.md；C-047、C-048 已裁决。本轮只做跨日与首页/后续页，用例 P-08、P-10、P-13。
+【本轮背景】阶段 2（core:pagination），规格 docs/specs/pagination.md；C-047、C-048 已裁决。本轮只做跨日与每页容量，用例 P-08、P-10（P-13 已因 2026-11-22 删除首页图例而不可达）。
 
 【本轮任务】
 - P-08：每日从新页开始，pageNumber 全文档连续，同日多页 date 相同，日期升序。
-- P-10：首页扣 legendHeightMm + headerRowHeightMm；后续页只扣 headerRowHeightMm。
-- P-13：条目能进后续页但进不了首页时，首页仍存在、items 为空、有一个 marker；条目完整出现在下一页。
+- P-10：每页内容区都只扣 headerRowHeightMm，容量相同。
 - 先红后绿；不要改分页公式。
 
 【固定循环（本轮只走一遍）】
@@ -1074,7 +1073,7 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 开始前先读：CLAUDE.md、docs/architecture/overview.md、docs/conflicts.md，以及 docs/specs/print-template.md、docs/specs/pagination.md。
 必须遵守 D-01～D-13、R-01～R-06，以及 docs/dependency-proposals.md 的依赖约束。
 
-【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。C-047：分页失败不进入打印；C-060：全溢出日期没有页面，打印层不得补空白页；C-061：两种 overflow 同时成立时归为 `ITEM_TOO_TALL`；C-066：整题过高提示减少关联知识点或缩短描述，不再建议拆分题目；C-062：附加上限仅在 `hasNoteArea=true` 时生效，不得截断附件区。C-063：不绘制“续下页”，每个日期第一页标注“本日共需复习 X 题”（X = 实际打印题目数），总题数字号与图例一致、高度为日期标题行高的一半。C-051 方案 A：打印验收以适配层回读为准。C-091 方案 A 已裁决：生产模板用 `TemplateGeometry.a4Print()`，内容区从 26mm 开始以避开四角标记（规格回写待授权）。本轮只做打印布局，不做回读。
+【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。C-047：分页失败不进入打印；C-060：全溢出日期没有页面，打印层不得补空白页；C-061：两种 overflow 同时成立时归为 `ITEM_TOO_TALL`；C-066：整题过高提示减少关联知识点或缩短描述，不再建议拆分题目；C-062：附加上限仅在 `hasNoteArea=true` 时生效，不得截断附件区。C-063：不绘制“续下页”；2026-11-22 起删除图例与“本日共需复习 X 题”，只保留日期大标题，表头每页直接显示「掌握 / 较熟悉 / 不会」。C-051 方案 A：打印验收以适配层回读为准。C-091 方案 A 已裁决：生产模板用 `TemplateGeometry.a4Print()`，内容区从 26mm 开始以避开四角标记（规格已授权回写）。本轮只做打印布局，不做回读。
 
 【本轮任务】
 - 按 print-template.md 实现 A4 几何、左侧填涂区、右上信息、右下笔记、QR 预留、四角 ArUco；
@@ -1082,7 +1081,7 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 - 用 PrintedPdfDocument 生成 PDF，保存到 evidence/print/；
 - 断言几何参数与 TemplateGeometry 一致；`hasNoteArea=false` 的条目按 `rightBottom=0` 绘制，附件不截断、不补画（C-062）；
 - overflow 条目只输出 warnings，不生成占位行或空白页（C-060/C-061）；
-- 不绘制“续下页”；每个日期的第一页绘制日期大标题（默认 `dateHeadingFontMm=5mm` / `dateHeadingHeightMm=7mm`），并在其下标注“本日共需复习 X 题”（字号与图例一致：3.2mm；高度为日期标题行高的一半：3.5mm；top 不变，合计 10.5mm 绘制在默认 12mm 上边距内，不占用内容区），X = 该日期实际打印的题目数，不含 overflow（C-063）；不得在 onLayout 临时压缩行高；
+- 不绘制“续下页”；每个日期的第一页绘制日期大标题（默认 `dateHeadingFontMm=5mm` / `dateHeadingHeightMm=7mm`），绘制在上边距内、不占用内容区；2026-11-22 起不再绘制“本日共需复习 X 题”与首页图例；填涂框上方每页直接标注「掌握 / 较熟悉 / 不会」并与三框中心对齐；不得在 onLayout 临时压缩行高；
 - 警告只渲染中文文案/映射标签，不展示内部代码（C-065）；`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并合并（C-064）；overflow 提示文案按 C-066：整题过高提示减少关联知识点/缩短描述，附加超限提示减少附加笔记，不得建议拆分题目。
 
 【固定循环（本轮只走一遍）】
@@ -1237,6 +1236,204 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 - 不用 mock/模拟数据充当识别验收证据；人工核对不能替代真实图像证据。
 - 不为了让测试变绿而放宽断言。
 ```
+
+---
+
+## 追加：复习进度页（2026-11-22）【done】
+
+【本轮背景】用户要求新增可视化页面，展示每道题的复习进度与到期时间；首页入口位于“管理知识点”与“查看并打印本周计划”之间。调度单元仍是知识点（D-01），题目到期取任一未休眠关联知识点最早的 `nextDueDate`；归档题目不参与（D-11）。本轮只读，不改变调度与反馈写入。
+
+【本轮任务】
+- `data:room` 增加只读端口 `ReviewProgressRepository`：未归档题目 + 关联知识点状态投影；
+- 新增 `:feature:progress`：纯 Kotlin 聚合器（统计、14 天分布、排序）+ 手写 ViewModel + Compose 页面；
+- `:app` 注册路由 `AppRoute.Progress`，首页增加“查看复习进度”；
+- 补聚合、ViewModel 与只读投影测试；实体机验证入口顺序、统计/题卡、滚动与返回；
+- 同步 `docs/changelog.md`、本文件、`CLAUDE.md` 与 `docs/architecture/overview.md`；`docs/specs/app.md` 已按 2026-11-22 用户授权回写。
+
+【落地说明（2026-11-22）】已完成上述改动。`./gradlew test verifyCorePurity :app:assembleDebug` 全部通过；实体机 VKJ-AN00 验证首页顺序、进度页统计/分布/题卡、滚动与返回，证据见 `evidence/screens/progress-0*.png` 与 `evidence/ui/progress-0*.xml`。
+
+---
+
+## 追加：填涂格改为答题卡式 16:9（2026-11-22）【done】
+
+【本轮背景】用户要求把打印稿左侧 A/B/C 填涂格改为答题卡式 16:9 宽格，便于横向填涂，并确认对扫描回读的影响。OMR 只采样框中心 2.5mm×2.5mm 窗口，不读取方框外形；风险在于打印与扫描的列中心必须同步，以及旧打印稿的兼容。
+
+【本轮任务】
+- `TemplateGeometry` 统一列几何：序号 6mm、知识点 34mm、列间距 1.5mm、填涂格 5.7×3.2mm、框间距 1.55mm（同日后续用户要求改为 3.1mm）、采样窗 2.5mm；
+- 打印层按模板绘制宽格，`BubbleLayout` 使用宽/高；
+- 扫描端 OMR 直接用 `TemplateGeometry.bubbleCenterXMm` 计算中心；项目未发布，不做旧模板/旧稿适配；
+- 补模板、打印布局与设备用例（含 A 格横向笔迹命中）；
+- 生成新布局 PDF/PNG 与扫描报告，证据存 `evidence/`；
+- 已按 2026-11-22 用户授权回写 `print-template.md`、`scan-pipeline.md`、`pagination.md`、`app.md` 与 `repository.md`。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 全部通过；实体机报告 `OMR_MARKED_ROWS=q7#0=OK/MASTERED`，其余行 `NO_MARK`。新几何与未决风险见 `docs/agent-log/2026-11-22.md`。
+
+---
+
+## 追加：题库搜索（2026-11-22）【done】
+
+【本轮背景】用户要求题库页提供与知识点页相近的搜索，关键词可为题号、来源页码或知识点。
+
+【本轮任务】
+- 新增纯函数 `filterQuestions`：题号、来源页 `编号-说明`、任一知识点名称，大小写不敏感；空查询返回全部；
+- `EntryViewModel` 保存搜索关键词，进入编辑页再返回不丢失；
+- `EntryScreen` 顶部增加搜索框，标题显示“匹配 M / N 道题”，无匹配时提示“没有匹配的题目。”；
+- 补 `QuestionSearchTest`；实体机验证三类关键词、编辑返回与清空恢复；
+- 已按 2026-11-22 用户授权回写 `docs/specs/entry.md`（搜索规则与 E-13）与 `app.md` 的 Entry 行。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；实体机验证 `Temp` 命中 5 题、`T-6` 命中 1 题、`12` 命中 2 题，编辑页返回保留条件；证据见 `evidence/screens/entrysearch-0*.png`。
+
+---
+
+## 追加：首页按钮语义化图标（2026-11-22）【done】
+
+【本轮背景】用户要求主页面每个按钮开头增加语义化图标，文案与跳转不变。
+
+【本轮任务】
+- 在 `app/res/drawable` 增加五个 Material Icons 矢量图标（录入/知识点/进度/本周计划/扫描）；
+- 首页按钮统一改为 `HomeActionButton`：18dp 图标 + 8dp 间距 + 文案；图标 `contentDescription=null`；
+- 实体机截图验证图标与文字对齐；纯视觉改动，不改规格与决策摘要。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；证据见 `evidence/screens/homeicons-01-home.png` 与 `evidence/ui/homeicons-01-home.xml`。
+
+---
+
+## 追加：首页仪表盘式布局（2026-11-22）【done】
+
+【本轮背景】用户授权自行决定更美观、更优化的主界面排版，不改变各入口功能。
+
+【本轮任务】
+- 首页改为：本周计划主卡（周窗口/状态/生成打印主操作）+ 题目/知识点/已逾期/7 天内概览 + 2×2 快捷操作卡片（录入题目 / 查看复习进度 / 扫描回读 / 管理知识点）；
+- 进入 Home 时静默读取计划状态、题目数、知识点数与到期统计；读取失败显示“—”，不阻塞入口；
+- 卡片使用既有语义化图标与 Material3 颜色角色；补实体机截图；
+- 回写 `app.md` 的 Home 行，并同步 CLAUDE.md / overview / changelog / agent-log。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；实体机验证主卡跳转预览、快捷卡进入进度/知识点页，证据见 `evidence/screens/homelayout-0*.png`。
+
+---
+
+## 追加：应用名资源化与图标入口（2026-11-22）【done】
+
+【本轮背景】用户要求补全桌面显示的应用名称，并了解如何自定义应用图标。
+
+【本轮任务】
+- 新增 `app/src/main/res/values/strings.xml`，`app_name` = “拾知”；
+- `<application>` 与 Launcher `<activity>` 均使用 `android:label="@string/app_name"`；
+- 验证 `aapt` 的 `application-label` 与 `launchable-activity label` 均为“拾知”；
+- 记录自定义图标方式：Android Studio Image Asset，或手写 `mipmap-anydpi-v26/ic_launcher.xml` 自适应图标（前景 108×108、安全区 66×66），并在 Manifest 绑定 `android:icon/android:roundIcon`。
+
+【落地说明（2026-11-22）】名称已资源化并安装验证；当前仍未配置 `android:icon`，桌面使用系统默认图标，自定义方式见 `docs/agent-log/2026-11-22.md` 的“图标现状与自定义指引”。
+
+---
+
+## 追加：应用图标（2026-11-22）【done】
+
+【本轮背景】用户要求按项目语义生成并应用应用图标，且不要包含“拾知”文字。
+
+【本轮任务】
+- 最终按用户选择使用方案 A：紫色渐变背景 + 居中白色复习卡（边长约 2/3）+ 页眉 + A/B/C 填涂格 + 对勾（无文字）；卡片四周边距约 1/6；
+- 前景核心图形位于 108dp 画布的中央 66×66 安全区；提供 Android 13 单色主题图标层；
+- A/B/C 填涂格体现纸面复习，对勾表示完成；候选方案 A～E 的预览保存在 `evidence/icon-concepts/`；
+- 新增 `mipmap-anydpi-v26/ic_launcher.xml` / `ic_launcher_round.xml`，Manifest 绑定 `android:icon` / `android:roundIcon`；
+- 实体机安装、重启桌面并截图验证图标与名称。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；桌面显示新图标与“拾知”名称，证据见 `evidence/screens/appicon-01-home.png`。
+
+---
+
+## 追加：去除启动页图标（2026-11-22）【done】
+
+【本轮背景】用户要求去除打开应用时显示图标的启动画面。
+
+【本轮任务】
+- 新增 `Theme.Recollect`，`windowBackground` 与应用浅色背景一致；
+- `values-v31/themes.xml` 将 `windowSplashScreenAnimatedIcon` 设为透明，启动背景与图标背景设为同色，动画时长 0；
+- Manifest 应用主题切换到 `Theme.Recollect`；冷启动连拍验证启动帧为纯色背景。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；启动帧无图标，证据见 `evidence/screens/splash-01-no-icon.png`。Android 12+ 系统启动画面无法完全移除，只能去除图标。
+
+---
+
+## 追加：来源标签库与来源单选（2026-11-22）【done】
+
+【本轮背景】用户要求把录入页的「说明（可空）」改为「来源（可空）」，与知识点一样以单选标签填写，并提供独立窗口增删改查来源标签。
+
+【本轮任务】
+- data:room 新增 `source_tag`（schema v9）：名称唯一；列表按名称升序并附带未归档题目引用数；`create/rename/delete` 在事务内完成，重命名同步更新 `question.sourcePage`，删除前校验未被未归档题目引用；v8→v9 迁移把旧自由文本来源去重种入（空白不种入）。
+- 录入/编辑页的来源改为单选 FilterChip（可空，再次点击取消），旧题中不在标签库的来源显示为临时标签；「管理来源」打开录入页内的全屏窗口（不进入返回栈），关闭后保留未保存的表单内容并刷新候选。
+- ViewModel、Schema 与 Repository 测试覆盖名称去空白、重复拒绝、重命名同步、引用不可删、空库/无匹配。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；schema 导出 `9.json` 并由 `RoomSchemaTest` 锁定。实体机验证：新增/重命名/删除来源、单选与取消、表单保留、保存 `1-WB`、被引用来源不可删；证据见 `evidence/screens/source-0*.png`。
+
+---
+
+## 追加：页码编号按来源切换编辑方式（2026-11-22）【done】
+
+【本轮背景】用户确认：带来源时页码编号可键盘输入，无来源时沿用 +/−；默认值按「有无来源」分别记忆，无来源只取最近一条无来源题目的编号。
+
+【本轮任务】
+- `EntryRepository.defaultSourcePageCode(hasSource)` 按有无来源分别查询最近一条题目的编号；`QuestionDao` 拆为 `latestSourcePageCodeWithoutSource/WithSource`（`trim(sourcePage)` 判空）。
+- 录入页页码改为文本状态：带来源可数字键盘输入（过滤非数字、最多 5 位）；无来源只读 + +/−；空/0 显示「请输入不小于 1 的页码编号。」并禁用保存。
+- 新建页切换来源且用户未手改编号时，自动套用对应类的默认值；手改后不再覆盖；编辑既有题目保留原编号。
+- 单测覆盖 Repository 默认值分离、ViewModel 两个默认值与保存校验。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过。实体机验证：无来源字段键盘输入不生效、+/− 到 5 保存；选中来源后编号自动由 5 切到有来源默认 1，键盘改为 8 保存为 `8-WB`；下一题默认回到无来源记忆 5；清空页码显示提示并禁用保存；证据见 `evidence/screens/pagecode-0*.png`。
+
+---
+
+## 追加：录入页字段并排与来源窗口导航栏（2026-11-22）【done】
+
+【本轮背景】用户要求「来源标签」窗口采用与「知识点」页相同的导航栏布局（语义图标放左侧），并把「题号」与「页码编号」同行并排、各占一半。
+
+【本轮任务】
+- 来源窗口用 Material3 `TopAppBar`：左侧 `ic_close` 语义关闭图标 + 标题「来源标签」，与知识点页的左侧返回图标 + 标题同位置同高度；不再使用右侧文字「关闭」。
+- 录入页把题号与页码编号放入同一 `Row`，`weight(1f)` 各占一半、间距 8dp；页码的 +/− 与校验提示保持不变。
+- 纯视觉调整，不改数据与调度语义。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :app:assembleDebug :feature:entry:test` 通过；实体机测量：题号 `[56,415][618,639]`、页码 `[646,415][1208,639]`；来源窗口关闭图标 `[56,205][140,289]`、标题从左 196 开始，与知识点页一致。证据见 `evidence/screens/uialign-0*.png`。
+
+---
+
+## 追加：删除图例/每日总题数、档位表头与确认页核对优化（2026-11-22）【done】
+
+【本轮背景】用户要求：删除 PDF 图例；把填涂框上方 A/B/C 改为与框居中对齐的「掌握 / 较熟悉 / 不会」，每页重复；文字宽于框时优先保证字间距，通过扩大框间距解决并同步识别几何；删除「本日共需复习 X 题」；确认页只保留一个默认填入 OCR 原文、左上角提示「请核对笔记识别结果」的可编辑文本框；卡片删除「OMR：…」并直接显示复习效果识别结果。
+
+【本轮任务】
+- `TemplateGeometry`：删除 `legendHeightMm`、`firstPageUsableHeightMm`、`firstPageContentHeightMm`、`dailyTotalFontMm`、`dailyTotalHeightMm`；`dateHeadingBlockHeightMm = dateHeadingHeightMm`；`leftRatio = 0.42`、`bubbleGapMm = 3.1`；`bubbleCenterXMm` 自动给出新采样中心。
+- `DefaultPagePlanner`：每页容量都取 `contentHeightMm`，删除空首页分支；`yOffsetMm = contentTopMm + headerRowHeightMm + 已放置高度`。
+- `PrintLayout`/`PrintRenderer`：删除图例与每日总题数绘制；表头改为「序号 / 知识点 / 掌握 / 较熟悉 / 不会」，三个档位文字以填涂格中心居中。
+- `ConfirmStateMachine`：`correctedText` 默认填入 `detectedRawOcr`，编辑只改 `correctedText`，`detectedRawOcr` 保持只读。
+- `ConfirmScreen`：删除「识别原文（只读）」与「OMR：…」；只保留一个 `OutlinedTextField`（label「请核对笔记识别结果」）；卡片显示「识别结果：掌握/较熟悉/不会/未填涂/填涂冲突/无法识别」。
+- 更新 `print-template.md`、`pagination.md`、`scan-pipeline.md`、`confirm-flow.md`、`CLAUDE.md`、`overview.md`、changelog 与 agent-log。
+
+【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity` 全部通过（分页 130 个用例、打印/确认/计划模块测试均通过）；识别中心随 `TemplateGeometry` 共用，扫描端无需另写常量。设备端拍照回读证据仍需按 R-01 用真实打印稿补录。
+
+---
+
+## 追加：OMR 行判定修复（2026-11-22）【done】
+
+【本轮背景】用户用 `evidence/print/fail_1.png`（计划 GHB2EB，纸面为掌握/较熟悉/不会）扫描回读，确认页三行均显示「无法识别」。真机回归确认该图经 ArUco 矫正后三行暗像素比例分别为 `0.967/0/0`、`0/1/0`、`0/0/1`，本应全部 `OK`；问题在行判定顺序。
+
+【本轮任务】
+- `OmrClassifier.rowOf`：>1 个 HIT → `CONFLICT`；恰好 1 个 HIT → `OK`（其余框的 10%–30% 模糊读数不推翻唯一命中）；0 HIT 且有模糊框 → `UNREADABLE`；0 HIT 全 MISS → `NO_MARK`。
+- 单框阈值（>30% / <10% / 10%–30%）与 2.5mm 采样窗不变。
+- 新增 `OmrClassifierTest` 的“唯一命中优先”用例；新增真机回归 `OmrFailImageRegressionTest` 与资产 `fail_1.png`。
+- 同步 `scan-pipeline.md`、`CLAUDE.md` D-09、`overview.md`、changelog 与 agent-log。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :feature:scan:test test verifyCorePurity` 通过；真机回归报告 `OMR=q1#0=OK/MASTERED, q2#0=OK/FAMILIAR, q3#0=OK/UNKNOWN`；App 内重扫后 `pending_feedback` 写入 `MASTERED/FAMILIAR/UNKNOWN`，状态均为 `OK`。证据见 `evidence/scan/fail_1-*`。
+
+---
+
+## 追加：预估复习时长校验（2026-11-22）【done】
+
+【本轮背景】用户要求「编辑题目」页的「预估复习时长」必须输入 `>= 1` 的整数，不合法时禁用保存。
+
+【本轮任务】
+- `QuestionEditScreen.kt`：计算 `reviewMinutesValid`（`toIntOrNull()?.let { it >= 1 } == true`），加入 `canSave`；
+- 输入框 `isError` + 下方错误文案「预估复习时长必须输入不小于 1 的整数。」；
+- 实体机验证空、0、1 三种输入下的保存按钮状态；同步 `entry.md`、changelog、agent-log。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :feature:entry:test :app:compileDebugKotlin` 与 `./gradlew test verifyCorePurity` 通过；实体机截图见 `evidence/screens/minutes-2026-11-22-zero.png`、`minutes-2026-11-22-one.png`。
 
 ---
 

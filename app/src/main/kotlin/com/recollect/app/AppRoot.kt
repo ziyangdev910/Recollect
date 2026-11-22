@@ -1,13 +1,25 @@
 package com.recollect.app
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -23,11 +35,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.recollect.app.navigation.AppNavigator
 import com.recollect.app.navigation.AppRoute
+import com.recollect.data.room.repository.PlanStatus
 import com.recollect.feature.confirm.ConfirmScreen
 import com.recollect.feature.confirm.ConfirmSubmitter
 import com.recollect.feature.confirm.ConfirmViewModel
@@ -37,10 +53,14 @@ import com.recollect.feature.entry.KnowledgePointLibraryScreen
 import com.recollect.feature.entry.KnowledgePointLibraryViewModel
 import com.recollect.feature.entry.QuestionEditScreen
 import com.recollect.feature.entry.QuestionEditViewModel
+import com.recollect.feature.entry.SourceTagLibraryViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
 import com.recollect.feature.planning.PlanPreviewViewModel
 import com.recollect.feature.planning.PrintJob
 import com.recollect.feature.planning.defaultPlanningSettings
+import com.recollect.feature.progress.ReviewProgressAggregator
+import com.recollect.feature.progress.ReviewProgressScreen
+import com.recollect.feature.progress.ReviewProgressViewModel
 import com.recollect.feature.print.AndroidPrintLauncher
 import com.recollect.feature.print.PrintPlanInput
 import com.recollect.feature.print.PrintPlanScreen
@@ -48,6 +68,7 @@ import com.recollect.feature.print.PrintPlanViewModel
 import com.recollect.scan.ui.ScanScreen
 import com.recollect.scan.ui.ScanViewModel
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 
 /**
  * Compose 壳（阶段 5.1/5.2）。
@@ -94,16 +115,39 @@ fun AppRoot(
         )
     }
 
-    // 首页按钮文案跟随本周计划状态：已有计划时只“查看并打印”，不再隐式生成新计划号。
-    var hasActivePlan by remember(container) { mutableStateOf(false) }
+    // 首页概览：计划状态、本周窗口与题目/知识点/到期统计。
+    // 任一统计读取失败只显示“—”，不阻塞首页入口（计划按钮仍可用）。
+    val initialHomeSettings = remember(container) {
+        defaultPlanningSettings(LocalDate.now(container.clock))
+    }
+    var homeWeekStart by remember(container) { mutableStateOf(initialHomeSettings.planStartDate) }
+    var homeWeekEnd by remember(container) { mutableStateOf(initialHomeSettings.planEndDate) }
+    var planStatus by remember(container) { mutableStateOf<PlanStatus?>(null) }
+    var questionCount by remember(container) { mutableStateOf<Int?>(null) }
+    var knowledgeCount by remember(container) { mutableStateOf<Int?>(null) }
+    var overdueCount by remember(container) { mutableStateOf<Int?>(null) }
+    var dueWithinWeekCount by remember(container) { mutableStateOf<Int?>(null) }
+
     LaunchedEffect(current, container) {
-        if (current == AppRoute.Home) {
-            val settings = defaultPlanningSettings(LocalDate.now(container.clock))
-            hasActivePlan = container.planRepository.activePlan(
+        if (current != AppRoute.Home) return@LaunchedEffect
+        val today = LocalDate.now(container.clock)
+        val settings = defaultPlanningSettings(today)
+        homeWeekStart = settings.planStartDate
+        homeWeekEnd = settings.planEndDate
+        planStatus = quietly {
+            container.planRepository.activePlan(
                 weekStart = settings.planStartDate,
                 weekEnd = settings.planEndDate,
-            ) != null
+            )?.status
         }
+        questionCount = quietly { container.entryRepository.summaries().size }
+        knowledgeCount = quietly { container.knowledgePointLibraryRepository.tags().size }
+        val stats = quietly {
+            val rows = container.reviewProgressRepository.questions()
+            if (rows.isEmpty()) null else ReviewProgressAggregator.build(rows, today).stats
+        }
+        overdueCount = stats?.overdueQuestions
+        dueWithinWeekCount = stats?.dueWithinWeekQuestions
     }
     val openPlanPreview = {
         planPreviewGeneration += 1
@@ -142,9 +186,16 @@ fun AppRoot(
             ) {
                 when (val route = current) {
                     AppRoute.Home -> HomeScreen(
-                        hasActivePlan = hasActivePlan,
+                        planStatus = planStatus,
+                        weekStart = homeWeekStart,
+                        weekEnd = homeWeekEnd,
+                        questionCount = questionCount,
+                        knowledgeCount = knowledgeCount,
+                        overdueCount = overdueCount,
+                        dueWithinWeekCount = dueWithinWeekCount,
                         onEntry = { navigator.push(AppRoute.Entry) },
                         onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
+                        onProgress = { navigator.push(AppRoute.Progress) },
                         onPlanPreview = openPlanPreview,
                         onScan = { navigator.push(AppRoute.Scan) },
                     )
@@ -164,10 +215,16 @@ fun AppRoot(
                             QuestionEditViewModel(
                                 repository = container.entryRepository,
                                 libraryRepository = container.knowledgePointLibraryRepository,
+                                sourceTagRepository = container.sourceTagLibraryRepository,
                             )
+                        }
+                        // 来源标签库在录入页内以全屏窗口打开：不离开当前页面，未保存的表单内容不会丢失。
+                        val sourceTagViewModel = remember(container) {
+                            SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
                         }
                         QuestionEditScreen(
                             viewModel = viewModel,
+                            sourceTagViewModel = sourceTagViewModel,
                             questionId = route.questionId,
                             onManageTags = { navigator.push(AppRoute.KnowledgePoints) },
                             onSaved = {
@@ -183,6 +240,16 @@ fun AppRoot(
                             KnowledgePointLibraryViewModel(container.knowledgePointLibraryRepository)
                         }
                         KnowledgePointLibraryScreen(viewModel)
+                    }
+
+                    AppRoute.Progress -> {
+                        val viewModel = remember(container) {
+                            ReviewProgressViewModel(
+                                repository = container.reviewProgressRepository,
+                                clock = container.clock,
+                            )
+                        }
+                        ReviewProgressScreen(viewModel)
                     }
 
                     AppRoute.PlanPreview -> PlanPreviewScreen(
@@ -248,31 +315,317 @@ fun AppRoot(
     }
 }
 
+/**
+ * 首页仪表盘：本周计划主卡 + 数据概览 + 2×2 快捷操作。
+ *
+ * 计划是主流程，放在最上方并用主色容器突出；题目/知识点/到期统计用于扫一眼掌握情况；
+ * 其余入口收纳为带图标的快捷卡片。统计读取失败时显示“—”，不影响任何入口。
+ */
 @Composable
 private fun HomeScreen(
-    hasActivePlan: Boolean,
+    planStatus: PlanStatus?,
+    weekStart: LocalDate,
+    weekEnd: LocalDate,
+    questionCount: Int?,
+    knowledgeCount: Int?,
+    overdueCount: Int?,
+    dueWithinWeekCount: Int?,
     onEntry: () -> Unit,
     onManageKnowledgePoints: () -> Unit,
+    onProgress: () -> Unit,
     onPlanPreview: () -> Unit,
     onScan: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Text("拾知：把复习打印到纸上", style = MaterialTheme.typography.headlineSmall)
-        Button(onClick = onEntry) { Text("录入题目") }
-        Button(onClick = onManageKnowledgePoints) { Text("管理知识点") }
-        // 打印入口只在“计划预览”页内提供：生成与打印是同一条流程的两个步骤，
-        // 避免 Home 在没有内存计划时进入打印页只看到空态。
-        Button(onClick = onPlanPreview) {
-            Text(if (hasActivePlan) "查看并打印本周计划" else "生成本周计划")
+        item {
+            PlanHeroCard(
+                planStatus = planStatus,
+                weekStart = weekStart,
+                weekEnd = weekEnd,
+                onPlanPreview = onPlanPreview,
+            )
         }
-        Button(onClick = onScan) { Text("扫描回读") }
+        item {
+            HomeStatsCard(
+                questionCount = questionCount,
+                knowledgeCount = knowledgeCount,
+                overdueCount = overdueCount,
+                dueWithinWeekCount = dueWithinWeekCount,
+            )
+        }
+        item {
+            Text(
+                text = "快捷操作",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_entry,
+                    title = "录入题目",
+                    subtitle = "添加新题与知识点",
+                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onEntry,
+                )
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_progress,
+                    title = "查看复习进度",
+                    subtitle = "掌握度与到期时间",
+                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    onClick = onProgress,
+                )
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_scan,
+                    title = "扫描回读",
+                    subtitle = "拍照回读填涂结果",
+                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    onClick = onScan,
+                )
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_knowledge,
+                    title = "管理知识点",
+                    subtitle = "维护标签库",
+                    iconContainer = MaterialTheme.colorScheme.surfaceVariant,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onManageKnowledgePoints,
+                )
+            }
+        }
     }
 }
+
+/** 本周计划主卡：状态、周窗口与唯一主操作。 */
+@Composable
+private fun PlanHeroCard(
+    planStatus: PlanStatus?,
+    weekStart: LocalDate,
+    weekEnd: LocalDate,
+    onPlanPreview: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "本周计划",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onPrimaryContainer,
+                    )
+                    Text(
+                        text = "$weekStart — $weekEnd",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onPrimaryContainer.copy(alpha = 0.75f),
+                    )
+                }
+                StatusPill(planStatusLabel(planStatus))
+            }
+            Text(
+                text = planStatusMessage(planStatus),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onPrimaryContainer.copy(alpha = 0.85f),
+            )
+            // 打印入口只在“计划预览”页内提供：生成与打印是同一条流程的两个步骤，
+            // 避免 Home 在没有内存计划时进入打印页只看到空态。
+            Button(
+                onClick = onPlanPreview,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_home_plan),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (planStatus == null) "生成本周计划" else "查看并打印本周计划")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(text: String) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(colors.surface.copy(alpha = 0.65f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.onPrimaryContainer,
+        )
+    }
+}
+
+/** 一行四项概览；数据未加载或读取失败时显示“—”。 */
+@Composable
+private fun HomeStatsCard(
+    questionCount: Int?,
+    knowledgeCount: Int?,
+    overdueCount: Int?,
+    dueWithinWeekCount: Int?,
+) {
+    val colors = MaterialTheme.colorScheme
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 16.dp),
+        ) {
+            HomeStat(
+                label = "题目",
+                value = questionCount,
+                valueColor = colors.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            HomeStat(
+                label = "知识点",
+                value = knowledgeCount,
+                valueColor = colors.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            HomeStat(
+                label = "已逾期",
+                value = overdueCount,
+                valueColor = if ((overdueCount ?: 0) > 0) colors.error else colors.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            HomeStat(
+                label = "7 天内",
+                value = dueWithinWeekCount,
+                valueColor = colors.primary,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeStat(
+    label: String,
+    value: Int?,
+    valueColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = value?.toString() ?: "—",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = valueColor,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun QuickActionCard(
+    iconRes: Int,
+    title: String,
+    subtitle: String,
+    iconContainer: Color,
+    iconTint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(onClick = onClick, modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun planStatusLabel(status: PlanStatus?): String = when (status) {
+    null -> "未生成"
+    PlanStatus.GENERATED -> "待打印"
+    PlanStatus.PRINTED -> "已打印"
+    PlanStatus.COMPLETED -> "已完成"
+    PlanStatus.SUPERSEDED -> "已替代"
+}
+
+private fun planStatusMessage(status: PlanStatus?): String = when (status) {
+    null -> "按本周到期的知识点生成计划，打印到纸上开始复习。"
+    PlanStatus.GENERATED -> "计划已生成，打印后按日期完成复习。"
+    PlanStatus.PRINTED -> "已打印。按日期完成复习，完成后拍照回读。"
+    PlanStatus.COMPLETED -> "本周计划已完成，可以查看复习进度。"
+    PlanStatus.SUPERSEDED -> "本周计划已被新的计划替代，请查看最新计划。"
+}
+
+/** 首页概览的静默读取：统计失败不影响入口；协程取消照常向上传播。 */
+private suspend fun <T> quietly(block: suspend () -> T): T? =
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
 
 /** app 层把计划层的 `PrintJob` 映射为打印 feature 的输入，避免 feature 之间直接依赖。 */
 private fun PrintJob.toPrintPlanInput(): PrintPlanInput = PrintPlanInput(
@@ -288,6 +641,7 @@ private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Entry -> "题库"
     is AppRoute.QuestionEdit -> if (route.questionId == null) "录入题目" else "编辑题目"
     AppRoute.KnowledgePoints -> "知识点"
+    AppRoute.Progress -> "复习进度"
     AppRoute.PlanPreview -> "计划预览"
     AppRoute.Print -> "打印"
     AppRoute.Scan -> "扫描"

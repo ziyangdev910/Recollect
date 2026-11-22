@@ -98,13 +98,13 @@ data class OmrRow(
 
 ## OMR 采样几何与阈值
 
-- 左区 x 起点 = `TemplateGeometry.contentLeftMm`（`a4Print()` 下 26mm），宽 = `leftAreaWidthMm`（`a4Print()` 下 63.2mm）；列宽：序号 8mm、知识点 34mm、A/B/C 各 3.5mm，框间距 2mm。不得再用旧的 12mm/74.4mm（C-091 方案 A）。
-- 框中心 x = `contentLeftMm + 8 + 2 + 34 + 2 + i*(3.5+2) + 1.75`（i=0/1/2，`a4Print()` 下为 73.75/79.25/84.75mm）；框中心 y = 行 y 起点 + `rowHeightMm/2`。
-- 单个题块内第 j 行 y 起点 = `yOffset + j*rowHeightMm`；`yOffset` 已包含页首图例/表头与上方题块。不要用跨题块的全局行号公式。
+- 左区 x 起点 = `TemplateGeometry.contentLeftMm`（`a4Print()` 下 26mm），宽 = `leftAreaWidthMm`（`a4Print()` 下 66.36mm）；列宽：序号 6mm、知识点 34mm、列间距 1.5mm；填涂格为答题卡式 16:9 宽格，`bubbleWidthMm × bubbleHeightMm` = 5.7 × 3.2mm，框间距 **3.1mm**（2026-11-22 用户要求：为「掌握 / 较熟悉 / 不会」留出文字间距）。不得再用旧的 12mm/74.4mm（C-091 方案 A），也不得再使用旧的 8/34/3.5/2mm 列宽。
+- 框中心 x 直接取 `TemplateGeometry.bubbleCenterXMm(i)`（i=0/1/2 对应掌握/较熟悉/不会，`a4Print()` 下为 71.85/80.65/89.45mm）；框中心 y = 行 y 起点 + `rowHeightMm/2`。打印与扫描共用同一 `TemplateGeometry`，不得在任一模块另写常量；框间距变化时采样中心随公式自动平移，无需在扫描端另调参数。项目未发布，不保留旧模板兼容分支。
+- 单个题块内第 j 行 y 起点 = `yOffset + j*rowHeightMm`；`yOffset` 已包含页首表头与上方题块（2026-11-22 删除首页图例后不再有图例偏移）。不要用跨题块的全局行号公式。
 - 题块内定位优先用 `PlacedItem.yOffsetMm`：题块左侧行从 `yOffset` 开始（已包含页首与上方题块），按 `knowledgeRows` 快照行序绑定。
-- 每个框采样中心 2.5mm×2.5mm；灰度 < 128 记为暗像素。
-- 暗像素比例 > 30% → 命中；< 10% → 未命中；10%–30% → 该行 `UNREADABLE`。
-- 一行 >1 个命中 → `CONFLICT`；0 个命中 → `NO_MARK`；恰好 1 个 → `OK`。
+- 每个框采样中心 2.5mm×2.5mm（`bubbleSampleSizeMm`，必须小于框高 `bubbleHeightMm`）；灰度 < 128 记为暗像素。
+- 单个框：暗像素比例 > 30% → 命中；< 10% → 未命中；10%–30% → 模糊。
+- 行判定优先级（2026-11-22 修复）：>1 个明确命中 → `CONFLICT`；**恰好 1 个明确命中 → `OK`**，其余框落在 10%–30% 的模糊区间也不推翻唯一命中（低分辨率扫描时未填涂框边缘常落在此区间，旧逻辑会把整行误判为 `UNREADABLE`）；0 个命中且存在模糊框 → `UNREADABLE`；0 个命中且全部未命中 → `NO_MARK`。
 
 ## QR 与题块绑定
 
@@ -169,7 +169,7 @@ QR 解码成功后、创建 `PendingFeedback` 前，按以下顺序校验：
 - 若快照与当前 DB 的关联集合不一致（例如打印后用户改了关联），确认页按快照校验；用户必须重新打印才能使用新关联。
 - 行组边界：透视矫正后，左侧填涂区顶部为 `leftAreaTop`；第 i 行（0-based）的 y 范围为
   `[leftAreaTop + headerRowHeightMm + i * rowHeightMm, leftAreaTop + headerRowHeightMm + (i + 1) * rowHeightMm)`。
-- 每行三个框：A/B/C 在行内水平等距；框中心与边距来自 `TemplateGeometry.a4Print()` 的 `contentLeftMm` 与固定列宽（序号 8、知识点 34、A/B/C 3.5、间距 2）。采样窗口不跨行、不跨框。
+- 每行三个框：掌握/较熟悉/不会在行内水平等距；框中心与边距来自 `TemplateGeometry.a4Print()` 的 `bubbleCenterXMm(i)`（序号 6mm、知识点 34mm、列间距 1.5mm、框 5.7×3.2mm、框间距 3.1mm）。采样窗口不跨行、不跨框。
 - 第 i 行绑定到 `sortedKnowledgePoints[i].id`（来自 `PlanPage.knowledgeRows` 快照）；因此回读端不需要 QR 携带知识点 ID（D-09）。
 - `KnowledgePoint.number` 创建后不可变、删除后由墓碑保留；若打印后用户修改了题目的关联知识点集合，旧打印稿仍按快照行映射，确认页会校验快照与当前关联的**成员与顺序**是否一致，不一致则阻断写入，要求重新打印。
 - OMR 识别结果：

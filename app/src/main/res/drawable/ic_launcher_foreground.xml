@@ -1,0 +1,39 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 居中复习卡：边长 72 / 108 ≈ 2/3，不贴边 -->
+    <path
+        android:fillColor="#FFFFFBFE"
+        android:pathData="M29,18 H79 A11,11 0 0 1 90,29 V79 A11,11 0 0 1 79,90 H29 A11,11 0 0 1 18,79 V29 A11,11 0 0 1 29,18 Z" />
+
+    <!-- 页眉 -->
+    <path
+        android:fillColor="#FFE8DEF8"
+        android:pathData="M29.9,27.9 H78.1 A2.9,2.9 0 0 1 81,30.8 A2.9,2.9 0 0 1 78.1,33.7 H29.9 A2.9,2.9 0 0 1 27,30.8 A2.9,2.9 0 0 1 29.9,27.9 Z" />
+
+    <!-- A/B/C 三格：A 已填涂，B/C 描边 -->
+    <path
+        android:fillColor="#FF6750A4"
+        android:pathData="M32.6,38.7 H41.3 A2.2,2.2 0 0 1 43.5,40.9 V42.8 A2.2,2.2 0 0 1 41.3,45 H32.6 A2.2,2.2 0 0 1 30.4,42.8 V40.9 A2.2,2.2 0 0 1 32.6,38.7 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49.7,38.7 H58.4 A2.2,2.2 0 0 1 60.6,40.9 V42.8 A2.2,2.2 0 0 1 58.4,45 H49.7 A2.2,2.2 0 0 1 47.5,42.8 V40.9 A2.2,2.2 0 0 1 49.7,38.7 Z"
+        android:strokeColor="#FFB9A7E8"
+        android:strokeWidth="1.2" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M66.8,38.7 H75.5 A2.2,2.2 0 0 1 77.7,40.9 V42.8 A2.2,2.2 0 0 1 75.5,45 H66.8 A2.2,2.2 0 0 1 64.6,42.8 V40.9 A2.2,2.2 0 0 1 66.8,38.7 Z"
+        android:strokeColor="#FFB9A7E8"
+        android:strokeWidth="1.2" />
+
+    <!-- 完成对勾 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M35,66.2 L44.8,75.8 L70,52.2"
+        android:strokeColor="#FF6750A4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="6.3" />
+</vector>

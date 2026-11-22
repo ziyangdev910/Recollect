@@ -9,6 +9,8 @@ import com.recollect.data.room.repository.EntryDraft
 import com.recollect.data.room.repository.EntryRepository
 import com.recollect.data.room.repository.KnowledgePointLibraryRepository
 import com.recollect.data.room.repository.KnowledgePointTag
+import com.recollect.data.room.repository.SourceTagItem
+import com.recollect.data.room.repository.SourceTagLibraryRepository
 import kotlinx.coroutines.CancellationException
 
 /** 录入/编辑页的初始内容；[questionId] 为 null 表示新建。 */
@@ -16,10 +18,16 @@ data class QuestionEditContent(
     val questionId: String?,
     val questionNumber: String,
     val sourcePageCode: Int,
+    /** 无来源题目的默认编号（最近一条无来源题目）；新建页未选来源时显示。 */
+    val defaultSourcePageCodeWithoutSource: Int,
+    /** 有来源题目的默认编号（最近一条有来源题目）；新建页选中来源且未手改时显示。 */
+    val defaultSourcePageCodeWithSource: Int,
     val sourcePageLabel: String,
     val estimatedReviewMinutes: Int,
     val selectedKnowledgePointIds: List<String>,
     val tags: List<KnowledgePointTag>,
+    /** 来源标签库候选；录入页以单选标签填写来源。 */
+    val sourceTags: List<SourceTagItem>,
     val printed: Boolean,
 )
 
@@ -32,6 +40,7 @@ data class QuestionEditContent(
 class QuestionEditViewModel(
     private val repository: EntryRepository,
     private val libraryRepository: KnowledgePointLibraryRepository,
+    private val sourceTagRepository: SourceTagLibraryRepository,
 ) {
     var state by mutableStateOf<UiState<QuestionEditContent>>(UiState.Loading)
         private set
@@ -51,15 +60,21 @@ class QuestionEditViewModel(
     suspend fun load(questionId: String?) {
         state = try {
             val tags = libraryRepository.tags()
+            val sourceTags = sourceTagRepository.tags()
+            val defaultWithoutSource = repository.defaultSourcePageCode(hasSource = false)
+            val defaultWithSource = repository.defaultSourcePageCode(hasSource = true)
             val content = if (questionId == null) {
                 QuestionEditContent(
                     questionId = null,
                     questionNumber = "",
-                    sourcePageCode = repository.defaultSourcePageCode(),
+                    sourcePageCode = defaultWithoutSource,
+                    defaultSourcePageCodeWithoutSource = defaultWithoutSource,
+                    defaultSourcePageCodeWithSource = defaultWithSource,
                     sourcePageLabel = "",
                     estimatedReviewMinutes = EntryDraft.DEFAULT_REVIEW_MINUTES,
                     selectedKnowledgePointIds = emptyList(),
                     tags = tags,
+                    sourceTags = sourceTags,
                     printed = false,
                 )
             } else {
@@ -69,10 +84,13 @@ class QuestionEditViewModel(
                     questionId = summary.questionId,
                     questionNumber = summary.questionNumber,
                     sourcePageCode = summary.sourcePageCode,
+                    defaultSourcePageCodeWithoutSource = defaultWithoutSource,
+                    defaultSourcePageCodeWithSource = defaultWithSource,
                     sourcePageLabel = summary.sourcePageLabel,
                     estimatedReviewMinutes = summary.estimatedReviewMinutes,
                     selectedKnowledgePointIds = summary.knowledgePointIds,
                     tags = tags,
+                    sourceTags = sourceTags,
                     printed = summary.printed,
                 )
             }

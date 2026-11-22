@@ -49,7 +49,7 @@ data class RowDecision(
     val correctedText: String? = null,
 )
 
-/** 逐项标记的结果；[NeedsTier] 表示需要界面弹出 A/B/C 选择。 */
+/** 逐项标记的结果；[NeedsTier] 表示需要界面弹出档位（掌握 / 较熟悉 / 不会）选择。 */
 sealed interface MarkOutcome {
     data object Applied : MarkOutcome
     data object NeedsTier : MarkOutcome
@@ -73,7 +73,14 @@ class ConfirmStateMachine(
     }
 
     private val rowByKey = rows.associateBy { it.key }
-    private val decisions = rows.associate { it.key to RowDecision() }.toMutableMap()
+
+    /**
+     * 修正文本默认填入 OCR 识别原文（2026-11-22 用户要求）：确认页只显示一个可编辑文本框，
+     * 用户无需再次抄写；原始 OCR 仍单独保存在 `detectedRawOcr`，编辑只改 `correctedText`。
+     */
+    private val decisions = rows.associate {
+        it.key to RowDecision(correctedText = it.detectedRawOcr?.ifBlank { null })
+    }.toMutableMap()
 
     /** 未标记行数；确认页底部提示与提交按钮禁用都依赖它。 */
     val unmarkedCount: Int

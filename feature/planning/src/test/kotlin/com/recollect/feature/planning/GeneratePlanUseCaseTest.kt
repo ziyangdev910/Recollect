@@ -142,7 +142,6 @@ class GeneratePlanUseCaseTest {
             pageHeightMm = 50.0,
             topMarginMm = 10.0,
             bottomMarginMm = 10.0,
-            legendHeightMm = 8.0,
             headerRowHeightMm = 7.0,
         )
         val planRepository = FakePlanRepository()

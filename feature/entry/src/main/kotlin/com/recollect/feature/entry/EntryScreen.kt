@@ -18,6 +18,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,6 +56,9 @@ fun EntryScreen(
 
     var pendingDelete by remember { mutableStateOf<EntrySummary?>(null) }
 
+    val allQuestions = (viewModel.state as? UiState.Content)?.data?.questions.orEmpty()
+    val filteredQuestions = filterQuestions(allQuestions, viewModel.query)
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -62,6 +66,14 @@ fun EntryScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // 与知识点页一致的搜索框：题号、来源页码或知识点均可作为关键词。
+            OutlinedTextField(
+                value = viewModel.query,
+                onValueChange = viewModel::updateQuery,
+                label = { Text("搜索题目（题号、页码或知识点）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -69,66 +81,74 @@ fun EntryScreen(
             ) {
                 Text(
                     text = when (val state = viewModel.state) {
-                        is UiState.Content -> "已有 ${state.data.questions.size} 道题"
+                        is UiState.Content -> if (viewModel.query.isBlank()) {
+                            "已有 ${state.data.questions.size} 道题"
+                        } else {
+                            "匹配 ${filteredQuestions.size} / ${state.data.questions.size} 道题"
+                        }
                         else -> "题库"
                     },
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onCreatePlan) { Text("生成本周计划") }
+                // TextButton(onClick = onCreatePlan) { Text("生成本周计划") }
             }
 
             when (val state = viewModel.state) {
                 UiState.Loading -> CircularProgressIndicator()
                 UiState.Empty -> Text("题库还是空的。点击右下角「录入题目」新建第 1 道题。")
                 is UiState.Content -> {
-                    // 列表占满剩余空间；底部留出悬浮按钮的高度，避免遮挡最后一行。
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(bottom = 96.dp),
-                    ) {
-                        items(state.data.questions, key = { it.questionId }) { row ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(
+                    if (filteredQuestions.isEmpty()) {
+                        Text("没有匹配的题目。")
+                    } else {
+                        // 列表占满剩余空间；底部留出悬浮按钮的高度，避免遮挡最后一行。
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(bottom = 96.dp),
+                        ) {
+                            items(filteredQuestions, key = { it.questionId }) { row ->
+                                Card(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .padding(vertical = 8.dp),
+                                            .fillMaxWidth()
+                                            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Text("题号：${row.questionNumber}")
-                                        Text("页码：${row.sourcePage}")
-                                        Text("知识点：${row.knowledgeNames.joinToString(" / ")}")
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.clearActionError()
-                                            onEditQuestion(row.questionId)
-                                        },
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_edit),
-                                            contentDescription = "编辑",
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.clearActionError()
-                                            pendingDelete = row
-                                        },
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_delete),
-                                            contentDescription = "删除",
-                                        )
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(vertical = 8.dp),
+                                        ) {
+                                            Text("题号：${row.questionNumber}")
+                                            Text("页码：${row.sourcePage}")
+                                            Text("知识点：${row.knowledgeNames.joinToString(" / ")}")
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.clearActionError()
+                                                onEditQuestion(row.questionId)
+                                            },
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_edit),
+                                                contentDescription = "编辑",
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.clearActionError()
+                                                pendingDelete = row
+                                            },
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_delete),
+                                                contentDescription = "删除",
+                                            )
+                                        }
                                     }
                                 }
                             }

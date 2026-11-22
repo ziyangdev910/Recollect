@@ -30,11 +30,24 @@ class EntryViewModel(
     var actionError by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * 题库搜索关键词（2026-11-22 用户要求）。
+     *
+     * 放在 ViewModel 中：进入编辑页再返回时页面分支重建，但 ViewModel 由 `AppRoot` 持有，
+     * 搜索条件与列表位置一样不会被清空。
+     */
+    var query by mutableStateOf("")
+        private set
+
     /** 新建/编辑保存后置位；返回题库页时据此静默更新列表，而不重置滚动位置。 */
     private var needsRefresh = false
 
     fun clearActionError() {
         actionError = null
+    }
+
+    fun updateQuery(value: String) {
+        query = value
     }
 
     fun markNeedsRefresh() {

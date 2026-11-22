@@ -2,6 +2,8 @@ package com.recollect.feature.print
 
 import com.recollect.pagination.DefaultPagePlanner
 import com.recollect.pagination.PaginationResult
+import com.recollect.pagination.PlacedItem
+import com.recollect.pagination.PlannedPage
 import com.recollect.pagination.RenderableQuestion
 import com.recollect.pagination.TemplateGeometry
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -16,7 +18,8 @@ import java.time.LocalDate
  * 打印布局（print-template.md、pagination.md）。
  *
  * PR-01：只消费 `PlannedPage`/`PlacedItem` 映射生成 A4 页面布局；
- * 日期大标题 +「本日共需复习 X 题」只出现在每个日期的第一页，绘制在上边距内、不占内容区；
+ * 日期大标题绘制在上边距内、不占内容区；2026-11-22 删除首页图例与「本日共需复习 X 题」，
+ * 填涂框上方每页直接标注「掌握 / 较熟悉 / 不会」；
  * 不绘制“续下页”；`hasNoteArea=false` 不绘制笔记区与附件；
  * `hasNoteArea=true` 时 3 条附件完整绘制；四角 ArUco 与题块底部 QR 预留区按模板几何。
  */
@@ -114,54 +117,42 @@ class PrintLayoutTest {
         // C-091 方案 A：内容区从 26mm 开始，避开 ArUco 内码 10mm + 白边 4mm。
         assertEquals(26.0, first.contentLeftMm, EPSILON)
         assertTrue(first.contentLeftMm >= 12.0 + 10.0 + 4.0)
-        assertEquals(34.0, first.contentTopMm, EPSILON) // 预留 26 + 首页图例 8
+        assertEquals(26.0, first.contentTopMm, EPSILON) // 2026-11-22 删除首页图例，所有页从 26mm 开始
         assertEquals(158.0, first.contentWidthMm, EPSILON)
-        assertEquals(63.2, first.leftAreaWidthMm, EPSILON)
-        assertEquals(89.2, first.rightAreaLeftMm, EPSILON)
-        assertEquals(94.8, first.rightAreaWidthMm, EPSILON)
-        assertEquals(88.8, first.rightTextWidthMm, EPSILON)
+        assertEquals(66.36, first.leftAreaWidthMm, EPSILON)
+        assertEquals(92.36, first.rightAreaLeftMm, EPSILON)
+        assertEquals(91.64, first.rightAreaWidthMm, EPSILON)
+        assertEquals(85.64, first.rightTextWidthMm, EPSILON)
 
-        // C-063：日期大标题 + 每日总题数绘制在上边距内，不占用内容区。
+        // C-063：只保留日期大标题，绘制在上边距内，不占用内容区；每日总题数已删除。
         val heading = first.dateHeading
         assertNotNull(heading)
         assertEquals("2026-11-16 周一", heading!!.text)
         assertEquals(5.0, heading.fontMm)
         assertEquals(7.0, heading.heightMm)
-        assertEquals(15.5, heading.topMm, EPSILON) // 内容区上边界 26 - 标题块 10.5
-        val dailyTotal = first.dailyTotal
-        assertNotNull(dailyTotal)
-        assertEquals("本日共需复习 4 题", dailyTotal!!.text)
-        // 2026-11-18：字号与首页图例一致；高度与 top 不变，保持与日期大标题的间距。
-        assertEquals(3.2, dailyTotal.fontMm)
-        assertEquals(3.5, dailyTotal.heightMm)
-        assertEquals(22.5, dailyTotal.topMm, EPSILON)
-        assertTrue(dailyTotal.topMm + dailyTotal.heightMm <= template.contentTopMm)
-        assertEquals(10.5, template.dateHeadingBlockHeightMm, EPSILON)
+        assertEquals(19.0, heading.topMm, EPSILON) // 内容区上边界 26 - 标题块 7
+        assertEquals(7.0, template.dateHeadingBlockHeightMm, EPSILON)
 
-        // 图例仅文档首页一次。
-        assertEquals("A—掌握　B—较熟悉　C—不会", first.legend?.text)
-        assertEquals(26.0, first.legend!!.topMm, EPSILON)
-        assertEquals(8.0, first.legend!!.heightMm, EPSILON)
-        assertEquals(first.legend!!.fontMm, dailyTotal.fontMm, EPSILON)
-
-        // 表头按列拆开，列 x 与左侧填涂行共用几何：知识点对齐名称列，A/B/C 对齐三格。
+        // 表头按列拆开，列 x 与左侧填涂行共用几何：知识点对齐名称列，
+        // 「掌握 / 较熟悉 / 不会」以三格中心居中（2026-11-22 用户要求）。
         val headerCells = first.headerCells
-        assertEquals(listOf("序号", "知识点", "A", "B", "C"), headerCells.map { it.text })
+        assertEquals(listOf("序号", "知识点", "掌握", "较熟悉", "不会"), headerCells.map { it.text })
         headerCells.forEach { cell ->
-            assertEquals(34.0, cell.topMm, EPSILON)
-            assertEquals(7.0, cell.heightMm, EPSILON)
+            // 2026-11-22：表头贴近第一道题，文字放在表头带底部（26 + 7 - 3.5 = 29.5）。
+            assertEquals(29.5, cell.topMm, EPSILON)
+            assertEquals(3.5, cell.heightMm, EPSILON)
         }
         assertEquals(26.0, headerCells[0].leftMm, EPSILON)
-        assertEquals(8.0, headerCells[0].widthMm, EPSILON)
+        assertEquals(7.0, headerCells[0].widthMm, EPSILON)
         assertEquals(PrintTextAlign.Left, headerCells[0].align)
-        assertEquals(36.0, headerCells[1].leftMm, EPSILON)
+        assertEquals(33.5, headerCells[1].leftMm, EPSILON)
         assertEquals(34.0, headerCells[1].widthMm, EPSILON)
         assertEquals(PrintTextAlign.Left, headerCells[1].align)
-        assertEquals(72.0, headerCells[2].leftMm, EPSILON)
-        assertEquals(77.5, headerCells[3].leftMm, EPSILON)
-        assertEquals(83.0, headerCells[4].leftMm, EPSILON)
+        assertEquals(66.85, headerCells[2].leftMm, EPSILON)
+        assertEquals(75.65, headerCells[3].leftMm, EPSILON)
+        assertEquals(84.45, headerCells[4].leftMm, EPSILON)
         headerCells.drop(2).forEach { cell ->
-            assertEquals(3.5, cell.widthMm, EPSILON)
+            assertEquals(10.0, cell.widthMm, EPSILON)
             assertEquals(PrintTextAlign.Center, cell.align)
         }
 
@@ -183,29 +174,36 @@ class PrintLayoutTest {
         }
 
         val q1 = first.items[0]
-        assertEquals(41.0, q1.blockTopMm, EPSILON) // 26 + 8 + 7
+        assertEquals(33.0, q1.blockTopMm, EPSILON) // 26 + 7
         assertEquals(74.5, q1.blockHeightMm, EPSILON)
         assertEquals(1, q1.left.rows.size)
         assertEquals(1, q1.left.rows[0].index)
         assertEquals("一元二次方程", q1.left.rows[0].knowledgeName)
-        assertEquals(41.0, q1.left.rows[0].topMm, EPSILON)
+        assertEquals(33.0, q1.left.rows[0].topMm, EPSILON)
         assertEquals(7.5, q1.left.rows[0].heightMm, EPSILON)
         assertEquals(listOf("A", "B", "C"), q1.left.rows[0].bubbles.map { it.label })
-        assertEquals(72.0, q1.left.rows[0].bubbles[0].leftMm, EPSILON)
-        assertEquals(77.5, q1.left.rows[0].bubbles[1].leftMm, EPSILON)
-        assertEquals(83.0, q1.left.rows[0].bubbles[2].leftMm, EPSILON)
-        assertEquals(3.5, q1.left.rows[0].bubbles[0].sizeMm, EPSILON)
-        assertEquals(43.0, q1.left.rows[0].bubbles[0].topMm, EPSILON)
+        assertEquals(69.0, q1.left.rows[0].bubbles[0].leftMm, EPSILON)
+        assertEquals(77.8, q1.left.rows[0].bubbles[1].leftMm, EPSILON)
+        assertEquals(86.6, q1.left.rows[0].bubbles[2].leftMm, EPSILON)
+        // 2026-11-22：答题卡式 16:9 宽格（5.7 × 3.2），框间距扩大为 3.1mm 以容纳档位文字。
+        q1.left.rows[0].bubbles.forEach { bubble ->
+            assertEquals(5.7, bubble.widthMm, EPSILON)
+            assertEquals(3.2, bubble.heightMm, EPSILON)
+            assertEquals(16.0 / 9.0, bubble.widthMm / bubble.heightMm, 0.01)
+        }
+        assertEquals(92.3, q1.left.rows[0].bubbles[2].leftMm + 5.7, EPSILON)
+        assertTrue(q1.left.rows[0].bubbles[2].leftMm + 5.7 <= q1.rightTop.xMm)
+        assertEquals(35.15, q1.left.rows[0].bubbles[0].topMm, EPSILON) // 33 + (7.5-3.2)/2
 
-        // 表头与真实行严格对齐（本用例锁定错位回归）：序号/知识点左对齐，A/B/C 与格子同列。
+        // 表头与真实行严格对齐（本用例锁定错位回归）：序号/知识点左对齐，档位文字与格子中心对齐。
         assertEquals(q1.left.rows[0].indexText.leftMm, headerCells[0].leftMm, EPSILON)
         assertEquals(q1.left.rows[0].nameText.leftMm, headerCells[1].leftMm, EPSILON)
         headerCells.drop(2).zip(q1.left.rows[0].bubbles).forEach { (cell, bubble) ->
-            assertEquals(bubble.leftMm, cell.leftMm, EPSILON)
+            assertEquals(bubble.leftMm + bubble.widthMm / 2, cell.leftMm + cell.widthMm / 2, EPSILON)
         }
 
-        assertEquals(89.2, q1.rightTop.xMm, EPSILON)
-        assertEquals(41.0, q1.rightTop.topMm, EPSILON)
+        assertEquals(92.36, q1.rightTop.xMm, EPSILON)
+        assertEquals(33.0, q1.rightTop.topMm, EPSILON)
         assertEquals(7.0 + 1 * 7.5, q1.rightTop.heightMm, EPSILON)
         // 页码只显示页序（不显示计划号），并展示来源页码。
         assertEquals("页码 01　题号 T-1　来源页 P12", q1.rightTop.pageLine.text)
@@ -213,7 +211,7 @@ class PrintLayoutTest {
         assertEquals("一元二次方程", q1.rightTop.knowledgeText.text)
         assertEquals(1, q1.rightTop.knowledgeText.maxLines)
 
-        assertEquals(55.5, q1.note?.topMm!!, EPSILON)
+        assertEquals(47.5, q1.note?.topMm!!, EPSILON)
         assertEquals(30.0, q1.note?.heightMm!!, EPSILON)
         assertEquals(30.0, q1.note?.writingAreaHeightMm!!, EPSILON)
         assertEquals(0.0, q1.note?.attachmentHeightMm!!, EPSILON)
@@ -222,7 +220,7 @@ class PrintLayoutTest {
 
         assertEquals(18.0, q1.qr.sizeMm, EPSILON)
         assertEquals(166.0, q1.qr.leftMm, EPSILON) // 内容区右边 184 - 18
-        assertEquals(88.5, q1.qr.topMm, EPSILON) // footer 85.5 + qrPadding 3
+        assertEquals(80.5, q1.qr.topMm, EPSILON) // footer 77.5 + qrPadding 3
         assertEquals(27.0, q1.qr.footerHeightMm, EPSILON)
         assertEquals(4, q1.qr.quietZoneModules)
 
@@ -230,7 +228,7 @@ class PrintLayoutTest {
         val label = q1.qr.pageIdLabel
         assertEquals("K7M2Q9-01", label.text)
         assertEquals(166.0, label.leftMm, EPSILON)
-        assertEquals(108.5, label.topMm, EPSILON) // QR 底 106.5 + 间距 2
+        assertEquals(100.5, label.topMm, EPSILON) // QR 底 98.5 + 间距 2
         assertEquals(18.0, label.widthMm, EPSILON)
         assertEquals(2.2, label.fontMm, EPSILON)
         assertEquals(PrintTextAlign.Right, label.align)
@@ -239,11 +237,11 @@ class PrintLayoutTest {
 
         // C-062：纸上没有笔记区时不绘制笔记与附件，且不截断附件区（P-15 已在分页层处理高度）。
         val q2 = first.items[1]
-        assertEquals(115.5, q2.blockTopMm, EPSILON)
+        assertEquals(107.5, q2.blockTopMm, EPSILON)
         assertEquals(52.0, q2.blockHeightMm, EPSILON) // max(2*7.5, 7+2*7.5) + 27 + 3
         assertEquals(2, q2.left.rows.size)
-        assertEquals(115.5, q2.left.rows[0].topMm, EPSILON)
-        assertEquals(123.0, q2.left.rows[1].topMm, EPSILON)
+        assertEquals(107.5, q2.left.rows[0].topMm, EPSILON)
+        assertEquals(115.0, q2.left.rows[1].topMm, EPSILON)
         assertEquals("勾股定理", q2.left.rows[0].knowledgeName)
         assertEquals("相似三角形", q2.left.rows[1].knowledgeName)
         assertEquals("勾股定理 / 相似三角形", q2.rightTop.knowledgeText.text)
@@ -255,11 +253,13 @@ class PrintLayoutTest {
         assertEquals("K7M2Q9-02", second.pageId)
         assertEquals(monday, second.date)
         assertEquals(26.0, second.contentTopMm, EPSILON)
-        assertEquals(listOf("序号", "知识点", "A", "B", "C"), second.headerCells.map { it.text })
-        assertEquals(26.0, second.headerCells.first().topMm, EPSILON)
+        assertEquals(
+            listOf("序号", "知识点", "掌握", "较熟悉", "不会"),
+            second.headerCells.map { it.text },
+        )
+        assertEquals(29.5, second.headerCells.first().topMm, EPSILON)
         assertEquals("2026-11-16 周一", second.dateHeading?.text)
-        assertNull(second.dailyTotal)
-        assertNull(second.legend)
+        assertEquals(19.0, second.dateHeading!!.topMm, EPSILON)
 
         // 左侧名称只在左侧截断为 9 个码点 + “…”；右上保留全称（C-013）。
         // C-062：hasNoteArea=true 时附件区按 3 条完整绘制，不截断到 30% 上限。
@@ -288,12 +288,10 @@ class PrintLayoutTest {
         assertEquals(159.5, q4.note?.topMm!!, EPSILON)
         assertEquals(192.5, q4.qr.topMm, EPSILON)
 
-        // 新日期重新开始：标题与每日题数恢复，图例仍不重复。
+        // 新日期重新开始：只绘制日期标题；没有图例与每日总题数。
         val third = layout.pages[2]
         assertEquals(tuesday, third.date)
         assertEquals("2026-11-17 周二", third.dateHeading?.text)
-        assertEquals("本日共需复习 1 题", third.dailyTotal?.text)
-        assertNull(third.legend)
         assertEquals(33.0, third.items.single().blockTopMm, EPSILON)
 
         // 四角 ArUco：内码 10mm、距页边 12mm、白边 4mm（print-template.md）。
@@ -342,10 +340,45 @@ class PrintLayoutTest {
         assertEquals(layout.pages.first().items.first().qrPayload, snapshots.first().qrPayload)
     }
 
+    @Test
+    fun `PR-03 header anchors to the first item even when an old plan keeps legacy offsets`() {
+        val date = LocalDate.of(2026, 11, 16)
+        val question = RenderableQuestion(
+            questionId = "q1",
+            questionNumber = "T-1",
+            knowledgeCount = 1,
+            knowledgeNames = listOf("一元二次方程"),
+            knowledgeLineCount = 1,
+            attachmentCount = 0,
+            hasNoteArea = true,
+        )
+        // 模拟旧计划：首题仍带已删除的 8mm 图例偏移（26 + 8 + 7 = 41）。
+        val page = PlannedPage(
+            pageId = "K7M2Q9-01",
+            pageNumber = 1,
+            date = date,
+            items = listOf(PlacedItem(questionId = "q1", yOffsetMm = 41.0, heightMm = 74.5)),
+            continuationMarkers = emptyList(),
+        )
+
+        val layout = PrintLayoutBuilder.build(
+            planId = "K7M2Q9",
+            pages = listOf(page),
+            questions = mapOf("q1" to question),
+            noteTexts = emptyMap(),
+            template = template,
+        )
+
+        val first = layout.pages.single()
+        assertEquals(41.0, first.items.single().blockTopMm, EPSILON)
+        first.headerCells.forEach { cell ->
+            // 表头底边贴住首题，而不是固定在 contentTop + 7mm。
+            assertEquals(41.0 - 3.5, cell.topMm, EPSILON)
+        }
+    }
+
     private fun PrintPageLayout.allTexts(): List<String> = buildList {
         dateHeading?.let { add(it.text) }
-        dailyTotal?.let { add(it.text) }
-        legend?.let { add(it.text) }
         headerCells.forEach { add(it.text) }
         items.forEach { item ->
             item.left.rows.forEach { row -> add(row.knowledgeName) }

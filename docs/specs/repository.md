@@ -31,6 +31,12 @@ interface QuestionRepository {
     suspend fun unarchive(questionId: String)
 }
 
+// 复习进度页的只读投影（2026-11-22 用户要求）：未归档题目 + 关联知识点状态。
+// 不参与调度计算；题目到期口径取任一未休眠关联知识点最早的 nextDueDate（D-01）。
+interface ReviewProgressRepository {
+    suspend fun questions(): List<QuestionReviewProgress>
+}
+
 interface PlanRepository {
     suspend fun pendingCoolingOverrides(): List<CoolingOverrideEvent>
     // Plan 头 + PlanPage + lastScheduledDate + consume + deferrals，同一事务（C-097）

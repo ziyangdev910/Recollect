@@ -219,10 +219,8 @@ class PagePlannerPropertyTest {
 
         // 条目几何：不重叠、不悬空、不越出内容区；高度等于公式原值。
         success.pages.forEach { page ->
-            val capacity = contentCapacityMm(page.pageNumber, template)
-            val start = template.topMarginMm +
-                (if (page.pageNumber == 1) template.legendHeightMm else 0.0) +
-                template.headerRowHeightMm
+            val capacity = template.contentHeightMm
+            val start = template.topMarginMm + template.headerRowHeightMm
             var cursor = start
             page.items.forEach { item ->
                 assertEquals(
@@ -253,7 +251,7 @@ class PagePlannerPropertyTest {
                 val nextFirst = datePages[index + 1].items.first()
                 val usedHeight = page.items.sumOf { it.heightMm }
                 assertTrue(
-                    usedHeight + nextFirst.heightMm > contentCapacityMm(page.pageNumber, template) + 1e-9,
+                    usedHeight + nextFirst.heightMm > template.contentHeightMm + 1e-9,
                     "repetition=$repetition：$date 第 ${page.pageNumber} 页结束过早或跳过了放不下的条目",
                 )
             }
@@ -308,7 +306,6 @@ class PagePlannerPropertyTest {
         pageHeightMm = 120.0,
         topMarginMm = 10.0,
         bottomMarginMm = 10.0,
-        legendHeightMm = 10.0,
         headerRowHeightMm = 5.0,
         rowHeightMm = 5.0,
         questionFixedInfoHeightMm = 10.0,
@@ -400,9 +397,6 @@ class PagePlannerPropertyTest {
             OverflowReason.ATTACHMENT_OVER_LIMIT
         else -> null
     }
-
-    private fun contentCapacityMm(pageNumber: Int, template: TemplateGeometry): Double =
-        if (pageNumber == 1) template.firstPageContentHeightMm else template.contentHeightMm
 
     private companion object {
         // 属性测试固定种子（规格验收门禁）；每次 repetition 用 SEED + 序号派生独立随机流。

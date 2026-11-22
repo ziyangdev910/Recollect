@@ -114,8 +114,14 @@ class RoomEntryRepository(
         }
     }
 
-    override suspend fun defaultSourcePageCode(): Int =
-        questionDao.latestSourcePageCode()?.coerceAtLeast(1) ?: 1
+    override suspend fun defaultSourcePageCode(hasSource: Boolean): Int {
+        val latest = if (hasSource) {
+            questionDao.latestSourcePageCodeWithSource()
+        } else {
+            questionDao.latestSourcePageCodeWithoutSource()
+        }
+        return latest?.coerceAtLeast(1) ?: 1
+    }
 
     /** 校验并归一化录入/编辑入参；越界关联与非法页码在这里抛出。 */
     private fun validate(draft: EntryDraft): ValidatedDraft {

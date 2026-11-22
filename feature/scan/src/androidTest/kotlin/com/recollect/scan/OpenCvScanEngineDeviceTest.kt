@@ -1,7 +1,9 @@
 package com.recollect.scan
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.test.AndroidTestCase
@@ -12,6 +14,7 @@ import com.recollect.data.room.repository.ScanSessionRepository
 import com.recollect.data.room.repository.ScanSessionSnapshot
 import com.recollect.model.KnowledgeRow
 import com.recollect.model.PlanPageRows
+import com.recollect.model.Tier
 import com.recollect.scan.ocr.MlKitNoteOcr
 import com.recollect.scan.ocr.NoteAreaGeometry
 import com.recollect.scan.usecase.ScanPageOutcome
@@ -101,6 +104,35 @@ class OpenCvScanEngineDeviceTest : AndroidTestCase() {
             report.appendLine("OMR_ROWS=${rows.joinToString { "${it.questionId}#${it.rowIndex}=${it.status}/${it.detectedTier}" }}")
             assertEquals("行数应等于可打印知识点数", 3, rows.size)
             assertTrue("未涂页面必须全部 NO_MARK，实际：${rows.map { it.status }}", rows.all { it.status == DetectionStatus.NO_MARK })
+
+            // 2026-11-22：填涂格改为 16:9 宽格后，按快照中心在 A 格内画一条横向笔迹，
+            // 验证 OMR 采样中心与打印列中心一致（渲染图辅助证据，R-01 仍需真实纸张）。
+            val marked = page.corrected.copy(Bitmap.Config.ARGB_8888, true)
+            val pxPerMm = PrintRenderer.PIXELS_PER_MM_300_DPI
+            val firstBlock = blocks.first()
+            val markCenterXMm = template.bubbleCentersXMm[0]
+            val markCenterYMm = firstBlock.topMm + template.rowHeightMm / 2
+            Canvas(marked).drawRect(
+                ((markCenterXMm - 1.1) * pxPerMm).toFloat(),
+                ((markCenterYMm - 0.6) * pxPerMm).toFloat(),
+                ((markCenterXMm + 1.1) * pxPerMm).toFloat(),
+                ((markCenterYMm + 0.6) * pxPerMm).toFloat(),
+                Paint().apply {
+                    color = Color.BLACK
+                    style = Paint.Style.FILL
+                },
+            )
+            val markedRows = engine.readOmr(marked, page, blocks)
+            report.appendLine("OMR_MARKED_ROWS=${markedRows.joinToString { "${it.questionId}#${it.rowIndex}=${it.status}/${it.detectedTier}" }}")
+            val markedFirst = markedRows.first { it.questionId == firstBlock.questionId && it.rowIndex == 0 }
+            assertEquals("A 格横向笔迹应命中", DetectionStatus.OK, markedFirst.status)
+            assertEquals("A 列对应掌握", Tier.MASTERED, markedFirst.detectedTier)
+            assertEquals(
+                "未填涂的其余行应保持 NO_MARK",
+                2,
+                markedRows.count { it.status == DetectionStatus.NO_MARK },
+            )
+            marked.recycle()
 
             val qrs = engine.decodeQrs(page.corrected, page)
             report.appendLine("QR_RESULTS=${qrs.joinToString { "${it.questionId}@(${it.centerX},${it.centerY}) checksum=${it.checksumOk}" }}")

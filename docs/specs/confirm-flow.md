@@ -15,10 +15,10 @@
   - 行类型标记：`触发` / `关联`（C-009）
   - 来源页码：`来源页 {sourcePage}`，为用户可调编号或 `编号-说明`（如 `2-同步练习`）；说明为空时只有编号（2026-11-20 用户要求）
   - 知识点编号 + 全称
-  - OMR 状态：A/B/C、`未填涂`、`冲突`、`无法识别`
+  - 复习效果识别结果：直接显示「掌握 / 较熟悉 / 不会」；无填涂/冲突/无法识别时显示对应提示（2026-11-22 用户要求，不再显示内部术语“OMR”）
   - 用户操作："接受 / 修正 / 本次未复习 / 补填"（D-13）
-  - 修正时弹出 A/B/C 单选；补填时同样单选
-  - 下方显示 ML Kit OCR 原文（只读，文本框不可编辑）与修正文本框（可编辑）
+  - 修正时弹出档位单选；补填时同样单选
+  - 只保留**一个可编辑文本框**，左上角提示「请核对笔记识别结果」；默认填入 ML Kit OCR 识别文本，原始 OCR 仍单独保存为 `detectedRawOcr`，编辑只改 `correctedText`（2026-11-22 用户要求）
   - 修正文本可一键「保存为笔记附件」（写 `NoteAttachmentItem(text=correctedText)`）
 - 题目级操作："本次提前复习"（创建一次性 `CoolingOverrideEvent`，C-008 方案二）
 - 底部："确认提交"；存在未标记行时禁用并提示「还有 N 行未标记」
@@ -77,12 +77,12 @@ UNMARKED ──接受──▶ ACCEPT
 `PendingFeedback.userDecision` 初始为 `UNMARKED`（C-010）。状态转移规则：
 
 - `ACCEPT`：优先使用 `detectedTier`；若 `detectedTier == null`（NO_MARK/CONFLICT/UNREADABLE），允许用户先在该行选择 `selectedTier` 再点接受，写入 `detectedTier ?: selectedTier`；两者都为空时不可接受。`selectedTier` 仅在 `detectedTier` 为空时参与 ACCEPT（C-022）。
-- `CORRECTED`：必须选择 `selectedTier`；`rawOcrText` 与 `correctedText` 都保存。
+- `CORRECTED`：必须选择 `selectedTier`；`rawOcrText` 与 `correctedText` 都保存。确认页加载时 `correctedText` 默认等于 OCR 原文，用户编辑后只覆盖 `correctedText`（2026-11-22 用户要求）。
 - `NOT_REVIEWED`：**不写 `ReviewFeedback`**；写 `ConfirmationDecisionLog`；该知识点 `nextDueDate` 与所有状态不变（C-010）。
 - `SUPPLEMENTED`：必须选择 `selectedTier`；`isSupplemental = true`；**触发行**计入有效反馈；非触发行只更新 `continuousScore ×0.3`，`effectiveFeedbackCount` 不变。
 - 任何 `UNMARKED` 行存在时，"确认提交"禁用（D-13、R-04）。
 
-### OMR 状态与操作可用性（C-030）
+### 识别结果与操作可用性（C-030；2026-11-22 起界面显示为复习效果识别结果）
 
 | detectionStatus | 含义 | 可用操作 |
 |---|---|---|
@@ -117,7 +117,7 @@ UNMARKED ──接受──▶ ACCEPT
 - 不允许未经用户确认的批量写入。
 - 不允许在存在 `UNMARKED` 行时提交。
 - 不允许对已 `SUBMITTED` 的扫描会话再次提交。
-- 不允许把 `detectedRawOcr` 绑定为可编辑控件（D-06）。
+- 不允许把 `detectedRawOcr` 本身绑定为可编辑控件（D-06）；可编辑控件绑定 `correctedText`，其初始值可复制自 OCR 原文，原始值保持不变。
 
 ## 验收
 

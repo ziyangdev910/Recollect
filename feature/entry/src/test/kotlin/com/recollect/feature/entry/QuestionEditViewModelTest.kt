@@ -17,14 +17,25 @@ class QuestionEditViewModelTest {
         tag("kp-2", 2, "几何"),
     )
 
+    private val sourceTags = listOf(
+        sourceTag("source-1", "作业本"),
+        sourceTag("source-2", "同步练习"),
+    )
+
     private fun fixture(
         rows: List<com.recollect.data.room.repository.EntrySummary> = emptyList(),
         defaultCode: Int = 4,
+        defaultWithSourceCode: Int = 9,
     ): Pair<QuestionEditViewModel, FakeEntryRepository> {
         val repository = FakeEntryRepository(rows).apply {
-            defaultSourcePageCodeValue = defaultCode
+            defaultSourcePageCodeWithoutSource = defaultCode
+            defaultSourcePageCodeWithSource = defaultWithSourceCode
         }
-        return QuestionEditViewModel(repository, FakeLibraryRepository(tags)) to repository
+        return QuestionEditViewModel(
+            repository = repository,
+            libraryRepository = FakeLibraryRepository(tags),
+            sourceTagRepository = FakeSourceTagRepository(sourceTags),
+        ) to repository
     }
 
     @Test
@@ -37,10 +48,13 @@ class QuestionEditViewModelTest {
         assertEquals(null, content.questionId)
         assertEquals("", content.questionNumber)
         assertEquals(4, content.sourcePageCode)
+        assertEquals(4, content.defaultSourcePageCodeWithoutSource)
+        assertEquals(9, content.defaultSourcePageCodeWithSource)
         assertEquals("", content.sourcePageLabel)
         assertEquals(15, content.estimatedReviewMinutes)
         assertTrue(content.selectedKnowledgePointIds.isEmpty())
         assertEquals(tags, content.tags)
+        assertEquals(sourceTags, content.sourceTags)
         assertFalse(content.printed)
     }
 
@@ -69,6 +83,7 @@ class QuestionEditViewModelTest {
         assertEquals("作业本", content.sourcePageLabel)
         assertEquals(25, content.estimatedReviewMinutes)
         assertEquals(listOf("kp-1"), content.selectedKnowledgePointIds)
+        assertEquals(sourceTags, content.sourceTags)
         assertTrue(content.printed)
     }
 

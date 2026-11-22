@@ -46,6 +46,7 @@ dependencies {
     implementation(project(":data:room"))
     implementation(project(":feature:entry"))
     implementation(project(":feature:planning"))
+    implementation(project(":feature:progress"))
     implementation(project(":feature:print"))
     implementation(project(":feature:scan"))
     implementation(project(":feature:confirm"))

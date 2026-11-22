@@ -10,6 +10,7 @@ import com.recollect.data.room.dao.PlanPageDao
 import com.recollect.data.room.dao.QuestionDao
 import com.recollect.data.room.dao.ReviewFeedbackDao
 import com.recollect.data.room.dao.ScanSessionDao
+import com.recollect.data.room.dao.SourceTagDao
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.CoolingOverrideEvent
 import com.recollect.data.room.entity.KnowledgePoint
@@ -21,6 +22,7 @@ import com.recollect.data.room.entity.Question
 import com.recollect.data.room.entity.ReviewFeedback
 import com.recollect.data.room.entity.ScanSession
 import com.recollect.data.room.entity.ScanSessionStatus
+import com.recollect.data.room.entity.SourceTag
 import com.recollect.data.room.entity.UserDecision
 import java.time.Instant
 import java.time.LocalDate
@@ -43,6 +45,7 @@ internal class InMemoryStores {
     val pendingFeedbacks = mutableListOf<PendingFeedback>()
     val noteItems = mutableListOf<NoteAttachmentItem>()
     val scanSessions = linkedMapOf<String, ScanSession>() // key = sessionId
+    val sourceTags = linkedMapOf<String, SourceTag>() // key = id
     val questionLinks = linkedMapOf<String, MutableSet<String>>() // questionId -> knowledgePointIds
     private var nextEventId = 1L
     private var nextReviewFeedbackId = 1L
@@ -81,6 +84,7 @@ internal class InMemoryStores {
         val pendingFeedbacks: List<PendingFeedback>,
         val noteItems: List<NoteAttachmentItem>,
         val scanSessions: Map<String, ScanSession>,
+        val sourceTags: Map<String, SourceTag>,
     )
 
     fun snapshot(): Snapshot = Snapshot(
@@ -94,6 +98,7 @@ internal class InMemoryStores {
         pendingFeedbacks = pendingFeedbacks.toList(),
         noteItems = noteItems.toList(),
         scanSessions = scanSessions.toMap(),
+        sourceTags = sourceTags.toMap(),
     )
 
     fun restore(snapshot: Snapshot) {
@@ -117,6 +122,8 @@ internal class InMemoryStores {
         noteItems.addAll(snapshot.noteItems)
         scanSessions.clear()
         scanSessions.putAll(snapshot.scanSessions)
+        sourceTags.clear()
+        sourceTags.putAll(snapshot.sourceTags)
     }
 
     fun insertReviewFeedback(entity: ReviewFeedback): Long {
@@ -291,8 +298,24 @@ internal class FakeQuestionDao(private val stores: InMemoryStores) : QuestionDao
 
     override suspend fun byId(id: String): Question? = stores.questions[id]
 
-    override suspend fun latestSourcePageCode(): Int? =
-        stores.questions.values.lastOrNull()?.sourcePageCode
+    override suspend fun latestSourcePageCodeWithoutSource(): Int? =
+        latestCode { it.sourcePage.trim().isEmpty() }
+
+    override suspend fun latestSourcePageCodeWithSource(): Int? =
+        latestCode { it.sourcePage.trim().isNotEmpty() }
+
+    // linkedMap 按插入顺序保存，模拟真实查询在时钟递增时的「最近一条」。
+    private fun latestCode(predicate: (Question) -> Boolean): Int? =
+        stores.questions.values.lastOrNull(predicate)?.sourcePageCode
+
+    override suspend fun activeSourcePageCount(sourcePage: String): Int =
+        stores.questions.values.count { !it.archived && it.sourcePage == sourcePage }
+
+    override suspend fun renameSourcePageReferences(oldName: String, newName: String) {
+        stores.questions.replaceAll { _, question ->
+            if (question.sourcePage == oldName) question.copy(sourcePage = newName) else question
+        }
+    }
 
     override suspend fun setPrintSnapshot(id: String, pageId: String, qrPayload: String) {
         stores.questions[id]?.let { stores.questions[id] = it.copy(pageId = pageId, qrPayload = qrPayload) }
@@ -310,6 +333,28 @@ internal class FakeQuestionDao(private val stores: InMemoryStores) : QuestionDao
 
     override suspend fun markUnarchived(id: String) {
         stores.questions[id]?.let { stores.questions[id] = it.copy(archived = false, archivedAt = null) }
+    }
+}
+
+internal class FakeSourceTagDao(private val stores: InMemoryStores) : SourceTagDao {
+    override suspend fun all(): List<SourceTag> =
+        stores.sourceTags.values.sortedBy { it.name.lowercase() }
+
+    override suspend fun byId(id: String): SourceTag? = stores.sourceTags[id]
+
+    override suspend fun byName(name: String): SourceTag? =
+        stores.sourceTags.values.firstOrNull { it.name == name }
+
+    override suspend fun insert(entity: SourceTag) {
+        stores.sourceTags[entity.id] = entity
+    }
+
+    override suspend fun update(entity: SourceTag) {
+        stores.sourceTags[entity.id] = entity
+    }
+
+    override suspend fun delete(id: String) {
+        stores.sourceTags.remove(id)
     }
 }
 

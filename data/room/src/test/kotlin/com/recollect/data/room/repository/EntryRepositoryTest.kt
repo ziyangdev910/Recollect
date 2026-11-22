@@ -230,8 +230,52 @@ class EntryRepositoryTest {
         assertEquals(3, second.sourcePageCode, "同一页可复用同一编号")
         assertEquals("3-作业本", second.sourcePage)
         assertEquals("4-练习", third.sourcePage)
-        assertEquals(4, repository.defaultSourcePageCode(), "默认取最近一次编号，不自增")
+        assertEquals(
+            3,
+            repository.defaultSourcePageCode(hasSource = false),
+            "无来源默认只取最近一条无来源题目的编号",
+        )
+        assertEquals(
+            4,
+            repository.defaultSourcePageCode(hasSource = true),
+            "有来源默认取最近一条有来源题目的编号",
+        )
         assertEquals(listOf("3", "3-作业本", "4-练习"), repository.summaries().map { it.sourcePage })
+    }
+
+    @Test
+    fun `default page code is remembered separately for sourced and unsourced questions`() = runBlocking {
+        val fixture = Fixture()
+        fixture.addKnowledgePoint("kp-1", 1, "分数")
+        val repository = fixture.repository(clock)
+
+        repository.create(
+            EntryDraft(
+                questionNumber = "T-1",
+                sourcePageCode = 2,
+                sourcePageLabel = "",
+                knowledgePointIds = listOf("kp-1"),
+            ),
+        )
+        repository.create(
+            EntryDraft(
+                questionNumber = "T-2",
+                sourcePageCode = 9,
+                sourcePageLabel = "作业本",
+                knowledgePointIds = listOf("kp-1"),
+            ),
+        )
+        repository.create(
+            EntryDraft(
+                questionNumber = "T-3",
+                sourcePageCode = 3,
+                sourcePageLabel = "",
+                knowledgePointIds = listOf("kp-1"),
+            ),
+        )
+
+        assertEquals(3, repository.defaultSourcePageCode(hasSource = false))
+        assertEquals(9, repository.defaultSourcePageCode(hasSource = true))
     }
 
     @Test

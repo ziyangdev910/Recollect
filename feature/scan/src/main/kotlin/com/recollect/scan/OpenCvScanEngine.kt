@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
  * - 定位与透视：OpenCV `DICT_4X4_50` 检测四角标记，按标记中心与打印几何做单应性变换，
  *   统一输出 2480×3508（300 DPI）。
  * - 逐题 QR：ML Kit 条码（`barcode-scanning:17.2.0`），载荷校验由 [QrPayloadCodec] 负责。
- * - OMR：按 scan-pipeline.md 的列宽与 2.5mm 采样窗自行采样，阈值见 [OmrClassifier]。
+ * - OMR：按 `TemplateGeometry` 的填涂列中心与 2.5mm 采样窗自行采样，阈值见 [OmrClassifier]。
  */
 class OpenCvScanEngine(
     private val template: TemplateGeometry,
@@ -147,11 +147,14 @@ class OpenCvScanEngine(
         blocks: List<ItemBlockGeometry>,
     ): List<OmrRow> {
         val rows = mutableListOf<OmrRow>()
+        // 打印与扫描共用 TemplateGeometry 的列中心，不另写常量（2026-11-22）。
+        val centers = (0 until TemplateGeometry.BUBBLE_COLUMNS)
+            .map { column -> template.bubbleCenterXMm(column) }
         blocks.forEach { block ->
             for (index in 0 until block.rowCount) {
                 val topMm = block.topMm + index * template.rowHeightMm
-                val readings = (0 until BUBBLE_COLUMNS).map { column ->
-                    sampleBubble(bitmap, topMm, column)
+                val readings = centers.map { centerXMm ->
+                    sampleBubble(bitmap, centerXMm, topMm)
                 }
                 val (status, tier) = OmrClassifier.rowOf(readings)
                 rows += OmrRow(
@@ -165,12 +168,9 @@ class OpenCvScanEngine(
         return rows
     }
 
-    private fun sampleBubble(bitmap: Bitmap, rowTopMm: Double, column: Int): BubbleReading {
-        val centerXMm = template.contentLeftMm + SEQUENCE_COLUMN_MM + COLUMN_GAP_MM +
-            KNOWLEDGE_COLUMN_MM + COLUMN_GAP_MM +
-            column * (BUBBLE_MM + COLUMN_GAP_MM) + BUBBLE_MM / 2
+    private fun sampleBubble(bitmap: Bitmap, centerXMm: Double, rowTopMm: Double): BubbleReading {
         val centerYMm = rowTopMm + template.rowHeightMm / 2
-        val halfPx = (SAMPLE_MM / 2 * pxPerMm).roundToInt().coerceAtLeast(1)
+        val halfPx = (template.bubbleSampleSizeMm / 2 * pxPerMm).roundToInt().coerceAtLeast(1)
         val centerX = (centerXMm * pxPerMm).roundToInt()
         val centerY = (centerYMm * pxPerMm).roundToInt()
 
@@ -262,13 +262,6 @@ class OpenCvScanEngine(
 
         val ARUCO_IDS = listOf(0, 1, 2, 3)
 
-        // 规格列宽：序号 8mm、知识点 34mm、A/B/C 各 3.5mm、间距 2mm（scan-pipeline.md）。
-        const val SEQUENCE_COLUMN_MM = 8.0
-        const val KNOWLEDGE_COLUMN_MM = 34.0
-        const val BUBBLE_MM = 3.5
-        const val COLUMN_GAP_MM = 2.0
-        const val BUBBLE_COLUMNS = 3
-        const val SAMPLE_MM = 2.5
         const val DARK_THRESHOLD = 128
 
         // 打印层 ArUco 内码 10mm、距页边 12mm（print-template.md）。

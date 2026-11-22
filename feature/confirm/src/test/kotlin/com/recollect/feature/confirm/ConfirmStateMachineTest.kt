@@ -120,4 +120,32 @@ class ConfirmStateMachineTest {
         assertEquals(Tier.UNKNOWN, decisions.getValue("q6").selectedTier)
         assertTrue(decisions.getValue("q6").isSupplemental)
     }
+
+    /**
+     * 2026-11-22 用户要求：确认页只保留一个可编辑文本框，默认填入 OCR 识别文本；
+     * 原始 OCR 仍单独保存，用户编辑只改 `correctedText`（D-06）。
+     */
+    @Test
+    fun corrected_text_defaults_to_raw_ocr_and_edits_keep_raw_untouched() {
+        val rows = listOf(
+            row("q1", "k1").copy(detectedRawOcr = "手写：x+1=2"),
+            row("q2", "k2").copy(detectedRawOcr = "另一条笔记"),
+        )
+        val machine = ConfirmStateMachine(rows = rows, today = today)
+
+        assertEquals(
+            "手写：x+1=2",
+            machine.decisionOf(key("q1", "k1")).correctedText,
+            "可编辑文本应默认填入识别原文",
+        )
+
+        machine.setCorrectedText(key("q1", "k1"), "手写：x+1=3")
+        machine.accept(key("q1", "k1"))
+        machine.accept(key("q2", "k2"))
+        val decisions = machine.toDecisions().associateBy { it.questionId }
+
+        assertEquals("手写：x+1=2", decisions.getValue("q1").detectedRawOcr, "原始 OCR 必须保持只读")
+        assertEquals("手写：x+1=3", decisions.getValue("q1").correctedText, "编辑后的文本写入修正文本")
+        assertEquals("另一条笔记", decisions.getValue("q2").correctedText, "未编辑时修正文本保留识别原文")
+    }
 }

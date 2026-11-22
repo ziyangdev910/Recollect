@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 桌面与应用信息中显示的名称；修改这里即可统一改桌面标签。 -->
+    <string name="app_name">拾知</string>
+</resources>

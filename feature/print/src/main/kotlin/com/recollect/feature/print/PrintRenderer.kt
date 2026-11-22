@@ -22,9 +22,7 @@ class PrintRenderer {
     ) {
         canvas.drawColor(Color.WHITE)
 
-        page.legend?.let { drawText(canvas, it, pxPerMm) }
         page.dateHeading?.let { drawText(canvas, it, pxPerMm) }
-        page.dailyTotal?.let { drawText(canvas, it, pxPerMm) }
         page.headerCells.forEach { cell -> drawText(canvas, cell, pxPerMm) }
 
         page.items.forEach { item -> drawItem(canvas, item, pxPerMm) }
@@ -43,8 +41,8 @@ class PrintRenderer {
                     rect(
                         bubble.leftMm,
                         bubble.topMm,
-                        bubble.leftMm + bubble.sizeMm,
-                        bubble.topMm + bubble.sizeMm,
+                        bubble.leftMm + bubble.widthMm,
+                        bubble.topMm + bubble.heightMm,
                         pxPerMm,
                     ),
                     bubblePaint,
