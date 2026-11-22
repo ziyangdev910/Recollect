@@ -9,6 +9,7 @@ import com.recollect.data.room.repository.KnowledgePointRepository
 import com.recollect.data.room.repository.NoteAttachmentRepository
 import com.recollect.data.room.repository.PlanDraft
 import com.recollect.data.room.repository.PlanGenerationException
+import com.recollect.data.room.repository.PlanRenderMeta
 import com.recollect.data.room.repository.PlanRepository
 import com.recollect.data.room.repository.QuestionRepository
 import com.recollect.model.KnowledgeRow
@@ -39,6 +40,16 @@ import java.time.LocalDate
 /** 计划生成端口；`PlanPreview` 只依赖本接口，便于状态测试注入失败/空态。 */
 interface PlanGenerator {
     suspend fun execute(settings: PlanningSettings): PlanGenerationOutcome
+
+    /**
+     * 显式重新生成：新计划保存时把 [previousPlanId] 标记为 SUPERSEDED。
+     *
+     * 默认实现与 [execute] 相同，仅用于测试桩；生产实现必须原子地替代旧计划。
+     */
+    suspend fun regenerate(
+        settings: PlanningSettings,
+        previousPlanId: String?,
+    ): PlanGenerationOutcome = execute(settings)
 }
 
 class GeneratePlanUseCase(
@@ -53,7 +64,18 @@ class GeneratePlanUseCase(
     private val clock: Clock,
 ) : PlanGenerator {
 
-    override suspend fun execute(settings: PlanningSettings): PlanGenerationOutcome {
+    override suspend fun execute(settings: PlanningSettings): PlanGenerationOutcome =
+        generate(settings, supersedesPlanId = null)
+
+    override suspend fun regenerate(
+        settings: PlanningSettings,
+        previousPlanId: String?,
+    ): PlanGenerationOutcome = generate(settings, supersedesPlanId = previousPlanId)
+
+    private suspend fun generate(
+        settings: PlanningSettings,
+        supersedesPlanId: String?,
+    ): PlanGenerationOutcome {
         require(!settings.planStartDate.isAfter(settings.planEndDate)) {
             "计划开始日 ${settings.planStartDate} 不能晚于结束日 ${settings.planEndDate}"
         }
@@ -114,6 +136,20 @@ class GeneratePlanUseCase(
             }
         }
 
+        // 计划生成时冻结打印元数据：进程重建后重印同一计划时不再依赖当前题库/附件。
+        val renderMetaByQuestionId = renderables.mapValues { (questionId, renderable) ->
+            PlanRenderMeta(
+                questionId = questionId,
+                questionNumber = renderable.questionNumber,
+                sourcePage = renderable.sourcePage,
+                knowledgeNames = renderable.knowledgeNames,
+                knowledgeLineCount = renderable.knowledgeLineCount,
+                attachmentCount = renderable.attachmentCount,
+                hasNoteArea = renderable.hasNoteArea,
+                noteTexts = notesByQuestionId[questionId]?.map { it.text }.orEmpty(),
+            )
+        }
+
         // 分页器消费打印投影；日期顺序取自调度结果（LinkedHashMap，已按日期升序）。
         val renderableGroups = planResult.dailyAssignments.mapValues { (_, plannedQuestions) ->
             plannedQuestions.map { renderables.getValue(it.questionId) }
@@ -161,6 +197,10 @@ class GeneratePlanUseCase(
             coolingEventIdsToConsume = consumedOverrideIds,
             deferred = planResult.deferred,
             geometryByPage = geometryByPage,
+            weekStartDate = settings.planStartDate,
+            weekEndDate = settings.planEndDate,
+            renderMetaByQuestionId = renderMetaByQuestionId,
+            supersedesPlanId = supersedesPlanId,
         )
         planRepository.savePlan(draft)
 

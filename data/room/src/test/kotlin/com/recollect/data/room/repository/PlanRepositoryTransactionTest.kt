@@ -23,7 +23,9 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * 阶段 4.2：`PlanRepository.savePlan` 的单事务语义（repository.md「事务规则」）。
@@ -45,6 +47,7 @@ class PlanRepositoryTransactionTest {
     private val repository = RoomPlanRepository(
         transactionRunner = RollbackTransactionRunner(stores),
         planPageDao = FakePlanPageDao(stores),
+        planDao = FakePlanDao(stores),
         questionDao = FakeQuestionDao(stores),
         coolingOverrideEventDao = FakeCoolingOverrideEventDao(stores),
         knowledgePointDao = FakeKnowledgePointDao(stores),
@@ -86,6 +89,107 @@ class PlanRepositoryTransactionTest {
         items = listOf(PlacedItem(questionId = questionId, yOffsetMm = 20.0, heightMm = 68.5)),
         continuationMarkers = emptyList(),
     )
+
+    @Test
+    fun `save plan registers the week and explicit regeneration supersedes the previous plan`() = runBlocking {
+        stores.knowledgePoints["k1"] = knowledgePoint()
+        stores.questions["q1"] = question("q1")
+        val meta = PlanRenderMeta(
+            questionId = "q1",
+            questionNumber = "1-01",
+            sourcePage = "P4",
+            knowledgeNames = listOf("一次函数"),
+            knowledgeLineCount = 1,
+            attachmentCount = 0,
+            hasNoteArea = true,
+            noteTexts = emptyList(),
+        )
+        fun pageFor(id: String) = PlannedPage(
+            pageId = "$id-01",
+            pageNumber = 1,
+            date = plannedDay,
+            items = listOf(PlacedItem(questionId = "q1", yOffsetMm = 20.0, heightMm = 68.5)),
+            continuationMarkers = emptyList(),
+        )
+        fun draft(id: String, supersedes: String? = null) = PlanDraft(
+            planId = id,
+            pages = listOf(pageFor(id)),
+            knowledgeRowsByQuestionId = mapOf("q1" to rows("q1", "k1")),
+            scheduledDates = mapOf("q1" to plannedDay),
+            coolingEventIdsToConsume = emptyList(),
+            deferred = emptyList(),
+            weekStartDate = plannedDay,
+            weekEndDate = plannedDay,
+            renderMetaByQuestionId = mapOf("q1" to meta),
+            supersedesPlanId = supersedes,
+        )
+
+        repository.savePlan(draft("OLD001"))
+        assertEquals(PlanStatus.GENERATED.name, stores.plans.getValue("OLD001").status)
+        assertEquals("OLD001", repository.activePlan(plannedDay, plannedDay)?.planId)
+
+        repository.savePlan(draft("NEW002", supersedes = "OLD001"))
+
+        assertEquals(PlanStatus.SUPERSEDED.name, stores.plans.getValue("OLD001").status)
+        assertEquals("NEW002", stores.plans.getValue("OLD001").supersededBy)
+        assertEquals("NEW002", repository.activePlan(plannedDay, plannedDay)?.planId)
+        assertEquals(listOf("q1"), repository.storedPages("NEW002").single().questionIds)
+        assertEquals(meta, repository.findPlan("NEW002")?.renderMeta?.single())
+    }
+
+    @Test
+    fun `print snapshots only write for the active plan and mark it printed`() = runBlocking {
+        stores.knowledgePoints["k1"] = knowledgePoint()
+        stores.questions["q1"] = question("q1")
+        fun draft(id: String, supersedes: String? = null) = PlanDraft(
+            planId = id,
+            pages = listOf(
+                PlannedPage(
+                    pageId = "$id-01",
+                    pageNumber = 1,
+                    date = plannedDay,
+                    items = listOf(PlacedItem("q1", 20.0, 68.5)),
+                    continuationMarkers = emptyList(),
+                ),
+            ),
+            knowledgeRowsByQuestionId = mapOf("q1" to rows("q1", "k1")),
+            scheduledDates = mapOf("q1" to plannedDay),
+            coolingEventIdsToConsume = emptyList(),
+            deferred = emptyList(),
+            weekStartDate = plannedDay,
+            weekEndDate = plannedDay,
+            supersedesPlanId = supersedes,
+        )
+        repository.savePlan(draft("OLD001"))
+        repository.savePlan(draft("NEW002", supersedes = "OLD001"))
+
+        assertTrue(
+            repository.savePrintSnapshots(
+                planId = "NEW002",
+                snapshots = listOf(
+                    PrintSnapshotRecord("q1", "NEW002-01", "payload"),
+                ),
+                printedAt = now,
+            ),
+        )
+        assertEquals("NEW002-01", stores.questions.getValue("q1").pageId)
+        assertEquals("payload", stores.questions.getValue("q1").qrPayload)
+        assertEquals(PlanStatus.PRINTED.name, stores.plans.getValue("NEW002").status)
+        assertEquals(now, stores.plans.getValue("NEW002").printedAt)
+
+        assertFalse(
+            repository.savePrintSnapshots(
+                planId = "OLD001",
+                snapshots = listOf(
+                    PrintSnapshotRecord("q1", "OLD001-01", "old"),
+                ),
+                printedAt = now,
+            ),
+            "旧计划不得覆盖当前计划的最新打印快照",
+        )
+        assertEquals("NEW002-01", stores.questions.getValue("q1").pageId)
+        assertEquals("payload", stores.questions.getValue("q1").qrPayload)
+    }
 
     private fun rows(questionId: String, knowledgePointId: String) = PlanPageRows(
         questionId = questionId,

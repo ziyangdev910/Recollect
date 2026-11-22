@@ -2,14 +2,19 @@ package com.recollect.data.room.repository
 
 import com.recollect.data.room.dao.CoolingOverrideEventDao
 import com.recollect.data.room.dao.KnowledgePointDao
+import com.recollect.data.room.dao.PlanDao
 import com.recollect.data.room.dao.PlanPageDao
 import com.recollect.data.room.dao.QuestionDao
+import com.recollect.data.room.entity.Plan
 import com.recollect.data.room.entity.PlanPage
 import com.recollect.model.KnowledgeRowsCodec
 import com.recollect.model.PlanPageRows
 import com.recollect.pagination.PlannedPage
+import com.recollect.pagination.ScanItemGeometry
 import com.recollect.scheduler.DeferReason
 import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
 
 /**
  * 计划持久化（repository.md）。本轮落地事务方法 [savePlan] 与计划生成所需的未消费冷却覆盖读取。
@@ -19,7 +24,57 @@ interface PlanRepository {
     suspend fun pendingCoolingOverrides(): List<PendingCoolingOverride>
 
     suspend fun savePlan(draft: PlanDraft)
+
+    /** 本周仍可复用的计划（GENERATED/PRINTED）；显式重新生成后旧计划不再返回。 */
+    suspend fun activePlan(weekStart: LocalDate, weekEnd: LocalDate): StoredPlan?
+
+    suspend fun findPlan(planId: String): StoredPlan?
+
+    /** 计划页面的可打印快照；按页码升序。 */
+    suspend fun storedPages(planId: String): List<StoredPlanPage>
+
+    /**
+     * 用户确认“已打印”后原子写入每题快照并把计划标记为 PRINTED。
+     *
+     * 计划已被显式替代（SUPERSEDED）或不存在时返回 `false`，调用方不得提示“已记录”。
+     */
+    suspend fun savePrintSnapshots(
+        planId: String,
+        snapshots: List<PrintSnapshotRecord>,
+        printedAt: Instant,
+    ): Boolean
 }
+
+enum class PlanStatus {
+    GENERATED,
+    PRINTED,
+    COMPLETED,
+    SUPERSEDED,
+}
+
+data class StoredPlan(
+    val planId: String,
+    val weekStart: LocalDate,
+    val weekEnd: LocalDate,
+    val status: PlanStatus,
+    val printedAt: Instant?,
+    val renderMeta: List<PlanRenderMeta>,
+)
+
+data class StoredPlanPage(
+    val pageId: String,
+    val pageNumber: Int,
+    val date: LocalDate,
+    val itemCount: Int,
+    val questionIds: List<String>,
+    val geometry: List<ScanItemGeometry>,
+)
+
+data class PrintSnapshotRecord(
+    val questionId: String,
+    val pageId: String,
+    val qrPayload: String,
+)
 
 /** 冷却覆盖的只读投影；不向上暴露 Room 实体（repository.md「边界」）。 */
 data class PendingCoolingOverride(
@@ -38,6 +93,7 @@ data class PendingCoolingOverride(
 class RoomPlanRepository(
     private val transactionRunner: TransactionRunner,
     private val planPageDao: PlanPageDao,
+    private val planDao: PlanDao,
     private val questionDao: QuestionDao,
     private val coolingOverrideEventDao: CoolingOverrideEventDao,
     private val knowledgePointDao: KnowledgePointDao,
@@ -53,6 +109,35 @@ class RoomPlanRepository(
         requirePlanInvariants(draft)
 
         transactionRunner.inTransaction {
+            val active = planDao.activeForWeek(draft.weekStartDate, draft.weekEndDate)
+            check(
+                active == null || active.planId == draft.planId ||
+                    active.planId == draft.supersedesPlanId,
+            ) {
+                "本周已有计划 ${active?.planId}；必须通过“重新生成本周计划”显式替换"
+            }
+
+            // 计划头与页面/调度写入同一事务：要么整份计划可见，要么完全不写。
+            planDao.insert(
+                Plan(
+                    planId = draft.planId,
+                    weekStart = draft.weekStartDate,
+                    weekEnd = draft.weekEndDate,
+                    createdAt = clock.instant(),
+                    status = PlanStatus.GENERATED.name,
+                    printedAt = null,
+                    supersededBy = null,
+                    renderMeta = PlanRenderMetaJson.encode(
+                        draft.renderMetaByQuestionId.values.filter {
+                            it.questionId in draft.scheduledDates.keys
+                        },
+                    ),
+                ),
+            )
+            draft.supersedesPlanId?.let { oldPlanId ->
+                planDao.supersede(oldPlanId, draft.planId)
+            }
+
             draft.pages.forEach { page ->
                 planPageDao.insert(
                     page.toEntity(
@@ -83,6 +168,53 @@ class RoomPlanRepository(
                 }
         }
     }
+
+    override suspend fun activePlan(weekStart: LocalDate, weekEnd: LocalDate): StoredPlan? =
+        planDao.activeForWeek(weekStart, weekEnd)?.toStoredPlan()
+
+    override suspend fun findPlan(planId: String): StoredPlan? =
+        planDao.byId(planId)?.toStoredPlan()
+
+    override suspend fun storedPages(planId: String): List<StoredPlanPage> =
+        planPageDao.forPlan(planId).map { page ->
+            StoredPlanPage(
+                pageId = page.pageId,
+                pageNumber = page.pageNumber,
+                date = page.date,
+                itemCount = page.itemCount,
+                questionIds = PlanPageJson.decodeQuestionIds(page.questionIds),
+                geometry = ItemGeometryJson.decode(page.itemGeometry),
+            )
+        }
+
+    override suspend fun savePrintSnapshots(
+        planId: String,
+        snapshots: List<PrintSnapshotRecord>,
+        printedAt: Instant,
+    ): Boolean {
+        val plan = planDao.byId(planId) ?: return false
+        if (plan.status !in ACTIVE_STATUSES) return false
+        transactionRunner.inTransaction {
+            snapshots.forEach { snapshot ->
+                questionDao.setPrintSnapshot(
+                    id = snapshot.questionId,
+                    pageId = snapshot.pageId,
+                    qrPayload = snapshot.qrPayload,
+                )
+            }
+            planDao.markPrinted(planId, printedAt)
+        }
+        return true
+    }
+
+    private fun Plan.toStoredPlan(): StoredPlan = StoredPlan(
+        planId = planId,
+        weekStart = weekStart,
+        weekEnd = weekEnd,
+        status = PlanStatus.valueOf(status),
+        printedAt = printedAt,
+        renderMeta = PlanRenderMetaJson.decode(renderMeta),
+    )
 
     /**
      * 写库前的前置条件（C-056）：页 id 唯一、同一题在一份计划内只出现一次、
@@ -127,5 +259,9 @@ class RoomPlanRepository(
             continuationMarkers = PlanPageJson.encodeContinuationMarkers(continuationMarkers),
             itemGeometry = ItemGeometryJson.encode(geometry),
         )
+    }
+
+    private companion object {
+        val ACTIVE_STATUSES = setOf(PlanStatus.GENERATED.name, PlanStatus.PRINTED.name)
     }
 }

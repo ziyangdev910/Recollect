@@ -33,7 +33,17 @@ interface QuestionRepository {
 
 interface PlanRepository {
     suspend fun pendingCoolingOverrides(): List<CoolingOverrideEvent>
-    suspend fun savePlan(draft: PlanDraft)   // PlanPage + lastScheduledDate + consume + deferrals
+    // Plan 头 + PlanPage + lastScheduledDate + consume + deferrals，同一事务（C-097）
+    suspend fun savePlan(draft: PlanDraft)
+    suspend fun activePlan(weekStart: LocalDate, weekEnd: LocalDate): StoredPlan?
+    suspend fun findPlan(planId: String): StoredPlan?
+    suspend fun storedPages(planId: String): List<StoredPlanPage>
+    // 只允许 GENERATED/PRINTED 计划写入；同一事务内写题目快照并标记 PRINTED
+    suspend fun savePrintSnapshots(
+        planId: String,
+        snapshots: List<PrintSnapshotRecord>,
+        printedAt: Instant
+    ): Boolean
     suspend fun getPlanPage(planId: String, pageId: String): PlanPage?
     suspend fun cleanupPlanPages(keepWeeks: Int)
 }
@@ -209,5 +219,6 @@ fun PlanPage.toPlanPageRows(): List<PlanPageRows>
 - C-077～C-080、C-089 方案 A：跳过题目不写反馈/状态/复习日但仍写决定日志；整批成功标记会话 `SUBMITTED`；已提交会话重复提交被拒绝；反馈/日志的计划号、页号与计划日有断言。
 - 前置校验（C-079 方案 A）：空决策、重复行、会话未就绪/已提交、待确认行集合不完整、计划日/触发标记不一致、知识点不属于题目、复习日上下界、档位缺失均有负例测试。
 - C-074 方案 A：`savePlan`/`saveDecisions` 的成功路径与「任一步失败整体回滚」均有自动化用例；`SaveDecisionsResult` 返回关联失效的整题跳过清单，且不补默认知识点。
+- C-097：`savePlan` 同一事务内写 `plan` 计划头；若 `supersedesPlanId` 非空，把旧计划标记为 SUPERSEDED。同一周已有非替代计划时拒绝保存，防止隐式替换。`savePrintSnapshots` 只对 GENERATED/PRINTED 计划写入 `Question.pageId/qrPayload` 并标记 PRINTED，SUPERSEDED 计划返回 `false`，调用方不得提示“已记录”。`renderMeta` 由 `planning` 冻结、`data:room` 只编码/解码，不在回读时按当前题库重算。
 - `data/room` 映射测试覆盖：Entity ↔ Scheduler/Pagination DTO 字段一一对应，无丢失/重命名漂移；`PlanPage.knowledgeRows` 解码后每题一条、条数与顺序不变，且不按 `number` 重排（C-071）。
 - `core:model` 纯度测试：`src/main` 与 `src/test` 均不得出现 `android.*` / `androidx.*` import；`KnowledgeRowsCodec` 可独立测试。

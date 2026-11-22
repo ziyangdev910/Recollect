@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -43,12 +44,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun EntryScreen(
     viewModel: EntryViewModel,
+    listState: LazyListState,
     onCreatePlan: () -> Unit,
     onCreateQuestion: () -> Unit,
     onEditQuestion: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    LaunchedEffect(viewModel) { viewModel.refresh() }
+    // 从编辑页返回时复用同一 ViewModel 与 LazyListState；仅在首次进入或保存后刷新列表。
+    LaunchedEffect(viewModel) { viewModel.refreshIfNeeded() }
 
     var pendingDelete by remember { mutableStateOf<EntrySummary?>(null) }
 
@@ -72,7 +75,7 @@ fun EntryScreen(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onCreatePlan) { Text("生成计划") }
+                TextButton(onClick = onCreatePlan) { Text("生成本周计划") }
             }
 
             when (val state = viewModel.state) {
@@ -81,6 +84,7 @@ fun EntryScreen(
                 is UiState.Content -> {
                     // 列表占满剩余空间；底部留出悬浮按钮的高度，避免遮挡最后一行。
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),

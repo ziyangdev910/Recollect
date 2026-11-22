@@ -23,7 +23,7 @@
   - 换行后的视觉行数 `knowledgeLineCount` 传给 `PagePlanner`，作为 `rightTop` 高度计算输入；
   - 不预留作答空白。
 - 右下笔记区：约 60% 宽；标题"复习笔记"+横线书写区（默认 3–4 行高）；若开启附加历史笔记，在书写区上方加最多 3 条 × 2 行摘要（来源 `NoteAttachmentItem` 最近 3 条，文本取 `correctedText`，C-026），附加区总高 ≤ 单页可用高度 30%（C-027）。
-- 页脚：每题一个 QR，载荷为 `版本|planId|pageId|questionId|校验码`，不含知识点 ID（D-09、C-030）。QR 左侧以 2.2mm 小字号绘制完整 `pageId`（如 `K7M2Q9-01`），供扫码失败时手动输入（C-095 方案 B）；右上「页码」仍只显示页序与来源页。
+- 页脚：每题一个 QR，载荷为 `版本|planId|pageId|questionId|校验码`，不含知识点 ID（D-09、C-030）。完整 `pageId`（如 `K7M2Q9-01`）以 2.2mm 小字号绘制在 QR 下方，与 QR 的间距为标签高度的一半（2mm），并在 QR 宽度内右对齐（右缘与 QR 右缘一致），供扫码失败时手动输入（C-095 方案 B；2026-11-21 用户要求）；右上「页码」仍只显示页序与来源页。
 - 页面四角：ArUco 定位标记（四角各一个；页脚只放 QR）。标记按 `DICT_4X4_50` 的真实 6×6 模块图案绘制（`ArucoPattern`，纯 Kotlin 常量，不引入 OpenCV）。
 - 留白区域：不放置任何方框，不参与 OMR。
 
@@ -39,7 +39,7 @@
 ## ArUco 与 QR 几何
 
 - ArUco：`DICT_4X4_50`，ID 0/1/2/3 = 左上/右上/右下/左下；内码 10mm，外加 4mm 白边，距页边 12mm。标记白边外沿到 8mm、内沿到 26mm；内容区必须按 `contentLeftMm`/`contentTopMm` 从 26mm 开始，**禁止标记/白边与图例、每日题数、表头、条目不重叠**（C-091 方案 A）。
-- QR：每题一个，版本 5、纠错 M、边长 18mm、quiet zone 4 modules；放在题块底部 `qrFooterHeightMm=21mm` 预留区右侧。载荷由打印层按 C-030 生成并直接编码进页面（ZXing core 3.5.3），不依赖扫描阶段补写。
+- QR：每题一个，版本 5、纠错 M、边长 18mm；放在题块底部预留区右侧，模块直接铺满 18mm 框，quiet zone 4 modules 由框外空白页边距提供。页脚总高 `qrFooterHeightMm = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm = 18 + 3 + 2 + 4 = 27mm`（含 QR 下方 pageId 标签，2026-11-21 用户要求）。载荷由打印层按 C-030 生成并直接编码进页面（ZXing core 3.5.3），不依赖扫描阶段补写。
 - 载荷：`version|planId|pageId|questionId|CRC32`；当前约 64 字节，版本 5/M 的 84 字节容量足够。
 - 一页多题时每题块各自带 QR；QR 中心 y 坐标用于归属题块。
 
@@ -64,7 +64,7 @@ data class PrintJob(
 - **条目整条移至下页时**，不绘制“续下页”文本，也不画框；分页结果中的 `continuationMarkers` 仅作内部元数据（C-063）。每日题数在每个日期的第一页日期大标题下方标注。
 - 渲染器不得在 `onLayout`/`onWrite` 中临时压缩行高来"塞下"条目；放不下就是放不下，由 `PagePlanner` 决定移页或溢出。
 - 打印前由计划层把本页的 `PlanPage.questionIds` 与 `PlanPage.knowledgeRows`（行快照 + trigger 标记）写入数据库，并把每道题的 `Question.lastScheduledDate` 写为该题的目标日；没有快照的旧稿不得按当前关联重算，回读/确认时阻断并提示重新生成计划、按新稿打印（C-009/C-015/C-033 方案一、C-072 方案 A）。
-- 打印文档写出成功后，App 内必须显示「已打印 / 未打印」确认（C-094 方案 B）；只有用户点「已打印」才写 `Question.pageId` 与 `Question.qrPayload`（最近一次打印快照），点「未打印」或直接离开则不写。系统 `onWrite` 只代表文档生成，不代表纸张打印完成；打印失败不写（C-033 方案一）。
+- 打印文档写出成功后，App 内必须显示「已打印 / 未打印」确认（C-094 方案 B）；只有用户点「已打印」才写 `Question.pageId` 与 `Question.qrPayload`（最近一次打印快照），点「未打印」或直接离开则不写。快照写入还必须校验计划仍为当前计划（GENERATED/PRINTED）：已被“重新生成本周计划”替代的 SUPERSEDED 计划不得覆盖最新快照，并提示未更新（C-097）。系统 `onWrite` 只代表文档生成，不代表纸张打印完成；打印失败不写（C-033 方案一）。
 - `PlanPage` 已在 `feature/planning` 持久化；打印层不重复写。
 
 ## 验收（C-029 方案一：真机/模拟器上的引擎回读）

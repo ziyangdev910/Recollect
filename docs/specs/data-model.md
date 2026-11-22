@@ -209,6 +209,27 @@ data class ConfirmationDecisionLog(
 - `MISSED` 不落库：按 `(planId,pageId,questionId)` 在该表无记录，或所有决策均为 `NOT_REVIEWED`，且 `plannedDate <= 今天` 派生。
 - 纳入备份导出（历史记录，不是未确认状态）。
 
+### Plan（计划头，schema v8）
+
+```kotlin
+@Entity(tableName = "plan")
+data class Plan(
+    @PrimaryKey val planId: String,
+    val weekStart: LocalDate,
+    val weekEnd: LocalDate,
+    val createdAt: Instant,
+    val status: String,          // GENERATED / PRINTED / COMPLETED / SUPERSEDED
+    val printedAt: Instant?,
+    val supersededBy: String?,
+    val renderMeta: String       // 生成时冻结的打印元数据 JSON，见 repository.md
+)
+```
+
+- 同一 `weekStart/weekEnd` 最多一份 GENERATED/PRINTED 计划；`activePlan` 只返回这类计划，显式重新生成后旧计划标记为 SUPERSEDED（C-097）。
+- `renderMeta` 保存题号、来源页、知识点名称与行数、附件数与附件文本，使进程重建后能按原布局重新打印同一计划；不依赖当前题库或当前附件。
+- 迁移 v7→v8 只建表，不回填历史 `plan_page`；旧页仍可按 `pageId` 回读，但不再参与“当前计划”复用。
+- `plan_page` 保持页面快照与题块几何；计划头与页面在 `savePlan` 同一事务写入。
+
 ### PlanPage
 
 ```kotlin

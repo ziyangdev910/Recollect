@@ -5,6 +5,7 @@ import com.recollect.data.room.dao.CoolingOverrideEventDao
 import com.recollect.data.room.dao.KnowledgePointDao
 import com.recollect.data.room.dao.NoteAttachmentItemDao
 import com.recollect.data.room.dao.PendingFeedbackDao
+import com.recollect.data.room.dao.PlanDao
 import com.recollect.data.room.dao.PlanPageDao
 import com.recollect.data.room.dao.QuestionDao
 import com.recollect.data.room.dao.ReviewFeedbackDao
@@ -14,6 +15,7 @@ import com.recollect.data.room.entity.CoolingOverrideEvent
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.NoteAttachmentItem
 import com.recollect.data.room.entity.PendingFeedback
+import com.recollect.data.room.entity.Plan
 import com.recollect.data.room.entity.PlanPage
 import com.recollect.data.room.entity.Question
 import com.recollect.data.room.entity.ReviewFeedback
@@ -31,6 +33,7 @@ import java.time.LocalDate
  */
 internal class InMemoryStores {
 
+    val plans = linkedMapOf<String, Plan>() // key = planId
     val planPages = linkedMapOf<String, PlanPage>() // key = pageId
     val questions = linkedMapOf<String, Question>() // key = id
     val knowledgePoints = linkedMapOf<String, KnowledgePoint>() // key = id
@@ -68,6 +71,7 @@ internal class InMemoryStores {
     }
 
     data class Snapshot(
+        val plans: Map<String, Plan>,
         val planPages: Map<String, PlanPage>,
         val questions: Map<String, Question>,
         val knowledgePoints: Map<String, KnowledgePoint>,
@@ -80,6 +84,7 @@ internal class InMemoryStores {
     )
 
     fun snapshot(): Snapshot = Snapshot(
+        plans = plans.toMap(),
         planPages = planPages.toMap(),
         questions = questions.toMap(),
         knowledgePoints = knowledgePoints.toMap(),
@@ -92,6 +97,8 @@ internal class InMemoryStores {
     )
 
     fun restore(snapshot: Snapshot) {
+        plans.clear()
+        plans.putAll(snapshot.plans)
         planPages.clear()
         planPages.putAll(snapshot.planPages)
         questions.clear()
@@ -220,6 +227,34 @@ internal class RollbackTransactionRunner(private val stores: InMemoryStores) : T
         } catch (t: Throwable) {
             stores.restore(snapshot)
             throw t
+        }
+    }
+}
+
+internal class FakePlanDao(private val stores: InMemoryStores) : PlanDao {
+    override suspend fun insert(plan: Plan) {
+        stores.plans[plan.planId] = plan
+    }
+
+    override suspend fun byId(planId: String): Plan? = stores.plans[planId]
+
+    override suspend fun activeForWeek(weekStart: LocalDate, weekEnd: LocalDate): Plan? =
+        stores.plans.values
+            .filter {
+                it.weekStart == weekStart && it.weekEnd == weekEnd &&
+                    it.status in setOf("GENERATED", "PRINTED")
+            }
+            .maxByOrNull { it.createdAt }
+
+    override suspend fun supersede(planId: String, supersededBy: String) {
+        stores.plans[planId]?.let {
+            stores.plans[planId] = it.copy(status = "SUPERSEDED", supersededBy = supersededBy)
+        }
+    }
+
+    override suspend fun markPrinted(planId: String, printedAt: Instant) {
+        stores.plans[planId]?.let {
+            stores.plans[planId] = it.copy(status = "PRINTED", printedAt = printedAt)
         }
     }
 }

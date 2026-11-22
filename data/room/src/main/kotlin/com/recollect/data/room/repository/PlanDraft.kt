@@ -23,6 +23,13 @@ data class PlanDraft(
     val deferred: List<DeferredItem>,
     // 回读几何快照（C-093 方案 A）：pageId → 该页每个题块的几何；旧草稿可为空。
     val geometryByPage: Map<String, List<ScanItemGeometry>> = emptyMap(),
+    /** 计划头所属周；从分页日期推导，生产路径显式传入设置里的计划窗口。 */
+    val weekStartDate: LocalDate = pages.minOfOrNull { it.date } ?: LocalDate.MIN,
+    val weekEndDate: LocalDate = pages.maxOfOrNull { it.date } ?: LocalDate.MIN,
+    /** 生成时冻结的打印元数据；进程重建后据此按原布局重印同一计划。 */
+    val renderMetaByQuestionId: Map<String, PlanRenderMeta> = emptyMap(),
+    /** 显式重新生成时被替代的旧计划；保存事务内标记为 SUPERSEDED。 */
+    val supersedesPlanId: String? = null,
 ) {
     companion object {
         /**
@@ -36,6 +43,10 @@ data class PlanDraft(
             coolingEventIdsToConsume: List<Long>,
             deferred: List<DeferredItem>,
             geometryByPage: Map<String, List<ScanItemGeometry>> = emptyMap(),
+            weekStartDate: LocalDate? = null,
+            weekEndDate: LocalDate? = null,
+            renderMetaByQuestionId: Map<String, PlanRenderMeta> = emptyMap(),
+            supersedesPlanId: String? = null,
         ): PlanDraft = when (result) {
             is PaginationResult.Failure -> throw PlanGenerationException(result.code, result.message)
             is PaginationResult.Success -> PlanDraft(
@@ -46,6 +57,14 @@ data class PlanDraft(
                 coolingEventIdsToConsume = coolingEventIdsToConsume,
                 deferred = deferred,
                 geometryByPage = geometryByPage,
+                weekStartDate = weekStartDate
+                    ?: result.pages.minOfOrNull { it.date }
+                    ?: LocalDate.MIN,
+                weekEndDate = weekEndDate
+                    ?: result.pages.maxOfOrNull { it.date }
+                    ?: LocalDate.MIN,
+                renderMetaByQuestionId = renderMetaByQuestionId,
+                supersedesPlanId = supersedesPlanId,
             )
         }
     }

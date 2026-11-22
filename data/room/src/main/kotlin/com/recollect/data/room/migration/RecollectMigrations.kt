@@ -116,6 +116,36 @@ object RecollectMigrations {
         }
     }
 
-    val ALL: Array<Migration> =
-        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+    /**
+     * v7 → v8：新增计划头 `plan`（本周计划单例）。
+     *
+     * 迁移前已有的 `plan_page` 不补计划头：它们仍可被 QR 回读，但不再参与“当前计划”的复用；
+     * 新计划首次生成后由 `plan` 表接管。`renderMeta` 只对新计划写入。
+     */
+    val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `plan` (" +
+                    "`planId` TEXT NOT NULL, " +
+                    "`weekStart` TEXT NOT NULL, " +
+                    "`weekEnd` TEXT NOT NULL, " +
+                    "`createdAt` INTEGER NOT NULL, " +
+                    "`status` TEXT NOT NULL, " +
+                    "`printedAt` INTEGER, " +
+                    "`supersededBy` TEXT, " +
+                    "`renderMeta` TEXT NOT NULL, " +
+                    "PRIMARY KEY(`planId`))",
+            )
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+        MIGRATION_7_8,
+    )
 }

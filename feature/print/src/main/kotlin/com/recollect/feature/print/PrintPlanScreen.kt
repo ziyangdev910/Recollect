@@ -61,7 +61,7 @@ fun PrintPlanScreen(viewModel: PrintPlanViewModel) {
                 }
 
                 Text(
-                    text = "A4 纵向；请确认纸张与打印机。打印稿用于纸面填涂后拍照回读。",
+                    text = "页面为纵向A4纸尺寸，请确认纸张与打印机。",
                     style = MaterialTheme.typography.bodySmall,
                 )
 
@@ -85,10 +85,10 @@ fun PrintPlanScreen(viewModel: PrintPlanViewModel) {
 
                 // C-094 方案 B：文档生成不等于纸张打印完成，由用户确认后再写快照。
                 if (state.awaitingPrintedConfirmation) {
-                    Text(
-                        text = "只有确认纸张已经打印，才会记录每一题的最近打印页与二维码。",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    // Text(
+                    //     text = "只有确认纸张已经打印，才会记录每一题的最近打印页与二维码。",
+                    //     style = MaterialTheme.typography.bodySmall,
+                    // )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(
                             onClick = { scope.launch { viewModel.confirmPrinted() } },

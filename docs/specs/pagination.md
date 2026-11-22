@@ -47,13 +47,15 @@ data class TemplateGeometry(
     val itemSpacingMm: Double = 3.0,
     val qrSizeMm: Double = 18.0,
     val qrPaddingMm: Double = 3.0,
+    val pageIdLabelHeightMm: Double = 4.0,       // QR 下方 pageId 标签高度
+    val pageIdLabelGapMm: Double = 2.0,          // 标签与 QR 的间距（标签高度的一半）
     val maxAttachmentHeightRatio: Double = 0.30,  // C-027
     val dateHeadingFontMm: Double = 5.0,          // 日期大标题字号；总题数字号为其一半（C-063）
     val dateHeadingHeightMm: Double = 7.0,        // 日期大标题行高；总题数高度为其一半（C-063）
     val cornerReserveMm: Double = 0.0             // C-091 方案 A：四角标记预留；默认 0 保持纯几何语义
 ) {
     val qrFooterHeightMm: Double
-        get() = qrSizeMm + qrPaddingMm
+        get() = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm
     val contentLeftMm: Double
         get() = horizontalMarginMm + cornerReserveMm
     val contentTopMm: Double
@@ -227,7 +229,7 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 | P-16 | `knowledgeLineCount` 1..4 | `rightTop` 按行数递增，不按 `knowledgeCount` 递增 |
 | P-17 | 同一题重复分页 / 重启后重规划 | `knowledgeNames` 按 `number` 升序输入，行序与名称顺序稳定不变（C-015） |
 | P-18 | `itemHeight` 落在 `(contentHeightMm, usableHeightMm]` | 必须进入 `ITEM_TOO_TALL`；不得出现「既放不下又不在 overflow」的区间 |
-| P-19 | QR 预留区 | `itemHeight` 包含 `qrFooterHeightMm`；QR 不挤占笔记书写区；`template.qrFooterHeightMm = qrSizeMm + qrPaddingMm` |
+| P-19 | QR 预留区 | `itemHeight` 包含 `qrFooterHeightMm`；QR 不挤占笔记书写区；`template.qrFooterHeightMm = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm` |
 | P-20 | 非法计数字段 | `knowledgeCount`/`attachmentCount`/`knowledgeLineCount` 越界时抛 `IllegalArgumentException`，不静默截断或补 0 |
 | P-21 | C-091 方案 A：四角标记预留 | `a4Print()` 的 `contentLeftMm`/`contentTopMm` = 26mm，`contentWidthMm` = 158mm，`usableHeightMm` = 245mm，`firstPageContentHeightMm` = 230mm；`yOffset` 从 `contentTopMm` 起算；内容区越过标记白边外沿 |
 

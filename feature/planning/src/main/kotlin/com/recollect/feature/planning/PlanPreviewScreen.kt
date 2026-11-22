@@ -8,14 +8,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,7 +39,9 @@ fun PlanPreviewScreen(
     onPrint: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
-    LaunchedEffect(viewModel) { viewModel.refresh() }
+    var showRegenerateConfirm by remember { mutableStateOf(false) }
+    // 只在本次计划实例首次进入时加载/生成；从打印页返回预览时复用原计划，不刷新计划号。
+    LaunchedEffect(viewModel) { viewModel.refreshIfNeeded() }
 
     Column(
         modifier = Modifier
@@ -78,6 +86,11 @@ fun PlanPreviewScreen(
                     }
                 }
                 WarningList(state.warnings)
+
+                // 显式重新生成：新计划号会替代本周当前计划；默认路径只复用已有计划。
+                TextButton(onClick = { showRegenerateConfirm = true }) {
+                    Text("重新生成本周计划")
+                }
             }
 
             is PlanPreviewUiState.Empty -> {
@@ -94,6 +107,32 @@ fun PlanPreviewScreen(
                 }
             }
         }
+    }
+
+    if (showRegenerateConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRegenerateConfirm = false },
+            title = { Text("重新生成本周计划") },
+            text = {
+                Text(
+                    "将生成新的计划号。旧计划仍可回读，但不再是最新计划；" +
+                        "已打印的旧稿如需继续使用，请保留。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRegenerateConfirm = false
+                        scope.launch { viewModel.regenerate() }
+                    },
+                ) {
+                    Text("重新生成")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegenerateConfirm = false }) { Text("取消") }
+            },
+        )
     }
 }
 

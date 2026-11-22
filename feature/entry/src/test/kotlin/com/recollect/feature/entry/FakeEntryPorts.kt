@@ -15,6 +15,7 @@ internal class FakeEntryRepository(
     var createCalls = 0
     var updateCalls = 0
     var archiveCalls = 0
+    var summaryCalls = 0
     var archiveFailure: Throwable? = null
 
     override suspend fun create(draft: EntryDraft): EntrySummary {
@@ -54,7 +55,10 @@ internal class FakeEntryRepository(
         rows.removeAll { it.questionId == questionId }
     }
 
-    override suspend fun summaries(): List<EntrySummary> = rows.toList()
+    override suspend fun summaries(): List<EntrySummary> {
+        summaryCalls++
+        return rows.toList()
+    }
 
     override suspend fun defaultSourcePageCode(): Int = defaultSourcePageCodeValue
 }

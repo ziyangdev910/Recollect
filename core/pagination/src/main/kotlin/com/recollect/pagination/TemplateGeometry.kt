@@ -29,13 +29,18 @@ data class TemplateGeometry(
     val itemSpacingMm: Double = 3.0,
     val qrSizeMm: Double = 18.0,
     val qrPaddingMm: Double = 3.0,
+    /** C-095 方案 B：QR 下方 pageId 标签的高度（2.2mm 字号，视觉行高 4mm）。 */
+    val pageIdLabelHeightMm: Double = 4.0,
+    /** pageId 标签与 QR 的垂直间距；2026-11-21 用户要求缩短为标签高度的一半。 */
+    val pageIdLabelGapMm: Double = 2.0,
     val maxAttachmentHeightRatio: Double = 0.30, // C-027
     val dateHeadingFontMm: Double = 5.0, // 日期大标题字号（C-063）
     val dateHeadingHeightMm: Double = 7.0, // 日期大标题行高（C-063）
     val cornerReserveMm: Double = 0.0, // C-091 方案 A：四角标记预留
 ) {
+    /** 题块页脚：QR 上方留白 + QR + 标签间距 + 标签高度。 */
     val qrFooterHeightMm: Double
-        get() = qrSizeMm + qrPaddingMm
+        get() = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm
 
     /** 内容区左边界；需越过四角标记白边（C-091 方案 A）。 */
     val contentLeftMm: Double

@@ -184,7 +184,7 @@ class PrintLayoutTest {
 
         val q1 = first.items[0]
         assertEquals(41.0, q1.blockTopMm, EPSILON) // 26 + 8 + 7
-        assertEquals(68.5, q1.blockHeightMm, EPSILON)
+        assertEquals(74.5, q1.blockHeightMm, EPSILON)
         assertEquals(1, q1.left.rows.size)
         assertEquals(1, q1.left.rows[0].index)
         assertEquals("一元二次方程", q1.left.rows[0].knowledgeName)
@@ -223,47 +223,34 @@ class PrintLayoutTest {
         assertEquals(18.0, q1.qr.sizeMm, EPSILON)
         assertEquals(166.0, q1.qr.leftMm, EPSILON) // 内容区右边 184 - 18
         assertEquals(88.5, q1.qr.topMm, EPSILON) // footer 85.5 + qrPadding 3
-        assertEquals(21.0, q1.qr.footerHeightMm, EPSILON)
+        assertEquals(27.0, q1.qr.footerHeightMm, EPSILON)
         assertEquals(4, q1.qr.quietZoneModules)
 
-        // C-095 方案 B：QR 左侧小字号完整 pageId，且不越过 QR 左边界。
-        assertEquals("K7M2Q9-01", q1.qr.pageIdLabel.text)
-        assertEquals(26.0, q1.qr.pageIdLabel.leftMm, EPSILON)
-        assertEquals(88.5, q1.qr.pageIdLabel.topMm, EPSILON)
-        assertEquals(2.2, q1.qr.pageIdLabel.fontMm, EPSILON)
-        assertTrue(q1.qr.pageIdLabel.leftMm + q1.qr.pageIdLabel.widthMm <= q1.qr.leftMm)
+        // C-095 方案 B：完整 pageId 位于 QR 下方，间距为标签高度的一半（2mm），并与 QR 右缘对齐。
+        val label = q1.qr.pageIdLabel
+        assertEquals("K7M2Q9-01", label.text)
+        assertEquals(166.0, label.leftMm, EPSILON)
+        assertEquals(108.5, label.topMm, EPSILON) // QR 底 106.5 + 间距 2
+        assertEquals(18.0, label.widthMm, EPSILON)
+        assertEquals(2.2, label.fontMm, EPSILON)
+        assertEquals(PrintTextAlign.Right, label.align)
+        assertEquals(q1.qr.leftMm + q1.qr.sizeMm, label.leftMm + label.widthMm, EPSILON)
+        assertEquals(q1.qr.topMm + q1.qr.sizeMm + 2.0, label.topMm, EPSILON)
 
         // C-062：纸上没有笔记区时不绘制笔记与附件，且不截断附件区（P-15 已在分页层处理高度）。
         val q2 = first.items[1]
-        assertEquals(109.5, q2.blockTopMm, EPSILON)
-        assertEquals(46.0, q2.blockHeightMm, EPSILON) // max(2*7.5, 7+2*7.5) + 21 + 3
+        assertEquals(115.5, q2.blockTopMm, EPSILON)
+        assertEquals(52.0, q2.blockHeightMm, EPSILON) // max(2*7.5, 7+2*7.5) + 27 + 3
         assertEquals(2, q2.left.rows.size)
-        assertEquals(109.5, q2.left.rows[0].topMm, EPSILON)
-        assertEquals(117.0, q2.left.rows[1].topMm, EPSILON)
+        assertEquals(115.5, q2.left.rows[0].topMm, EPSILON)
+        assertEquals(123.0, q2.left.rows[1].topMm, EPSILON)
         assertEquals("勾股定理", q2.left.rows[0].knowledgeName)
         assertEquals("相似三角形", q2.left.rows[1].knowledgeName)
         assertEquals("勾股定理 / 相似三角形", q2.rightTop.knowledgeText.text)
         assertEquals(2, q2.rightTop.knowledgeText.maxLines)
         assertNull(q2.note)
 
-        // 左侧名称只在左侧截断为 9 个码点 + “…”；右上保留全称（C-013）。
-        // C-062：hasNoteArea=true 时附件区按 3 条完整绘制，不截断到 30% 上限。
-        val q3 = first.items[2]
-        assertEquals(155.5, q3.blockTopMm, EPSILON)
-        assertEquals(106.0, q3.blockHeightMm, EPSILON) // max(7.5, 7+2*7.5+30+30) + 21 + 3
-        assertEquals("一个非常长的知识点…", q3.left.rows[0].knowledgeName)
-        assertEquals(
-            "一个非常长的知识点名称用于验证左侧截断规则",
-            q3.rightTop.knowledgeText.text,
-        )
-        assertEquals(177.5, q3.note?.topMm!!, EPSILON)
-        assertEquals(60.0, q3.note?.heightMm!!, EPSILON)
-        assertEquals(30.0, q3.note?.attachmentHeightMm!!, EPSILON)
-        assertEquals(30.0, q3.note?.writingAreaHeightMm!!, EPSILON)
-        assertEquals(3, q3.note?.attachments?.size)
-        assertEquals(listOf("附件 A", "附件 B", "附件 C"), q3.note?.attachments?.map { it.text })
-
-        // 同一天后续页：只重复日期小标题，不再重复「本日共需复习 X 题」，也不重复图例。
+        // 首页放不下 q3 后，同日后续页先放 q3，再放被移下页的 q4。
         val second = layout.pages[1]
         assertEquals("K7M2Q9-02", second.pageId)
         assertEquals(monday, second.date)
@@ -273,13 +260,33 @@ class PrintLayoutTest {
         assertEquals("2026-11-16 周一", second.dateHeading?.text)
         assertNull(second.dailyTotal)
         assertNull(second.legend)
-        val q4 = second.items.single()
+
+        // 左侧名称只在左侧截断为 9 个码点 + “…”；右上保留全称（C-013）。
+        // C-062：hasNoteArea=true 时附件区按 3 条完整绘制，不截断到 30% 上限。
+        val q3 = second.items[0]
+        assertEquals("q3", q3.questionId)
+        assertEquals(33.0, q3.blockTopMm, EPSILON)
+        assertEquals(112.0, q3.blockHeightMm, EPSILON) // max(7.5, 7+2*7.5+30+30) + 27 + 3
+        assertEquals("一个非常长的知识点…", q3.left.rows[0].knowledgeName)
+        assertEquals(
+            "一个非常长的知识点名称用于验证左侧截断规则",
+            q3.rightTop.knowledgeText.text,
+        )
+        assertEquals(55.0, q3.note?.topMm!!, EPSILON)
+        assertEquals(60.0, q3.note?.heightMm!!, EPSILON)
+        assertEquals(30.0, q3.note?.attachmentHeightMm!!, EPSILON)
+        assertEquals(30.0, q3.note?.writingAreaHeightMm!!, EPSILON)
+        assertEquals(3, q3.note?.attachments?.size)
+        assertEquals(listOf("附件 A", "附件 B", "附件 C"), q3.note?.attachments?.map { it.text })
+        assertEquals(118.0, q3.qr.topMm, EPSILON)
+
+        val q4 = second.items[1]
         assertEquals("q4", q4.questionId)
-        assertEquals(33.0, q4.blockTopMm, EPSILON)
-        assertEquals(68.5, q4.blockHeightMm, EPSILON)
+        assertEquals(145.0, q4.blockTopMm, EPSILON)
+        assertEquals(74.5, q4.blockHeightMm, EPSILON)
         assertEquals("页码 02　题号 T-4　来源页 P7", q4.rightTop.pageLine.text)
-        assertEquals(47.5, q4.note?.topMm!!, EPSILON)
-        assertEquals(80.5, q4.qr.topMm, EPSILON)
+        assertEquals(159.5, q4.note?.topMm!!, EPSILON)
+        assertEquals(192.5, q4.qr.topMm, EPSILON)
 
         // 新日期重新开始：标题与每日题数恢复，图例仍不重复。
         val third = layout.pages[2]

@@ -40,6 +40,28 @@ class EntryViewModelTest {
     }
 
     @Test
+    fun `refreshIfNeeded keeps the list when returning from the edit screen`() = runBlocking {
+        val repository = FakeEntryRepository(listOf(entrySummary("q1", "T-1")))
+        val viewModel = EntryViewModel(repository)
+
+        viewModel.refreshIfNeeded()
+        assertEquals(1, repository.summaryCalls)
+        val content = viewModel.state as UiState.Content
+
+        // 进入编辑页再返回：页面重新组合，但不得重新读取列表或替换内容。
+        viewModel.refreshIfNeeded()
+        assertEquals(1, repository.summaryCalls, "返回题库页不应重新加载")
+        assertEquals(content, viewModel.state, "返回题库页应保留原列表内容")
+
+        // 保存题目后返回：静默更新一次，内容仍在（不闪回 Loading）。
+        repository.rows += entrySummary("q2", "T-2")
+        viewModel.markNeedsRefresh()
+        viewModel.refreshIfNeeded()
+        assertEquals(2, repository.summaryCalls, "保存后应静默刷新一次")
+        assertEquals(2, (viewModel.state as UiState.Content).data.questions.size)
+    }
+
+    @Test
     fun `deleting removes the question from the list`() = runBlocking {
         val repository = FakeEntryRepository(listOf(entrySummary("q1", "T-1")))
         val viewModel = EntryViewModel(repository)

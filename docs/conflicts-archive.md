@@ -540,6 +540,23 @@
 - **用户可见变化**：扫描页内可直接取景，预览为 A4 比例；相机权限被拒绝时仍可从相册选图。拍照不再跳到系统相机。
 - **裁决前禁止事项（已解除）**：不引入 CameraX 之外的相机库、不申请存储权限、不把相机权限用于扫描页以外。
 
+### C-097 再次生成本周计划导致新计划号覆盖打印快照（已裁决：本周计划单例 + 显式重新生成，2026-11-22）
+
+- **关联决策/规格**：D-09、C-094、C-095；`docs/specs/planning.md`、`repository.md`、`data-model.md`、`app.md`、`print-template.md`。
+- **现象**：打印过一次本周计划后，再次点击首页“生成并打印本周计划”会重新调度并生成新的 `planId`；若继续打印并确认“已打印”，`Question.pageId/qrPayload` 会被新计划覆盖，旧打印稿不再是“最近一次打印”，同时本周出现两份计划、重复写 `lastScheduledDate` 并消耗冷却覆盖。
+- **裁决（2026-11-22）**：用户批准推荐方案——**本周计划单例 + 显式重新生成 + 打印快照写入保护**。默认路径复用本周已有计划；只有用户在预览页显式确认“重新生成本周计划”才产生新计划号并替代旧计划。
+- **落地**：
+  - schema v8 新增 `plan` 表（`planId`、`weekStart/weekEnd`、`createdAt`、`status`、`printedAt`、`supersededBy`、`renderMeta`）；`plan_page` 不补历史计划头，旧页仍可回读。
+  - `PlanRepository.activePlan(weekStart, weekEnd)` 返回 GENERATED/PRINTED 的当前计划；`savePlan` 在同一事务内写计划头、页面与调度字段，并在 `supersedesPlanId` 存在时把旧计划标记为 SUPERSEDED。
+  - `Plan.renderMeta` 冻结题号、来源页、知识点名称、行数、附件数与附件文本；`LoadPlanUseCase` 据此重建同一 `PrintJob`，进程重启后仍复用同一计划号与布局。
+  - `DefaultPlanSession.open` 有当前计划时加载、否则生成；`regenerate` 走 `PlanGenerator.regenerate(settings, previousPlanId)`。
+  - `PrintSnapshotWriter.save(planId, snapshots)` 返回 SAVED/IGNORED_NOT_ACTIVE；`RoomPlanRepository.savePrintSnapshots` 在事务内校验计划状态、写快照并标记 PRINTED，SUPERSEDED 计划不得覆盖最新快照。
+  - 首页按钮按本周计划状态显示“生成本周计划 / 查看并打印本周计划”；PlanPreview 增加“重新生成本周计划”二次确认。
+- **测试/证据**：`./gradlew test verifyCorePurity :app:assembleDebug` 通过；实体机 VKJ-AN00 验证：生成 `192512` → 回首页再进入仍为 `192512`；显式重新生成得到 `NBPCB6`，DB 中 `192512=SUPERSEDED(supersededBy=NBPCB6)`；打印确认后 `NBPCB6=PRINTED`、4 道题快照前缀为 `NBPCB6`；强停重开后首页显示“查看并打印本周计划”，进入仍为 `NBPCB6`。证据见 `evidence/screens/planreuse-*`、`evidence/ui/planreuse-*`、`evidence/db/planreuse-recollect.db`。
+- **规格同步**：已回写 `data-model.md`、`repository.md`、`planning.md`、`app.md`、`print-template.md`；`overview.md`、`CLAUDE.md`、`prompts.md`、`changelog.md`、agent-log 已同步。
+- **用户可见变化**：再次点首页按钮不会悄悄换计划号；要换计划必须点“重新生成本周计划”并确认。旧打印稿仍可回读，但不再是最新计划；打印确认只更新当前计划。
+- **遗留**：旧（SUPERSEDED）计划页面仍可扫描并提交反馈，若用户同时扫描新旧两稿可能重复计数；是否在确认链路拒绝 SUPERSEDED 计划需产品另行决定。
+
 ## 已裁决但待验证（非新冲突）
 
 - C-050 的 `Double` 内部算术与 `Float` 边界转换，需在 `ApplyFeedbackUseCase` 实现后用 U-01～U-19 验证。

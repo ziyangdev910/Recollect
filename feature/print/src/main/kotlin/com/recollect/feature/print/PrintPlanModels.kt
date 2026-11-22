@@ -57,5 +57,17 @@ sealed interface PrintLaunchResult {
 
 /** 打印文档写出成功后回写题目快照；实现放在 app 层，避免 feature 依赖数据库。 */
 fun interface PrintSnapshotWriter {
-    suspend fun save(snapshots: List<PrintedQuestionSnapshot>)
+    /**
+     * 只为仍可用的计划写入快照；旧计划已被重新生成替代时返回 [PrintSnapshotWriteResult.IGNORED_NOT_ACTIVE]，
+     * 不得覆盖最新计划的 `Question.pageId/qrPayload`。
+     */
+    suspend fun save(
+        planId: String,
+        snapshots: List<PrintedQuestionSnapshot>,
+    ): PrintSnapshotWriteResult
+}
+
+enum class PrintSnapshotWriteResult {
+    SAVED,
+    IGNORED_NOT_ACTIVE,
 }

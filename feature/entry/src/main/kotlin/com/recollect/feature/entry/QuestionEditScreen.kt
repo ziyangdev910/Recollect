@@ -204,7 +204,7 @@ private fun QuestionForm(
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onManageTags) { Text("管理标签库") }
+            TextButton(onClick = onManageTags) { Text("管理知识点") }
         }
         if (content.tags.isEmpty()) {
             Text(

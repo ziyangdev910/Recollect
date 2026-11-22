@@ -72,14 +72,14 @@ sealed interface UiState<out T> {
 
 | 屏幕 | 内容 | 关键状态 |
 |---|---|---|
-| Home | 当前计划卡片、完成度、打印/扫描入口、题目/知识点数量 | 无计划、计划已完成、待扫描、`LATE_BATCH` |
+| Home | 当前计划卡片、完成度、扫描入口、题目/知识点数量；入口按钮依次为“录入题目 / 管理知识点 / 生成并打印本周计划 / 扫描回读”，计划按钮按本周是否有计划显示“生成本周计划/查看并打印本周计划” | 无计划、计划已完成、待扫描、`LATE_BATCH` |
 | Entry | 题目列表、搜索、归档筛选、新建 | 空题库、加载失败 |
 | QuestionEdit | 题号、关联知识点（≤4）、预估分钟、笔记附件 | 关联超限、已打印旧稿提示 |
 | KnowledgePoints | 编号/名称列表、rename、删除 | 被题目引用不可删、删除确认 |
-| PlanPreview | 计划页、overflow 警告、每日容量、生成/打印 | 容量不足、`KNOWLEDGE_TEXT_OVERFLOW`、`ITEM_TOO_TALL`、`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG` |
+| PlanPreview | 计划页、overflow 警告、每日容量、打印入口（打印页只从此进入）；“重新生成本周计划”为二次确认的显式操作 | 容量不足、`KNOWLEDGE_TEXT_OVERFLOW`、`ITEM_TOO_TALL`、`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG` |
 
 > 警告代码（`PaginationWarningCode`）只给程序/日志使用；PlanPreview 必须把代码映射为中文标签，并展示给用户看的 `message`，不得直接显示枚举名（C-065 方案 B）。`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并与分页警告合并（C-064 方案 A）。
-| Print | 系统打印适配器、文档生成后的结果确认 | 打印中、失败、等待「已打印/未打印」确认；确认「已打印」后写 pageId/QR（C-094 方案 B） |
+| Print | 由 PlanPreview 进入；系统打印适配器、文档生成后的结果确认 | 打印中、失败、等待「已打印/未打印」确认；确认「已打印」后只为当前计划写 pageId/QR，SUPERSEDED 计划不写（C-094 方案 B、C-097） |
 | Scan | 相机/相册、当前 `ScanSession`、已扫页 | 一页一拍、`PAGE_*` 错误、重复页提示 |
 | Confirm | plan 级多页确认、批次实际复习日期、逐行决策 | `UNMARKED`、`LATE_BATCH`、未来日期行只能 NOT_REVIEWED |
 | Settings | 每日分钟、计划周、扫描窗口、保留策略 | 见 `settings.md` |
@@ -102,6 +102,10 @@ sealed interface UiState<out T> {
 
 - 所有 Repository/UseCase 错误映射为 `UiError(code, message, retryable)`；UI 显示可读文案和“重试/返回”。
 - 进程重建：`ScanSession`/`PendingFeedback`/`Confirm` 状态可恢复；`PlanPreview` 可重新生成。
+- Entry → QuestionEdit → 返回 Entry：复用 ViewModel 与 `LazyListState`，不重新加载、保留滚动位置；保存后静默刷新列表。
+- Home → PlanPreview：本周已有 GENERATED/PRINTED 计划时进入预览复用同一计划号；不会再次点击首页按钮就生成新计划。只有预览页的“重新生成本周计划”经确认后才生成新计划号并替代旧计划（C-097）。
+- 打印确认：App 内“已记录本次打印”只在计划仍为当前计划时出现；若计划已被重新生成替代，显示“本次计划已被新的计划替代，未更新打印快照。”
+- PlanPreview → Print → 返回 PlanPreview 复用同一份计划，不重新生成、计划号不变；只有再次从 Home/Entry 点击“生成本周计划”才生成新计划。
 - 不在 ViewModel 持有 `Context`；文件/相机/打印操作通过 UseCase/Repository 注入。
 
 ## 验收

@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/7.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/8.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,7 +39,7 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(7, database.required("version").asInt(), "schema 版本")
+        assertEquals(8, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
@@ -55,9 +55,10 @@ class RoomSchemaTest {
                 "note_attachment_item",
                 "knowledge_point_tombstone",
                 "knowledge_number_sequence",
+                "plan",
             ),
             entities.keys,
-            "v7 应落 data-model.md 已定义的 12 个实体（含标签库编号序列与墓碑）",
+            "v8 应落 data-model.md 已定义的 13 个实体（含计划头）",
         )
 
         assertTable(
@@ -263,6 +264,22 @@ class RoomSchemaTest {
                 "lastIssued" to Column("INTEGER", true),
             ),
             primaryKey = listOf("id"),
+            autoGenerate = false,
+        )
+
+        assertTable(
+            table = "plan",
+            columns = mapOf(
+                "planId" to Column("TEXT", true),
+                "weekStart" to Column("TEXT", true),
+                "weekEnd" to Column("TEXT", true),
+                "createdAt" to Column("INTEGER", true),
+                "status" to Column("TEXT", true),
+                "printedAt" to Column("INTEGER", false),
+                "supersededBy" to Column("TEXT", false),
+                "renderMeta" to Column("TEXT", true),
+            ),
+            primaryKey = listOf("planId"),
             autoGenerate = false,
         )
 

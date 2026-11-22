@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -15,7 +16,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,12 +40,14 @@ import com.recollect.feature.entry.QuestionEditViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
 import com.recollect.feature.planning.PlanPreviewViewModel
 import com.recollect.feature.planning.PrintJob
+import com.recollect.feature.planning.defaultPlanningSettings
 import com.recollect.feature.print.AndroidPrintLauncher
 import com.recollect.feature.print.PrintPlanInput
 import com.recollect.feature.print.PrintPlanScreen
 import com.recollect.feature.print.PrintPlanViewModel
 import com.recollect.scan.ui.ScanScreen
 import com.recollect.scan.ui.ScanViewModel
+import java.time.LocalDate
 
 /**
  * Compose 壳（阶段 5.1/5.2）。
@@ -73,6 +80,43 @@ fun AppRoot(
         )
     }
 
+    // 计划预览页的 ViewModel 归 AppRoot 顶层所有：路由分支离开组合后，
+    // 分支内 remember 的 ViewModel 会被丢弃；若在分支内创建，从打印页返回
+    // 预览页时会重建 ViewModel 并触发 LaunchedEffect 重新生成计划，计划号随之变化。
+    // 顶部持有同一实例即可让“预览 → 打印 → 返回预览”复用原计划；
+    // 只有再次从 Home/Entry 点击“生成本周计划”时才递增 generation 重新生成。
+    var planPreviewGeneration by remember(container) { mutableStateOf(0) }
+    val planPreviewViewModel = remember(container, planPreviewGeneration) {
+        PlanPreviewViewModel(
+            session = container.planSession,
+            clock = container.clock,
+            onPrintJobAvailable = { container.printPlanSession.update(it) },
+        )
+    }
+
+    // 首页按钮文案跟随本周计划状态：已有计划时只“查看并打印”，不再隐式生成新计划号。
+    var hasActivePlan by remember(container) { mutableStateOf(false) }
+    LaunchedEffect(current, container) {
+        if (current == AppRoute.Home) {
+            val settings = defaultPlanningSettings(LocalDate.now(container.clock))
+            hasActivePlan = container.planRepository.activePlan(
+                weekStart = settings.planStartDate,
+                weekEnd = settings.planEndDate,
+            ) != null
+        }
+    }
+    val openPlanPreview = {
+        planPreviewGeneration += 1
+        navigator.push(AppRoute.PlanPreview)
+    }
+
+    // 题库页的 ViewModel 与列表滚动状态归 AppRoot 顶层所有：进入题目编辑页后，
+    // 路由分支离开组合会丢弃分支内的 remember，返回时列表会重新加载并回到顶部。
+    val entryViewModel = remember(container) {
+        EntryViewModel(repository = container.entryRepository)
+    }
+    val entryListState = rememberLazyListState()
+
     MaterialTheme {
         Scaffold(
             topBar = {
@@ -98,25 +142,22 @@ fun AppRoot(
             ) {
                 when (val route = current) {
                     AppRoute.Home -> HomeScreen(
+                        hasActivePlan = hasActivePlan,
                         onEntry = { navigator.push(AppRoute.Entry) },
-                        onPlanPreview = { navigator.push(AppRoute.PlanPreview) },
-                        onPrint = { navigator.push(AppRoute.Print) },
+                        onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
+                        onPlanPreview = openPlanPreview,
                         onScan = { navigator.push(AppRoute.Scan) },
                     )
 
-                    AppRoute.Entry -> {
-                        val viewModel = remember(container) {
-                            EntryViewModel(repository = container.entryRepository)
-                        }
-                        EntryScreen(
-                            viewModel = viewModel,
-                            onCreatePlan = { navigator.push(AppRoute.PlanPreview) },
-                            onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
-                            onEditQuestion = { questionId ->
-                                navigator.push(AppRoute.QuestionEdit(questionId))
-                            },
-                        )
-                    }
+                    AppRoute.Entry -> EntryScreen(
+                        viewModel = entryViewModel,
+                        listState = entryListState,
+                        onCreatePlan = openPlanPreview,
+                        onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
+                        onEditQuestion = { questionId ->
+                            navigator.push(AppRoute.QuestionEdit(questionId))
+                        },
+                    )
 
                     is AppRoute.QuestionEdit -> {
                         val viewModel = remember(container, route.questionId) {
@@ -129,7 +170,11 @@ fun AppRoot(
                             viewModel = viewModel,
                             questionId = route.questionId,
                             onManageTags = { navigator.push(AppRoute.KnowledgePoints) },
-                            onSaved = { navigator.pop() },
+                            onSaved = {
+                                // 保存后返回题库：静默更新列表数据，但不重置滚动位置。
+                                entryViewModel.markNeedsRefresh()
+                                navigator.pop()
+                            },
                         )
                     }
 
@@ -140,19 +185,10 @@ fun AppRoot(
                         KnowledgePointLibraryScreen(viewModel)
                     }
 
-                    AppRoute.PlanPreview -> {
-                        val viewModel = remember(container) {
-                            PlanPreviewViewModel(
-                                generator = container.generatePlanUseCase,
-                                clock = container.clock,
-                                onPrintJobAvailable = { container.printPlanSession.update(it) },
-                            )
-                        }
-                        PlanPreviewScreen(
-                            viewModel = viewModel,
-                            onPrint = { navigator.push(AppRoute.Print) },
-                        )
-                    }
+                    AppRoute.PlanPreview -> PlanPreviewScreen(
+                        viewModel = planPreviewViewModel,
+                        onPrint = { navigator.push(AppRoute.Print) },
+                    )
 
                     AppRoute.Print -> {
                         val input = container.printPlanSession.latest?.toPrintPlanInput()
@@ -214,9 +250,10 @@ fun AppRoot(
 
 @Composable
 private fun HomeScreen(
+    hasActivePlan: Boolean,
     onEntry: () -> Unit,
+    onManageKnowledgePoints: () -> Unit,
     onPlanPreview: () -> Unit,
-    onPrint: () -> Unit,
     onScan: () -> Unit,
 ) {
     Column(
@@ -225,10 +262,14 @@ private fun HomeScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("拾知：把复习打印到纸上", style = MaterialTheme.typography.headlineSmall)
-        Button(onClick = onEntry) { Text("录入题目与知识点") }
-        Button(onClick = onPlanPreview) { Text("生成本周计划") }
-        Button(onClick = onPrint) { Text("打印计划") }
+        // Text("拾知：把复习打印到纸上", style = MaterialTheme.typography.headlineSmall)
+        Button(onClick = onEntry) { Text("录入题目") }
+        Button(onClick = onManageKnowledgePoints) { Text("管理知识点") }
+        // 打印入口只在“计划预览”页内提供：生成与打印是同一条流程的两个步骤，
+        // 避免 Home 在没有内存计划时进入打印页只看到空态。
+        Button(onClick = onPlanPreview) {
+            Text(if (hasActivePlan) "查看并打印本周计划" else "生成本周计划")
+        }
         Button(onClick = onScan) { Text("扫描回读") }
     }
 }

@@ -107,7 +107,7 @@ data class QrReservationLayout(
     val footerTopMm: Double,
     val footerHeightMm: Double,
     val quietZoneModules: Int,
-    /** C-095 方案 B：QR 左侧的小字号完整 pageId，供扫码失败时手动输入。 */
+    /** C-095 方案 B：QR 下方右对齐的小字号完整 pageId，供扫码失败时手动输入。 */
     val pageIdLabel: PrintText,
 )
 
@@ -135,6 +135,8 @@ data class PrintText(
 enum class PrintTextAlign {
     Left,
     Center,
+    /** 右对齐：行尾对齐到 `leftMm + widthMm`（pageId 标签与 QR 右缘对齐）。 */
+    Right,
 }
 
 data class PrintLine(
@@ -309,6 +311,7 @@ object PrintLayoutBuilder {
         val visibleBottom = placedTop + placedHeight - template.itemSpacingMm
         val footerTop = visibleBottom - template.qrFooterHeightMm
         val qrLeft = contentLeft + contentWidth - template.qrSizeMm
+        val qrTop = footerTop + template.qrPaddingMm
 
         val rowCount = question.knowledgeCount
         val leftRows = (0 until rowCount).map { index ->
@@ -396,18 +399,21 @@ object PrintLayoutBuilder {
             note = note,
             qr = QrReservationLayout(
                 leftMm = qrLeft,
-                topMm = footerTop + template.qrPaddingMm,
+                topMm = qrTop,
                 sizeMm = template.qrSizeMm,
                 footerTopMm = footerTop,
                 footerHeightMm = template.qrFooterHeightMm,
                 quietZoneModules = QR_QUIET_ZONE_MODULES,
+                // 2026-11-21 用户要求：完整 pageId 移到 QR 下方，间距缩短为标签高度的一半（2mm），
+                // 并在 QR 宽度内右对齐（右缘与 QR 右缘一致）。
                 pageIdLabel = PrintText(
                     text = pageId,
-                    leftMm = contentLeft,
-                    topMm = footerTop + template.qrPaddingMm,
-                    widthMm = qrLeft - contentLeft - PAGE_ID_LABEL_GAP_MM,
-                    heightMm = PAGE_ID_LABEL_HEIGHT_MM,
+                    leftMm = qrLeft,
+                    topMm = qrTop + template.qrSizeMm + template.pageIdLabelGapMm,
+                    widthMm = template.qrSizeMm,
+                    heightMm = template.pageIdLabelHeightMm,
                     fontMm = PAGE_ID_LABEL_FONT_MM,
+                    align = PrintTextAlign.Right,
                 ),
             ),
             qrPayload = QrPayloadCodec.encode(
@@ -604,8 +610,6 @@ private const val WRITING_LINE_COUNT = 3
 private const val ATTACHMENT_LINES = 2
 private const val QR_QUIET_ZONE_MODULES = 4
 private const val PAGE_ID_LABEL_FONT_MM = 2.2
-private const val PAGE_ID_LABEL_HEIGHT_MM = 4.0
-private const val PAGE_ID_LABEL_GAP_MM = 2.0
 private const val ARUCO_CODE_MM = 10.0
 private const val ARUCO_QUIET_ZONE_MM = 4.0
 private const val ARUCO_INSET_MM = 12.0

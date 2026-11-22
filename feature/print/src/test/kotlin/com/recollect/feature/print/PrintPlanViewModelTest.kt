@@ -86,7 +86,7 @@ class PrintPlanViewModelTest {
 
         assertSame(input, launcher.lastInput, "打印端口必须收到同一份计划输入")
         val after = viewModel.state as PrintPlanUiState.Content
-        assertEquals("已调起系统打印；完成或取消后返回本页。", after.message)
+        assertEquals("已调起系统打印。", after.message)
         assertFalse(after.messageIsError)
     }
 
@@ -133,6 +133,25 @@ class PrintPlanViewModelTest {
     }
 
     @Test
+    fun `superseded plan does not overwrite the latest print snapshot`() = runBlocking {
+        val launcher = RecordingPrintLauncher()
+        val writer = RecordingSnapshotWriter(PrintSnapshotWriteResult.IGNORED_NOT_ACTIVE)
+        val viewModel = PrintPlanViewModel(input = input(), launcher = launcher, snapshotWriter = writer)
+
+        viewModel.print()
+        launcher.onDocumentGenerated?.invoke(
+            listOf(PrintedQuestionSnapshot("q1", "ABC123-01", "payload")),
+        )
+        viewModel.confirmPrinted()
+
+        val content = viewModel.state as PrintPlanUiState.Content
+        assertFalse(content.awaitingPrintedConfirmation)
+        assertTrue(content.messageIsError)
+        assertEquals("本次计划已被新的计划替代，未更新打印快照。", content.message)
+        assertEquals(listOf("ABC123"), writer.planIds, "写入前必须带上计划号")
+    }
+
+    @Test
     fun `declining printed confirmation writes nothing`() {
         val launcher = RecordingPrintLauncher()
         val writer = RecordingSnapshotWriter()
@@ -147,7 +166,7 @@ class PrintPlanViewModelTest {
         val content = viewModel.state as PrintPlanUiState.Content
         assertFalse(content.awaitingPrintedConfirmation)
         assertTrue(writer.saved.isEmpty(), "用户选择未打印时不得写快照")
-        assertEquals("未记录本次打印；如已打印，可再次打开系统打印。", content.message)
+        assertEquals("未记录本次打印。", content.message)
     }
 
     private class RecordingPrintLauncher(
@@ -168,11 +187,19 @@ class PrintPlanViewModelTest {
         }
     }
 
-    private class RecordingSnapshotWriter : PrintSnapshotWriter {
+    private class RecordingSnapshotWriter(
+        var result: PrintSnapshotWriteResult = PrintSnapshotWriteResult.SAVED,
+    ) : PrintSnapshotWriter {
         val saved = mutableListOf<List<PrintedQuestionSnapshot>>()
+        val planIds = mutableListOf<String>()
 
-        override suspend fun save(snapshots: List<PrintedQuestionSnapshot>) {
+        override suspend fun save(
+            planId: String,
+            snapshots: List<PrintedQuestionSnapshot>,
+        ): PrintSnapshotWriteResult {
+            planIds += planId
             saved += snapshots
+            return result
         }
     }
 }

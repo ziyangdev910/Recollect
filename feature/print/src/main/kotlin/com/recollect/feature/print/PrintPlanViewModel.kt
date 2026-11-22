@@ -51,13 +51,13 @@ class PrintPlanViewModel(
             val latest = state as? PrintPlanUiState.Content ?: return@launch
             state = latest.copy(
                 awaitingPrintedConfirmation = snapshots.isNotEmpty(),
-                message = "打印文档已生成；请确认纸张是否已经打印。",
+                message = "请确认是否已经完成打印：",
                 messageIsError = false,
             )
         }
         state = when (result) {
             PrintLaunchResult.Launched -> current.copy(
-                message = "已调起系统打印；完成或取消后返回本页。",
+                message = "已调起系统打印。",
                 messageIsError = false,
             )
 
@@ -74,13 +74,21 @@ class PrintPlanViewModel(
         val snapshots = pendingSnapshots ?: return
         val current = state as? PrintPlanUiState.Content ?: return
         try {
-            snapshotWriter.save(snapshots)
+            val result = snapshotWriter.save(current.input.planId, snapshots)
             pendingSnapshots = null
-            state = current.copy(
-                awaitingPrintedConfirmation = false,
-                message = "已记录本次打印。",
-                messageIsError = false,
-            )
+            state = when (result) {
+                PrintSnapshotWriteResult.SAVED -> current.copy(
+                    awaitingPrintedConfirmation = false,
+                    message = "已记录本次打印。",
+                    messageIsError = false,
+                )
+
+                PrintSnapshotWriteResult.IGNORED_NOT_ACTIVE -> current.copy(
+                    awaitingPrintedConfirmation = false,
+                    message = "本次计划已被新的计划替代，未更新打印快照。",
+                    messageIsError = true,
+                )
+            }
         } catch (e: Exception) {
             state = current.copy(
                 message = e.message ?: "记录打印快照失败，请重试。",
@@ -95,7 +103,7 @@ class PrintPlanViewModel(
         val current = state as? PrintPlanUiState.Content ?: return
         state = current.copy(
             awaitingPrintedConfirmation = false,
-            message = "未记录本次打印；如已打印，可再次打开系统打印。",
+            message = "未记录本次打印。",
             messageIsError = false,
         )
     }

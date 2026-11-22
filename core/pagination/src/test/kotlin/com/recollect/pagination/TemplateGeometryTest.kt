@@ -9,7 +9,7 @@ class TemplateGeometryTest {
     /**
      * 默认 A4 几何（pagination.md「可用高度（C-025 方案一）」、P-19）：
      * usable = 297 - 12 - 12；首页再扣 8mm 图例；内容区每页扣 7mm 表头；
-     * 附件上限为 usable 的 30%；QR 底栏为 18 + 3。
+     * 附件上限为 usable 的 30%；QR 底栏为 18 + 3 + pageId 标签间距 2 + 标签高度 4。
      * C-063：日期大标题 5mm 字号 / 7mm 行高；每日总题数为其一半（2.5mm / 3.5mm），
      * 合计 10.5mm ≤ 默认上边距 12mm，绘制在上边距内，不占用内容区高度。
      */
@@ -49,10 +49,10 @@ class TemplateGeometryTest {
             "maxAttachmentHeightMm = usableHeightMm * 0.30",
         )
         assertEquals(
-            21.0,
+            27.0,
             geometry.qrFooterHeightMm,
             tolerance,
-            "qrFooterHeightMm = qrSizeMm + qrPaddingMm",
+            "qrFooterHeightMm = qrSizeMm(18) + qrPaddingMm(3) + pageIdLabelGapMm(2) + pageIdLabelHeightMm(4)",
         )
         assertEquals(5.0, geometry.dateHeadingFontMm, tolerance, "日期大标题默认字号 5mm")
         assertEquals(7.0, geometry.dateHeadingHeightMm, tolerance, "日期大标题默认行高 7mm")

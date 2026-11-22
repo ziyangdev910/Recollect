@@ -71,10 +71,10 @@ class PrintRenderer {
             }
         }
 
-        // C-095 方案 B：QR 左侧以 2.2mm 小字显示完整 pageId，供扫码失败时手动输入。
+        // C-095 方案 B：QR 下方以 2.2mm 小字右对齐显示完整 pageId，供扫码失败时手动输入。
         drawText(canvas, item.qr.pageIdLabel, pxPerMm)
 
-        // 每题 QR：题块底部 21mm 区域右侧，载荷由布局层生成（D-09、C-030）。
+        // 每题 QR：题块底部预留区右侧，载荷由布局层生成（D-09、C-030）。
         QrCodeRenderer.draw(
             canvas = canvas,
             payload = item.qrPayload,
@@ -138,6 +138,7 @@ class PrintRenderer {
             val lineLeftPx = when (block.align) {
                 PrintTextAlign.Left -> leftPx
                 PrintTextAlign.Center -> leftPx + (widthPx - paint.measureText(line)) / 2f
+                PrintTextAlign.Right -> leftPx + widthPx - paint.measureText(line)
             }
             canvas.drawText(line, lineLeftPx, baseline, paint)
         }

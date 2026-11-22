@@ -10,6 +10,7 @@ import com.recollect.data.room.repository.KnowledgePointRepository
 import com.recollect.data.room.repository.MondayPlanWeekStartProvider
 import com.recollect.data.room.repository.NoteAttachmentRepository
 import com.recollect.data.room.repository.PlanRepository
+import com.recollect.data.room.repository.PrintSnapshotRecord
 import com.recollect.data.room.repository.QuestionLookupRepository
 import com.recollect.data.room.repository.QuestionRepository
 import com.recollect.data.room.repository.ReviewFeedbackHistoryRepository
@@ -27,8 +28,12 @@ import com.recollect.data.room.repository.RoomReviewFeedbackHistoryRepository
 import com.recollect.data.room.repository.RoomTransactionRunner
 import com.recollect.data.room.usecase.ApplyFeedbackUseCase
 import com.recollect.data.room.usecase.MaimemoNextDueCalculator
+import com.recollect.feature.planning.DefaultPlanSession
 import com.recollect.feature.planning.GeneratePlanUseCase
+import com.recollect.feature.planning.LoadPlanUseCase
+import com.recollect.feature.planning.PlanSession
 import com.recollect.feature.print.AndroidKnowledgeTextMeasurer
+import com.recollect.feature.print.PrintSnapshotWriteResult
 import com.recollect.feature.print.PrintSnapshotWriter
 import com.recollect.feature.print.PrintedQuestionSnapshot
 import com.recollect.pagination.DefaultPagePlanner
@@ -112,13 +117,25 @@ class AppContainer(context: Context) {
 
     /** 打印文档写出成功后回写 `Question.pageId/qrPayload`（print-template.md）。 */
     val printSnapshotWriter: PrintSnapshotWriter = object : PrintSnapshotWriter {
-        override suspend fun save(snapshots: List<PrintedQuestionSnapshot>) {
-            snapshots.forEach { snapshot ->
-                questionRepository.savePrintSnapshot(
-                    questionId = snapshot.questionId,
-                    pageId = snapshot.pageId,
-                    qrPayload = snapshot.qrPayload,
-                )
+        override suspend fun save(
+            planId: String,
+            snapshots: List<PrintedQuestionSnapshot>,
+        ): PrintSnapshotWriteResult {
+            val saved = planRepository.savePrintSnapshots(
+                planId = planId,
+                snapshots = snapshots.map { snapshot ->
+                    PrintSnapshotRecord(
+                        questionId = snapshot.questionId,
+                        pageId = snapshot.pageId,
+                        qrPayload = snapshot.qrPayload,
+                    )
+                },
+                printedAt = clock.instant(),
+            )
+            return if (saved) {
+                PrintSnapshotWriteResult.SAVED
+            } else {
+                PrintSnapshotWriteResult.IGNORED_NOT_ACTIVE
             }
         }
     }
@@ -141,6 +158,7 @@ class AppContainer(context: Context) {
         RoomPlanRepository(
             transactionRunner = RoomTransactionRunner(database),
             planPageDao = database.planPageDao(),
+            planDao = database.planDao(),
             questionDao = database.questionDao(),
             coolingOverrideEventDao = database.coolingOverrideEventDao(),
             knowledgePointDao = database.knowledgePointDao(),
@@ -249,6 +267,19 @@ class AppContainer(context: Context) {
             textMeasurer = knowledgeTextMeasurer,
             planIdGenerator = CrockfordPlanIdGenerator(),
             clock = clock,
+        )
+    }
+
+    private val loadPlanUseCase: LoadPlanUseCase by lazy {
+        LoadPlanUseCase(planRepository)
+    }
+
+    /** 本周计划会话：已有计划时复用同一 planId，显式重新生成才替换旧计划。 */
+    val planSession: PlanSession by lazy {
+        DefaultPlanSession(
+            generator = generatePlanUseCase,
+            planRepository = planRepository,
+            loader = loadPlanUseCase,
         )
     }
 }

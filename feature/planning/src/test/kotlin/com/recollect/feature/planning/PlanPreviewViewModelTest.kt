@@ -121,6 +121,51 @@ class PlanPreviewViewModelTest {
     }
 
     @Test
+    fun `refreshIfNeeded keeps the same plan when returning from the print screen`() = runBlocking {
+        var calls = 0
+        val viewModel = PlanPreviewViewModel(
+            generator = object : PlanGenerator {
+                override suspend fun execute(settings: PlanningSettings): PlanGenerationOutcome {
+                    calls += 1
+                    val planId = if (calls == 1) "ABC123" else "XYZ789"
+                    return PlanGenerationOutcome.Planned(
+                        printJob = PrintJob(
+                            planId = planId,
+                            pages = emptyList(),
+                            questions = emptyMap(),
+                            notes = emptyMap(),
+                            template = settings.template,
+                        ),
+                        preview = PlanPreviewContent(
+                            planId = planId,
+                            pages = listOf(PlanPreviewPage(1, today, listOf("T-1"))),
+                            warnings = emptyList(),
+                        ),
+                    )
+                }
+            },
+            clock = clock,
+        )
+
+        viewModel.refreshIfNeeded()
+        assertEquals(1, calls)
+        val firstPlanId = (viewModel.state as PlanPreviewUiState.Content).planId
+
+        // 模拟从打印页返回预览页：页面重新进入组合，LaunchedEffect 再次调用。
+        viewModel.refreshIfNeeded()
+        assertEquals(1, calls, "返回预览页不得重新生成计划")
+        assertEquals(
+            firstPlanId,
+            (viewModel.state as PlanPreviewUiState.Content).planId,
+            "返回预览页后计划号必须保持不变",
+        )
+
+        // 用户再次点击“生成本周计划”走 refresh，允许生成新计划。
+        viewModel.refresh()
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun `empty outcome keeps warnings visible in the empty state`() = runBlocking {
         val warning = PlanPreviewWarning(
             questionId = "q-1",

@@ -30,8 +30,27 @@ class EntryViewModel(
     var actionError by mutableStateOf<String?>(null)
         private set
 
+    /** 新建/编辑保存后置位；返回题库页时据此静默更新列表，而不重置滚动位置。 */
+    private var needsRefresh = false
+
     fun clearActionError() {
         actionError = null
+    }
+
+    fun markNeedsRefresh() {
+        needsRefresh = true
+    }
+
+    /**
+     * 页面进入时调用：首次进入（[state] 仍为 Loading）或保存过题目时才读取列表。
+     *
+     * 从编辑页返回时复用同一实例与列表状态，不重新加载、不回到顶部；
+     * 保存后只做一次静默刷新（保留当前 Content，不在加载中闪回 Loading）。
+     */
+    suspend fun refreshIfNeeded() {
+        if (state !is UiState.Loading && !needsRefresh) return
+        needsRefresh = false
+        refresh()
     }
 
     suspend fun refresh() {

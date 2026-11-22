@@ -39,21 +39,66 @@ sealed interface PlanPreviewUiState {
  * 不持有 `Context`（R-03）；计划生成失败按 C-047 映射为可重试 [UiError]。
  */
 class PlanPreviewViewModel(
-    private val generator: PlanGenerator,
+    private val session: PlanSession,
     private val clock: Clock,
     private val settingsFactory: (LocalDate) -> PlanningSettings = ::defaultPlanningSettings,
     /** 计划成功后把同一份 `PrintJob` 交给打印页；失败/空态时清空，避免打印旧计划。 */
     private val onPrintJobAvailable: (PrintJob?) -> Unit = {},
 ) {
+
+    /**
+     * 仅生成、不读取已有计划的适配构造（供既有单测注入生成桩）。
+     * 生产路径必须使用 [session] 构造，才能复用本周已有计划。
+     */
+    constructor(
+        generator: PlanGenerator,
+        clock: Clock,
+        settingsFactory: (LocalDate) -> PlanningSettings = ::defaultPlanningSettings,
+        onPrintJobAvailable: (PrintJob?) -> Unit = {},
+    ) : this(
+        session = object : PlanSession {
+            override suspend fun open(settings: PlanningSettings): PlanGenerationOutcome =
+                generator.execute(settings)
+
+            override suspend fun regenerate(settings: PlanningSettings): PlanGenerationOutcome =
+                generator.execute(settings)
+        },
+        clock = clock,
+        settingsFactory = settingsFactory,
+        onPrintJobAvailable = onPrintJobAvailable,
+    )
     var state by mutableStateOf<PlanPreviewUiState>(PlanPreviewUiState.Loading)
         private set
 
-    suspend fun refresh() {
+    /**
+     * 页面进入时调用：只在尚未得到结果（[state] 仍为 [PlanPreviewUiState.Loading]）时生成。
+     *
+     * “预览 → 打印 → 返回预览”会复用同一个 ViewModel 实例，但 `LaunchedEffect`
+     * 在重新进入组合时仍会再执行一次；这里用已有状态阻止返回时重新生成计划，
+     * 避免计划号被刷新。用户主动“生成本周计划”会创建新实例（初始为 Loading），
+     * 因此仍会重新生成；若上次生成被取消、状态停在 Loading，也会重新触发。
+     */
+    suspend fun refreshIfNeeded() {
+        if (state !is PlanPreviewUiState.Loading) return
+        refresh()
+    }
+
+    suspend fun refresh() = open(regenerate = false)
+
+    /** 用户确认“重新生成本周计划”：生成新计划号，并把旧计划标记为已被替代。 */
+    suspend fun regenerate() = open(regenerate = true)
+
+    private suspend fun open(regenerate: Boolean) {
         state = PlanPreviewUiState.Loading
         onPrintJobAvailable(null)
         val settings = settingsFactory(LocalDate.now(clock))
         state = try {
-            when (val outcome = generator.execute(settings)) {
+            val outcome = if (regenerate) {
+                session.regenerate(settings)
+            } else {
+                session.open(settings)
+            }
+            when (outcome) {
                 is PlanGenerationOutcome.Planned -> {
                     onPrintJobAvailable(outcome.printJob)
                     PlanPreviewUiState.Content(
