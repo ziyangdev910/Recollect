@@ -56,8 +56,7 @@ data class ConfirmedDecision(
     val detectedTier: Tier?,
     val selectedTier: Tier?,
     val detectedRawOcr: String?,
-    val correctedText: String?,
-    val isSupplemental: Boolean
+    val correctedText: String?
 )
 
 /** 一条已写入的 triggered 反馈：DHP 初始化与间隔计算所需的最小投影。 */
@@ -140,14 +139,14 @@ interface NextDueCalculator {
 - 所有 `decisions` 的 `planId` 一致且等于扫描会话的 `planId`。
 - `decisions` 非空；每行 `decision != UserDecision.UNMARKED`（C-010）。
 - 每行 `questionId + knowledgePointId` 属于该题关联知识点；`triggered` 与计划一致。
-- `ACCEPT` 要求 `detectedTier != null || selectedTier != null`（C-022：OMR 为空时可用 `selectedTier` 补足）；`CORRECTED`/`SUPPLEMENTED` 要求 `selectedTier != null`。
+- `ACCEPT` 要求 `detectedTier != null || selectedTier != null`（C-022：OMR 为空时可用 `selectedTier` 补足）；`CORRECTED` 要求 `selectedTier != null`。
 - 归属校验已由 scan/confirm 完成（C-011）；本 UseCase 再校验一次 `PendingFeedback` 会话存在且行集合完整。
 - 同一 `(questionId, knowledgePointId)` 在 `decisions` 中最多出现一次。
 - 所有 `decisions` 属于同一 `sessionId` 的 `ScanSession`；可跨多页，`planId` 一致。
 - `plannedDate` 与 `PendingFeedback.plannedDate` 一致。
 - 非 `NOT_REVIEWED` 行：`actualReviewDate != null`、`>= 计划周起始日`、`<= 今天`；`NOT_REVIEWED` 行 `actualReviewDate` 可为 `null`，若提供也不能晚于今天。
 - “计划周起始日”按 `plannedDate` 所在周与用户设置的周起始日计算（默认周一，下一份计划生效；C-081 方案 A），不硬编码周一。
-- `ACCEPT` 要求 `detectedTier != null || selectedTier != null`；`CORRECTED`/`SUPPLEMENTED` 要求 `selectedTier != null`；档位解析由 `ConfirmedDecision.effectiveTier()` 统一提供（C-083 方案 C）。
+- `ACCEPT` 要求 `detectedTier != null || selectedTier != null`；`CORRECTED` 要求 `selectedTier != null`；档位解析由 `ConfirmedDecision.effectiveTier()` 统一提供（C-083 方案 C）。
 
 ## 处理顺序（单事务）
 
@@ -159,7 +158,7 @@ interface NextDueCalculator {
 2. 若 `decision == NOT_REVIEWED`：不写 `ReviewFeedback`，不改知识点状态，继续下一行。
 3. 解析档位：
    - `ACCEPT`：`effectiveTier = detectedTier ?: selectedTier`（优先 OMR，OMR 为空时用用户选的档位）；
-   - `CORRECTED` / `SUPPLEMENTED`：`effectiveTier = selectedTier`。
+   - `CORRECTED`：`effectiveTier = selectedTier`。
 4. 写 `ReviewFeedback`：
    - `planId = planId`、`pageId = pageId`
    - `plannedDate = plannedDate`、`reviewedOn = actualReviewDate`
@@ -167,7 +166,6 @@ interface NextDueCalculator {
    - `triggered = triggered`（非触发行也写反馈，但 `triggered=false`，不推进冷启动）
    - `rawOcrText = detectedRawOcr`（只读，D-06）
    - `correctedText = correctedText`（可编辑）
-   - `isSupplemental = isSupplemental`
    - `effectiveWeight = if (effectiveTier == FAMILIAR) 0.5f else 1.0f`（C-006）
    - `weightApplied = if (triggered) 1.0f else 0.3f`（审计字段，不反向驱动）
    - `timestamp = clock.now()`

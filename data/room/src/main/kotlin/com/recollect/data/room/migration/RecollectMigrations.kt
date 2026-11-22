@@ -15,6 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *
  * v9 的 `source_tag.name` 唯一索引在迁移内先 `GROUP BY trim(sourcePage)` 去重种入，
  * 再建索引，不会触发唯一冲突。
+ * v10 删除三张表的 `isSupplemental` 列，并把历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`。
  */
 object RecollectMigrations {
 
@@ -171,6 +172,110 @@ object RecollectMigrations {
         }
     }
 
+    /**
+     * v9 → v10：取消「修正」与「补填」的区分（2026-11-22 用户要求）。
+     *
+     * 三张表中的 `isSupplemental` 列被删除；历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`，
+     * 其余字段原样保留。SQLite 在 minSdk 26 上不支持 `DROP COLUMN`，因此重建表后回填。
+     */
+    val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `review_feedback_new` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`knowledgePointId` TEXT NOT NULL, " +
+                    "`questionId` TEXT NOT NULL, " +
+                    "`planId` TEXT NOT NULL, " +
+                    "`pageId` TEXT NOT NULL, " +
+                    "`plannedDate` TEXT NOT NULL, " +
+                    "`reviewedOn` TEXT NOT NULL, " +
+                    "`tier` TEXT NOT NULL, " +
+                    "`triggered` INTEGER NOT NULL, " +
+                    "`rawOcrText` TEXT, " +
+                    "`correctedText` TEXT, " +
+                    "`effectiveWeight` REAL NOT NULL, " +
+                    "`weightApplied` REAL NOT NULL, " +
+                    "`timestamp` INTEGER NOT NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO `review_feedback_new` (" +
+                    "`id`, `knowledgePointId`, `questionId`, `planId`, `pageId`, `plannedDate`, " +
+                    "`reviewedOn`, `tier`, `triggered`, `rawOcrText`, `correctedText`, " +
+                    "`effectiveWeight`, `weightApplied`, `timestamp`) " +
+                    "SELECT `id`, `knowledgePointId`, `questionId`, `planId`, `pageId`, `plannedDate`, " +
+                    "`reviewedOn`, `tier`, `triggered`, `rawOcrText`, `correctedText`, " +
+                    "`effectiveWeight`, `weightApplied`, `timestamp` FROM `review_feedback`",
+            )
+            db.execSQL("DROP TABLE `review_feedback`")
+            db.execSQL("ALTER TABLE `review_feedback_new` RENAME TO `review_feedback`")
+
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `confirmation_decision_log_new` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`sessionId` TEXT NOT NULL, " +
+                    "`planId` TEXT NOT NULL, " +
+                    "`pageId` TEXT NOT NULL, " +
+                    "`questionId` TEXT NOT NULL, " +
+                    "`knowledgePointId` TEXT NOT NULL, " +
+                    "`plannedDate` TEXT NOT NULL, " +
+                    "`reviewedOn` TEXT, " +
+                    "`triggered` INTEGER NOT NULL, " +
+                    "`decision` TEXT NOT NULL, " +
+                    "`selectedTier` TEXT, " +
+                    "`correctedText` TEXT, " +
+                    "`decidedAt` INTEGER NOT NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO `confirmation_decision_log_new` (" +
+                    "`id`, `sessionId`, `planId`, `pageId`, `questionId`, `knowledgePointId`, " +
+                    "`plannedDate`, `reviewedOn`, `triggered`, `decision`, `selectedTier`, " +
+                    "`correctedText`, `decidedAt`) " +
+                    "SELECT `id`, `sessionId`, `planId`, `pageId`, `questionId`, `knowledgePointId`, " +
+                    "`plannedDate`, `reviewedOn`, `triggered`, " +
+                    "CASE WHEN `decision` = 'SUPPLEMENTED' THEN 'CORRECTED' ELSE `decision` END, " +
+                    "`selectedTier`, `correctedText`, `decidedAt` FROM `confirmation_decision_log`",
+            )
+            db.execSQL("DROP TABLE `confirmation_decision_log`")
+            db.execSQL(
+                "ALTER TABLE `confirmation_decision_log_new` RENAME TO `confirmation_decision_log`",
+            )
+
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `pending_feedback_new` (" +
+                    "`sessionId` TEXT NOT NULL, " +
+                    "`planId` TEXT NOT NULL, " +
+                    "`pageId` TEXT NOT NULL, " +
+                    "`plannedDate` TEXT NOT NULL, " +
+                    "`actualReviewDate` TEXT, " +
+                    "`questionId` TEXT NOT NULL, " +
+                    "`knowledgePointId` TEXT NOT NULL, " +
+                    "`triggered` INTEGER NOT NULL, " +
+                    "`detectedTier` TEXT, " +
+                    "`detectionStatus` TEXT NOT NULL, " +
+                    "`conflict` INTEGER NOT NULL, " +
+                    "`detectedRawOcr` TEXT, " +
+                    "`userDecision` TEXT NOT NULL, " +
+                    "`selectedTier` TEXT, " +
+                    "`correctedText` TEXT, " +
+                    "PRIMARY KEY(`sessionId`, `questionId`, `knowledgePointId`))",
+            )
+            db.execSQL(
+                "INSERT INTO `pending_feedback_new` (" +
+                    "`sessionId`, `planId`, `pageId`, `plannedDate`, `actualReviewDate`, " +
+                    "`questionId`, `knowledgePointId`, `triggered`, `detectedTier`, " +
+                    "`detectionStatus`, `conflict`, `detectedRawOcr`, `userDecision`, " +
+                    "`selectedTier`, `correctedText`) " +
+                    "SELECT `sessionId`, `planId`, `pageId`, `plannedDate`, `actualReviewDate`, " +
+                    "`questionId`, `knowledgePointId`, `triggered`, `detectedTier`, " +
+                    "`detectionStatus`, `conflict`, `detectedRawOcr`, " +
+                    "CASE WHEN `userDecision` = 'SUPPLEMENTED' THEN 'CORRECTED' ELSE `userDecision` END, " +
+                    "`selectedTier`, `correctedText` FROM `pending_feedback`",
+            )
+            db.execSQL("DROP TABLE `pending_feedback`")
+            db.execSQL("ALTER TABLE `pending_feedback_new` RENAME TO `pending_feedback`")
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -180,5 +285,6 @@ object RecollectMigrations {
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
+        MIGRATION_9_10,
     )
 }

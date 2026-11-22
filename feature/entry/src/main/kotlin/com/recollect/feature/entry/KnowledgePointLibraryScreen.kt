@@ -12,12 +12,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.recollect.common.UiState
 import com.recollect.data.room.repository.KnowledgePointTag
 import kotlinx.coroutines.launch
@@ -40,7 +45,10 @@ import kotlinx.coroutines.launch
  * 页面只与 [KnowledgePointLibraryViewModel] 交互，不直接访问 Room/Context（R-03）。
  */
 @Composable
-fun KnowledgePointLibraryScreen(viewModel: KnowledgePointLibraryViewModel) {
+fun KnowledgePointLibraryScreen(
+    viewModel: KnowledgePointLibraryViewModel,
+    modifier: Modifier = Modifier,
+) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) { viewModel.refresh() }
 
@@ -61,7 +69,7 @@ fun KnowledgePointLibraryScreen(viewModel: KnowledgePointLibraryViewModel) {
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -191,6 +199,43 @@ fun KnowledgePointLibraryScreen(viewModel: KnowledgePointLibraryViewModel) {
                 TextButton(onClick = { dialog = null }) { Text("取消") }
             },
         )
+    }
+}
+
+/**
+ * 知识点标签库的全屏窗口：从录入页打开，关闭后录入页仍保留未保存的表单内容。
+ *
+ * 交互与「来源标签」窗口一致：左侧语义图标（关闭）+ 标题的 TopAppBar。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun KnowledgePointManagerDialog(
+    viewModel: KnowledgePointLibraryViewModel,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopAppBar(
+                    title = { Text("知识点") },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "关闭",
+                            )
+                        }
+                    },
+                )
+                KnowledgePointLibraryScreen(
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
     }
 }
 

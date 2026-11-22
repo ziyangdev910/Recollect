@@ -238,7 +238,6 @@ class RoomFeedbackRepository(
             decision = decision,
             selectedTier = selectedTier,
             correctedText = correctedText,
-            isSupplemental = isSupplemental,
             decidedAt = decidedAt,
         )
 
@@ -257,7 +256,6 @@ class RoomFeedbackRepository(
         triggered = triggered,
         rawOcrText = detectedRawOcr, // 只读，D-06
         correctedText = correctedText,
-        isSupplemental = isSupplemental,
         effectiveWeight = if (tier == Tier.FAMILIAR) 0.5f else 1.0f, // C-006
         weightApplied = if (triggered) 1.0f else 0.3f, // 审计字段，不反向驱动
         timestamp = timestamp,

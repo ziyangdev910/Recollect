@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 /**
  * 确认页状态机（confirm-flow.md「状态机」、D-13、R-04）。
  *
- * 本测试只锁定「逐项标记」这一核心用例：四种决策各自独立生效、未标记行阻止提交、
+ * 本测试只锁定「逐项标记」这一核心用例：三种决策各自独立生效、未标记行阻止提交、
  * 未来日期的行只能标记本次未复习，以及 NOT_REVIEWED 不携带实际复习日。
  */
 class ConfirmStateMachineTest {
@@ -51,7 +51,7 @@ class ConfirmStateMachineTest {
     )
 
     @Test
-    fun each_row_is_marked_individually_across_four_decisions_and_unmarked_rows_block_submit() {
+    fun each_row_is_marked_individually_across_three_decisions_and_unmarked_rows_block_submit() {
         val rows = listOf(
             row("q1", "k1", detectedTier = Tier.MASTERED),
             row("q2", "k2", detectedTier = null),
@@ -78,7 +78,7 @@ class ConfirmStateMachineTest {
         assertEquals(MarkOutcome.Applied, machine.accept(key("q2", "k2"), Tier.FAMILIAR))
         assertEquals(Tier.FAMILIAR, machine.decisionOf(key("q2", "k2")).selectedTier)
 
-        // 修正必须选档位；修正文本保留。
+        // 修改复习效果必须选档位；修正文本保留。
         assertEquals(MarkOutcome.NeedsTier, machine.correct(key("q3", "k3"), null))
         machine.setCorrectedText(key("q3", "k3"), "笔迹不清")
         assertEquals(MarkOutcome.Applied, machine.correct(key("q3", "k3"), Tier.MASTERED))
@@ -87,10 +87,10 @@ class ConfirmStateMachineTest {
         // 本次未复习。
         assertEquals(MarkOutcome.Applied, machine.notReviewed(key("q4", "k4")))
 
-        // 补填必须选档位，并标记为补填（C-088）。
-        assertEquals(MarkOutcome.NeedsTier, machine.supplement(key("q6", "k6"), null))
-        assertEquals(MarkOutcome.Applied, machine.supplement(key("q6", "k6"), Tier.UNKNOWN))
-        assertEquals(UserDecision.SUPPLEMENTED, machine.decisionOf(key("q6", "k6")).decision)
+        // 修改复习效果同样适用于 OMR 已识别的行，以用户选择的档位为准。
+        assertEquals(MarkOutcome.NeedsTier, machine.correct(key("q6", "k6"), null))
+        assertEquals(MarkOutcome.Applied, machine.correct(key("q6", "k6"), Tier.UNKNOWN))
+        assertEquals(UserDecision.CORRECTED, machine.decisionOf(key("q6", "k6")).decision)
 
         // 计划日晚于今天时只能标记本次未复习。
         assertEquals(
@@ -116,9 +116,8 @@ class ConfirmStateMachineTest {
         assertEquals(UserDecision.NOT_REVIEWED, decisions.getValue("q5").decision)
         assertNull(decisions.getValue("q5").actualReviewDate)
 
-        assertEquals(UserDecision.SUPPLEMENTED, decisions.getValue("q6").decision)
+        assertEquals(UserDecision.CORRECTED, decisions.getValue("q6").decision)
         assertEquals(Tier.UNKNOWN, decisions.getValue("q6").selectedTier)
-        assertTrue(decisions.getValue("q6").isSupplemental)
     }
 
     /**

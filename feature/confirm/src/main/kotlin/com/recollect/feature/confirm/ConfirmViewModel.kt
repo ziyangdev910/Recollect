@@ -181,9 +181,6 @@ class ConfirmViewModel(
     fun correct(row: ConfirmRowView, tier: Tier? = null): MarkOutcome =
         applyOutcome(machine?.correct(row.key, tier))
 
-    fun supplement(row: ConfirmRowView, tier: Tier? = null): MarkOutcome =
-        applyOutcome(machine?.supplement(row.key, tier))
-
     fun notReviewed(row: ConfirmRowView): MarkOutcome =
         applyOutcome(machine?.notReviewed(row.key))
 

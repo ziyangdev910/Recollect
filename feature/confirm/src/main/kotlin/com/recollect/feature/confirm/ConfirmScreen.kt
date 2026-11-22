@@ -4,15 +4,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.recollect.data.room.entity.DetectionStatus
 import com.recollect.data.room.entity.UserDecision
@@ -35,7 +39,7 @@ import kotlinx.coroutines.launch
 /**
  * 确认页（confirm-flow.md）。
  *
- * 每行提供「接受 / 修正 / 本次未复习 / 补填」四个独立操作，**没有**一键全部接受（D-13、R-04）。
+ * 每行提供「确认 / 修改复习效果 / 本次未复习」三个独立操作，**没有**一键全部接受（D-13、R-04）。
  * 存在未标记行时提交按钮禁用，并提示剩余行数；提交仍由 `ApplyFeedbackUseCase` 复核（C-079）。
  */
 @Composable
@@ -49,15 +53,13 @@ fun ConfirmScreen(viewModel: ConfirmViewModel) {
         TierDialog(
             title = when (request.action) {
                 TierAction.ACCEPT -> "选择看到的结果"
-                TierAction.CORRECTED -> "修正为哪一档"
-                TierAction.SUPPLEMENTED -> "补填为哪一档"
+                TierAction.CORRECTED -> "修改为哪一档"
             },
             onDismiss = { tierRequest = null },
             onPick = { tier ->
                 when (request.action) {
                     TierAction.ACCEPT -> viewModel.accept(request.row, tier)
                     TierAction.CORRECTED -> viewModel.correct(request.row, tier)
-                    TierAction.SUPPLEMENTED -> viewModel.supplement(request.row, tier)
                 }
                 tierRequest = null
             },
@@ -123,11 +125,11 @@ private fun ConfirmContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "计划 ${state.header.planId} · 共 ${state.header.pageCount} 页 / ${state.header.rowCount} 行",
+            text = "计划 ${state.header.planId} · 共 ${state.header.pageCount} 页 / ${state.header.rowCount} 题",
             style = MaterialTheme.typography.titleMedium,
         )
         Text(
-            text = "请逐题核对纸面填涂的识别结果。",
+            text = "请逐题核对纸面填涂的识别结果，完成后点击“确认”。",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -166,7 +168,11 @@ private fun ConfirmRowCard(
     viewModel: ConfirmViewModel,
     onNeedTier: (TierRequest) -> Unit,
 ) {
-    val actionsEnabled = enabled && !row.isFuture
+    // 单行一旦完成决策（确认 / 修改复习效果 / 本次未复习），锁定文本框与全部按钮并显示对勾，
+    // 让用户明确知道“本题的确认已经结束”（2026-11-22 用户要求）。
+    val decided = row.decision != UserDecision.UNMARKED
+    val fieldEnabled = enabled && !decided
+    val actionsEnabled = fieldEnabled && !row.isFuture
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -212,8 +218,8 @@ private fun ConfirmRowCard(
             OutlinedTextField(
                 value = row.correctedText.orEmpty(),
                 onValueChange = { viewModel.setCorrectedText(row, it) },
-                enabled = enabled,
-                label = { Text("请核对笔记识别结果") },
+                enabled = fieldEnabled,
+                label = { Text("校对笔记识别结果") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
                 minLines = 3,
@@ -223,9 +229,10 @@ private fun ConfirmRowCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 ConfirmActionButton(
-                    label = "接受",
+                    label = "确认",
                     enabled = actionsEnabled,
                     onClick = {
                         if (viewModel.accept(row) == MarkOutcome.NeedsTier) {
@@ -234,25 +241,30 @@ private fun ConfirmRowCard(
                     },
                 )
                 ConfirmActionButton(
-                    label = "修正",
+                    label = "修改复习效果",
                     enabled = actionsEnabled,
                     onClick = { onNeedTier(TierRequest(row, TierAction.CORRECTED)) },
                 )
                 ConfirmActionButton(
                     label = "本次未复习",
-                    enabled = enabled,
+                    enabled = fieldEnabled,
                     onClick = { viewModel.notReviewed(row) },
                 )
-                ConfirmActionButton(
-                    label = "补填",
-                    enabled = actionsEnabled,
-                    onClick = { onNeedTier(TierRequest(row, TierAction.SUPPLEMENTED)) },
-                )
+                if (decided) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    // 与校对文本框右缘对齐，纵向与按钮同高。
+                    Icon(
+                        painter = painterResource(R.drawable.ic_row_confirmed),
+                        contentDescription = "本题确认已完成",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
 
             Text(
                 text = if (row.isFuture) {
-                    "计划日晚于今天：只能标记本次未复习"
+                    "计划日晚于今天，只能标记本次未复习"
                 } else {
                     "当前：${decisionLabel(row)}"
                 },
@@ -376,7 +388,6 @@ private data class TierRequest(
 private enum class TierAction {
     ACCEPT,
     CORRECTED,
-    SUPPLEMENTED,
 }
 
 private fun knowledgeLabel(row: ConfirmRowView): String {
@@ -389,12 +400,16 @@ private fun knowledgeLabel(row: ConfirmRowView): String {
  * 复习效果识别结果：用户核对纸面填涂与识别是否一致（2026-11-22 用户要求）。
  *
  * 不再显示内部术语“OMR”；可直接读取「掌握 / 较熟悉 / 不会」。
+ * 标记为「本次未复习」后，该行直接显示「复习效果：本次未复习」（2026-11-22 用户要求）。
  */
-private fun detectionLabel(row: ConfirmRowView): String = when (row.detectionStatus) {
-    DetectionStatus.OK -> "复习效果识别：${tierName(row.detectedTier)}"
-    DetectionStatus.NO_MARK -> "复习效果识别：未填涂"
-    DetectionStatus.CONFLICT -> "复习效果识别：填涂冲突（无法判定）"
-    DetectionStatus.UNREADABLE -> "复习效果识别：无法识别"
+private fun detectionLabel(row: ConfirmRowView): String = when {
+    row.decision == UserDecision.NOT_REVIEWED -> "复习效果：本次未复习"
+    else -> when (row.detectionStatus) {
+        DetectionStatus.OK -> "复习效果：${tierName(row.detectedTier)}"
+        DetectionStatus.NO_MARK -> "复习效果：未填涂"
+        DetectionStatus.CONFLICT -> "复习效果：填涂冲突（无法判定）"
+        DetectionStatus.UNREADABLE -> "复习效果：无法识别"
+    }
 }
 
 private fun tierName(tier: Tier?): String = when (tier) {
@@ -406,10 +421,9 @@ private fun tierName(tier: Tier?): String = when (tier) {
 
 private fun decisionLabel(row: ConfirmRowView): String = when (row.decision) {
     UserDecision.UNMARKED -> "未标记"
-    UserDecision.ACCEPT -> "已接受（${tierLabel(row.detectedTier ?: row.selectedTier)}）"
-    UserDecision.CORRECTED -> "已修正（${tierLabel(row.selectedTier)}）"
+    UserDecision.ACCEPT -> "已确认（${tierLabel(row.detectedTier ?: row.selectedTier)}）"
+    UserDecision.CORRECTED -> "已修改复习效果（${tierLabel(row.selectedTier)}）"
     UserDecision.NOT_REVIEWED -> "本次未复习（不写反馈）"
-    UserDecision.SUPPLEMENTED -> "已补填（${tierLabel(row.selectedTier)}）"
 }
 
 private fun tierLabel(tier: Tier?): String = when (tier) {

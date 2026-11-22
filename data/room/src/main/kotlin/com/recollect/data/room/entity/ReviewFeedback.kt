@@ -25,7 +25,6 @@ data class ReviewFeedback(
     val triggered: Boolean, // 本行是否触发该知识点（C-009）
     val rawOcrText: String?, // 只读，D-06
     val correctedText: String?, // 可编辑，D-06
-    val isSupplemental: Boolean, // 「补填」标记，D-13
     val effectiveWeight: Float, // 1.0，或 FAMILIAR 的 0.5（C-006/C-010）
     val weightApplied: Float, // 审计：触发=1.0，非触发=0.3；不反向驱动其它字段
     val timestamp: Instant,

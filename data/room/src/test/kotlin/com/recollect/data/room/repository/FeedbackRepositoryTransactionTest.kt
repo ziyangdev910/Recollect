@@ -126,7 +126,6 @@ class FeedbackRepositoryTransactionTest {
         selectedTier = null,
         detectedRawOcr = null,
         correctedText = "修正后的笔记",
-        isSupplemental = false,
     )
 
     @Test

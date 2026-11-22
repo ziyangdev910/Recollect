@@ -126,6 +126,7 @@ fun EntryScreen(
                                             Text("题号：${row.questionNumber}")
                                             Text("页码：${row.sourcePage}")
                                             Text("知识点：${row.knowledgeNames.joinToString(" / ")}")
+                                            Text("预估复习时长：${row.estimatedReviewMinutes}分钟")
                                         }
                                         IconButton(
                                             onClick = {

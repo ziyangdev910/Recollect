@@ -28,11 +28,10 @@ data class PendingFeedback(
     val conflict: Boolean = false, // 多组填涂冲突标记
     val detectedRawOcr: String?, // 只读
     val userDecision: UserDecision = UserDecision.UNMARKED,
-    val selectedTier: Tier?, // CORRECTED/SUPPLEMENTED 必填；ACCEPT 在 detectedTier 为空时必填
+    val selectedTier: Tier?, // CORRECTED 必填；ACCEPT 在 detectedTier 为空时必填
     val correctedText: String?, // 可编辑修正文本
-    val isSupplemental: Boolean = false,
 )
 
-enum class UserDecision { UNMARKED, ACCEPT, CORRECTED, NOT_REVIEWED, SUPPLEMENTED }
+enum class UserDecision { UNMARKED, ACCEPT, CORRECTED, NOT_REVIEWED }
 
 enum class DetectionStatus { OK, NO_MARK, CONFLICT, UNREADABLE }

@@ -179,7 +179,6 @@ class RoomScanSessionRepository(
                         userDecision = UserDecision.UNMARKED,
                         selectedTier = null,
                         correctedText = null,
-                        isSupplemental = false,
                     )
                 },
             )

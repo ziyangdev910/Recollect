@@ -1184,7 +1184,7 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 【本轮背景】阶段 6（Confirm），规格 docs/specs/confirm-flow.md；实体机验证，不装模拟器。C-050：确认后的状态更新内部 `Double`、落库 `Float`，`effectiveFeedbackCount` 精确 `>= 3.0f`。C-052 方案 C：单元测试 JUnit 5，androidTest JUnit 4。R-04/D-13：逐项确认，NOT_REVIEWED 只写决定日志。C-077 A/C-078 A：整题跳过不写反馈/状态/复习日但仍写日志并展示清单；C-079 A：提交前置校验由 UseCase 承担，确认页保留按钮禁用双保险；C-080 A：已提交会话拒绝重复提交；C-081 A：复习日下界按用户设置的计划周起始日；C-088：补填必须可测且计入有效反馈。本轮只做 Confirm。
 
 【本轮任务】
-- 逐项标记 ACCEPT/CORRECTED/NOT_REVIEWED/SUPPLEMENTED，禁止一键全部接受；
+- 逐项标记 ACCEPT/CORRECTED/NOT_REVIEWED/SUPPLEMENTED，禁止一键全部接受（2026-11-22 用户要求取消「修正/补填」区分，SUPPLEMENTED 已删除，见文末追加：确认页取消修正与补填的区分）；
 - NOT_REVIEWED 只写 ConfirmationDecisionLog；写入知识点状态时按 C-050 在边界转 `Float`；
 - 先写状态机测试（JUnit 5），再写 Compose；
 - 实体机跑一遍并留截图到 evidence/screens/：adb devices -l → 安装 → 启动 → 操作 → screencap；无设备就停下来报告“无设备”，不要伪造截图。
@@ -1448,6 +1448,73 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 - 实体机验证首页排版、点击右下「管理题目来源」进入来源标签页与返回。
 
 【落地说明（2026-11-22）】已完成。`./gradlew :app:compileDebugKotlin :app:test` 与 `./gradlew :app:assembleDebug` 通过；实体机验证通过，证据见 `evidence/screens/sourcehome-2026-11-22-*.png`。
+
+---
+
+## 追加：录入页「管理知识点」页内窗口（2026-11-22）【done】
+
+【本轮背景】用户反馈：从「录入题目」页点击「管理知识点」再返回后，页面整体刷新，之前输入的题号等内容全部丢失；「管理来源」则不会。要求按「来源标签」页面的交互修复，并把知识点页左上角的返回图标换成与来源标签相同的关闭叉。
+
+【本轮任务】
+- `KnowledgePointLibraryScreen.kt` 增加 `modifier` 参数，并新增 `KnowledgePointManagerDialog`（全屏 `Dialog` + `TopAppBar`：左侧 `ic_close`、标题「知识点」）；
+- `QuestionEditScreen.kt` 不再导航到 `AppRoute.KnowledgePoints`，改为页内打开窗口；知识点候选改为本地状态，关闭窗口时只同步候选并清理已被删除的选中 id；
+- `AppRoot.kt` 在录入分支装配 `KnowledgePointLibraryViewModel` 传入；首页独立「知识点」页保持原状；
+- 实体机验证填入内容在窗口关闭后保留、系统返回键只关闭窗口；同步 changelog、agent-log、`CLAUDE.md`、`overview.md`。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :feature:entry:compileDebugKotlin :app:compileDebugKotlin :feature:entry:testDebugUnitTest` 与 `:app:assembleDebug` 通过；真机 VKJ-AN00 验证题号、页码、已选知识点与表单状态保留，证据见 `evidence/ui/kpfix-*.xml`。
+
+---
+
+## 追加：题库卡片显示预估复习时长（2026-11-22）【done】
+
+【本轮背景】用户要求在题库页每个卡片底部的「知识点：…」标签之下增加「预估复习时长：X分钟」。
+
+【本轮任务】
+- `EntryScreen.kt` 卡片信息列在知识点行下方新增预估复习时长行，数据取自 `EntrySummary.estimatedReviewMinutes`；
+- 实体机验证列表字段顺序与数值；同步 changelog、agent-log。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :feature:entry:compileDebugKotlin :feature:entry:testDebugUnitTest :app:assembleDebug` 通过；真机三张卡片分别显示 15 / 30 / 12 分钟，证据见 `evidence/ui/minuteslist-01-entry.xml`。
+
+---
+
+## 追加：确认页取消「修正」与「补填」的区分（2026-11-22）【done】
+
+【本轮背景】用户要求在确认页不再区分「修正」与「补填」，删除 `isSupplemental` 参数与「补填」按钮，并把「修正」按钮文案改为「修改复习效果」。
+
+【本轮任务】
+- `ConfirmScreen.kt`：每行只保留「接受 / 修改复习效果 / 本次未复习」；删除补填按钮、`TierAction.SUPPLEMENTED` 与对应弹窗标题；`CORRECTED` 当前状态文案改为「已修改复习效果」；
+- `ConfirmStateMachine.kt` / `ConfirmViewModel.kt`：删除 `supplement()`，只保留 `correct()`；`toDecisions()` 不再传 `isSupplemental`；
+- 数据模型：从 `ConfirmedDecision`、`ReviewFeedback`、`ConfirmationDecisionLog`、`PendingFeedback` 删除 `isSupplemental`；`UserDecision` 删除 `SUPPLEMENTED`；schema v10 迁移重建三张表，并把历史 `SUPPLEMENTED` 归并为 `CORRECTED`；
+- 同步 `confirm-flow.md`、`data-model.md`、`feedback-usecase.md`、`CLAUDE.md` D-13/R-04、`overview.md`、changelog、agent-log；
+- 单元测试更新为三种决策；实体机验证确认页按钮与迁移。
+
+【落地说明（2026-11-22）】已完成。`:data:room:test`、`:feature:confirm:testDebugUnitTest`、`:app:compileDebugKotlin` 与 `:app:assembleDebug` 通过；真机 VKJ-AN00 从 v9 数据升级到 v10 后正常启动，确认页只显示「接受 / 修改复习效果 / 本次未复习」，无「补填」；证据见 `evidence/ui/confirmfix-*.xml` 与 `evidence/db/recollect-after-v10.db`。
+
+---
+
+## 追加：确认页单行完成反馈（2026-11-22）【done】
+
+【本轮背景】用户反馈：确认页点击卡片内按钮后，只有底部显示「还有 X 行未标记」，卡片本身没有“本题确认已结束”的明确反馈。要求点击「确认」或「本次未复习」后，在三个按钮等高处、与校对文本框右对齐的位置显示对勾图标，并禁用该行文本框与全部按钮。
+
+【本轮任务】
+- `ConfirmScreen.kt`：以 `row.decision != UNMARKED` 判定该行已完成；完成时在按钮行最右侧（`Spacer(weight(1f))` + `Icon`，`verticalAlignment = CenterVertically`）显示对勾，右缘与校对文本框一致；
+- 完成行的 `OutlinedTextField` 与三个 `TextButton` 全部禁用；`修改复习效果` 选择档位后同样进入完成态；
+- 新增 `feature/confirm/src/main/res/drawable/ic_row_confirmed.xml`（Material check）；
+- 同步 `confirm-flow.md`、`CLAUDE.md`、`overview.md`、changelog、agent-log；实体机验证对勾位置与禁用状态。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :feature:confirm:compileDebugKotlin :app:assembleDebug` 通过；真机 VKJ-AN00 点击「本次未复习」后对勾位于 `[1082,1479][1166,1563]`，与按钮文本中心同高、右缘与文本框（1166）对齐；该行 `EditText` 与三个按钮容器均为 `enabled=false`。证据见 `evidence/ui/confirmdone-0*.xml`。
+
+---
+
+## 追加：本次未复习后的复习效果文案（2026-11-22）【done】
+
+【本轮背景】用户要求：选择「本次未复习」后，除禁用该行控件外，把「复习效果」标签改为「复习效果：本次未复习」。
+
+【本轮任务】
+- `ConfirmScreen.kt` 的 `detectionLabel(row)` 优先判断 `row.decision == NOT_REVIEWED`，直接返回「复习效果：本次未复习」；其余识别状态文案不变；
+- 同步 `confirm-flow.md`、`CLAUDE.md`、`overview.md`、changelog、agent-log；实体机验证。
+
+【落地说明（2026-11-22）】已完成。`./gradlew :feature:confirm:compileDebugKotlin :app:assembleDebug` 通过；真机 VKJ-AN00 点击「本次未复习」后该行显示「复习效果：本次未复习」，未操作行仍显示原识别结果。证据：`evidence/ui/confirmdone-04-notreviewed-label.xml`。
 
 ---
 

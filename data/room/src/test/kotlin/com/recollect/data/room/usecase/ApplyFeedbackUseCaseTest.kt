@@ -186,7 +186,6 @@ class ApplyFeedbackUseCaseTest {
         triggered = triggered,
         rawOcrText = null,
         correctedText = null,
-        isSupplemental = false,
         effectiveWeight = if (tier == Tier.FAMILIAR) 0.5f else 1.0f,
         weightApplied = if (triggered) 1.0f else 0.3f,
         timestamp = createdAtInstant,
@@ -226,7 +225,6 @@ class ApplyFeedbackUseCaseTest {
         detectedRawOcr: String? = null,
         correctedText: String? = null,
         reviewedOn: LocalDate = reviewDate,
-        isSupplemental: Boolean = false,
     ) = ConfirmedDecision(
         planId = planId,
         pageId = pageId,
@@ -240,7 +238,6 @@ class ApplyFeedbackUseCaseTest {
         selectedTier = selectedTier,
         detectedRawOcr = detectedRawOcr,
         correctedText = correctedText,
-        isSupplemental = isSupplemental,
     )
 
     @Test
@@ -1127,37 +1124,6 @@ class ApplyFeedbackUseCaseTest {
             updated.halfLifeDays,
             "迁移窗口首条间隔从 02-02 起算（4 天），不是 createdAt（否则会被夹到 365 天）",
         )
-    }
-
-    // ---- C-088：补填 ----
-
-    @Test
-    fun supplemented_row_uses_selected_tier_and_counts_effective_feedback() = runBlocking {
-        stores.knowledgePoints["k1"] = knowledgePoint("k1")
-        stores.questions["q1"] = question("q1")
-
-        val result = submit(
-            listOf(
-                decision(
-                    "q1",
-                    "k1",
-                    userDecision = UserDecision.SUPPLEMENTED,
-                    detectedTier = null,
-                    selectedTier = Tier.FAMILIAR,
-                    correctedText = "补填：较熟悉",
-                    isSupplemental = true,
-                ),
-            ),
-        )
-
-        val feedback = stores.reviewFeedbacks.single()
-        assertEquals(Tier.FAMILIAR, feedback.tier, "补填以用户选择的档位为准")
-        assertEquals(true, feedback.isSupplemental, "补填必须落 isSupplemental")
-        assertEquals(0.5f, feedback.effectiveWeight, "FAMILIAR 按半次计入有效反馈")
-        val updated = stores.knowledgePoints.getValue("k1")
-        assertEquals((0.5f.toDouble() - 0.1).toFloat(), updated.continuousScore)
-        assertEquals(0.5f, updated.effectiveFeedbackCount, "补填计入有效反馈")
-        assertEquals(1, result.saveResult.writtenFeedbackCount)
     }
 
     @Test

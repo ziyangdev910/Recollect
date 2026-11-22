@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/9.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/10.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,7 +39,7 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(9, database.required("version").asInt(), "schema 版本")
+        assertEquals(10, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
@@ -59,7 +59,7 @@ class RoomSchemaTest {
                 "source_tag",
             ),
             entities.keys,
-            "v9 应落 data-model.md 已定义的 14 个实体（含来源标签库）",
+            "v10 应落 data-model.md 已定义的 14 个实体（含来源标签库）",
         )
 
         assertTable(
@@ -130,7 +130,6 @@ class RoomSchemaTest {
                 "triggered" to Column("INTEGER", true),
                 "rawOcrText" to Column("TEXT", false),
                 "correctedText" to Column("TEXT", false),
-                "isSupplemental" to Column("INTEGER", true),
                 "effectiveWeight" to Column("REAL", true),
                 "weightApplied" to Column("REAL", true),
                 "timestamp" to Column("INTEGER", true),
@@ -154,7 +153,6 @@ class RoomSchemaTest {
                 "decision" to Column("TEXT", true),
                 "selectedTier" to Column("TEXT", false),
                 "correctedText" to Column("TEXT", false),
-                "isSupplemental" to Column("INTEGER", true),
                 "decidedAt" to Column("INTEGER", true),
             ),
             primaryKey = listOf("id"),
@@ -179,7 +177,6 @@ class RoomSchemaTest {
                 "userDecision" to Column("TEXT", true),
                 "selectedTier" to Column("TEXT", false),
                 "correctedText" to Column("TEXT", false),
-                "isSupplemental" to Column("INTEGER", true),
             ),
             primaryKey = listOf("sessionId", "questionId", "knowledgePointId"),
             autoGenerate = false,

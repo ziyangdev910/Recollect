@@ -71,7 +71,7 @@ class ConfirmSeedTest : AndroidTestCase() {
                 }
                 pageRows.rows.forEach { knowledge ->
                     val triggered = knowledge.knowledgePointId in pageRows.triggeredKnowledgePointIds
-                    // 与 UI 操作计划对应：3→接受(A)，4→修正(A)，2→本次未复习，1→补填(C)。
+                    // 与 UI 操作计划对应：3→接受(A)，4→修改复习效果(C)，2→本次未复习，1→接受(B)。
                     val tier = when (knowledge.number) {
                         1 -> Tier.FAMILIAR
                         2 -> null
@@ -99,7 +99,6 @@ class ConfirmSeedTest : AndroidTestCase() {
                         userDecision = UserDecision.UNMARKED,
                         selectedTier = null,
                         correctedText = null,
-                        isSupplemental = false,
                     )
                 }
             }

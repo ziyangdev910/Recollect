@@ -42,7 +42,8 @@ import com.recollect.data.room.migration.RecollectMigrations
  * （`KnowledgeNumberSequence`、`KnowledgePointTombstone`，D-12 / C-028）；
  * v6 为题目来源页码增加编号 `sourcePageCode`；v7 取消其唯一索引，允许同一页的多道题共用编号；
  * v8 增加 `plan` 计划头（本周计划单例与打印状态），避免再次生成时静默替换当前计划；
- * v9 增加 `source_tag` 来源标签库，并把已有题目的来源说明去重后作为初始标签。
+ * v9 增加 `source_tag` 来源标签库，并把已有题目的来源说明去重后作为初始标签；
+ * v10 删除 `isSupplemental`，取消「修正」与「补填」的区分。
  * 不允许 destructive migration。
  */
 @Database(
@@ -62,7 +63,7 @@ import com.recollect.data.room.migration.RecollectMigrations
         Plan::class,
         SourceTag::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(RoomTypeConverters::class)

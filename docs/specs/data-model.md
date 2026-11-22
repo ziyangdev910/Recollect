@@ -8,7 +8,7 @@
 - **D-06**：手写笔记 OCR 只存储和展示，不参与调度；原始 OCR 只读、修正文本可编辑；导出两者都含。
 - **D-11**：归档条目退出调度，历史反馈保留为知识点背景数据；活跃题目计数为 0 时知识点休眠；取消归档重新激活，`continuousScore` 保留。
 - **D-12**：单题关联知识点 ≤ 4；知识点编号全局唯一不复用；`number` 唯一索引、墓碑实体、独立编号序列；录入层与 Repository 双重校验。
-- **D-13**：确认页逐项标记，不得一键全部接受；`NOT_REVIEWED` 不写 `ReviewFeedback`，只写 `ConfirmationDecisionLog`；`ConfirmationDecisionLog` 纳入同版本备份。
+- **D-13**：确认页逐项标记，不得一键全部接受；`NOT_REVIEWED` 不写 `ReviewFeedback`，只写 `ConfirmationDecisionLog`；`ConfirmationDecisionLog` 纳入同版本备份。2026-11-22 用户要求取消「修正」与「补填」的区分（统一为「修改复习效果」），`isSupplemental` 列与 `SUPPLEMENTED` 决策退出数据模型。
 
 ## 实体
 
@@ -117,7 +117,6 @@ data class ReviewFeedback(
     val triggered: Boolean,            // 本行是否触发该知识点（C-009）；冷启动事件计数只数 true
     val rawOcrText: String?,           // 只读，D-06
     val correctedText: String?,        // 可编辑，D-06
-    val isSupplemental: Boolean,       // "补填"标记，D-13
     val effectiveWeight: Float,        // 1.0，或 FAMILIAR 的 0.5；NOT_REVIEWED 不写行（C-006/C-010）
     val weightApplied: Float,          // 审计字段：触发=1.0，非触发=0.3；不反向驱动其它字段
     val timestamp: Instant
@@ -148,12 +147,11 @@ data class PendingFeedback(
     val conflict: Boolean = false,          // 多组填涂冲突标记
     val detectedRawOcr: String?,            // 只读
     val userDecision: UserDecision = UserDecision.UNMARKED,
-    val selectedTier: Tier?,                // CORRECTED/SUPPLEMENTED 必填；ACCEPT 在 detectedTier 为空时必填
+    val selectedTier: Tier?,                // CORRECTED 必填；ACCEPT 在 detectedTier 为空时必填
     val correctedText: String?,             // 可编辑修正文本
-    val isSupplemental: Boolean = false
 )
 
-enum class UserDecision { UNMARKED, ACCEPT, CORRECTED, NOT_REVIEWED, SUPPLEMENTED }
+enum class UserDecision { UNMARKED, ACCEPT, CORRECTED, NOT_REVIEWED }
 enum class DetectionStatus { OK, NO_MARK, CONFLICT, UNREADABLE }
 ```
 
@@ -200,7 +198,6 @@ data class ConfirmationDecisionLog(
     val decision: UserDecision,        // 含 NOT_REVIEWED
     val selectedTier: Tier?,
     val correctedText: String?,
-    val isSupplemental: Boolean,
     val decidedAt: Instant
 )
 ```
@@ -353,6 +350,7 @@ data class KnowledgeNumberSequence(
 - 新增表：`confirmation_decision_log`、`note_attachment_item`、`knowledge_point_tombstone`、`knowledge_number_sequence`、`cooling_override_event`、`scan_session`；`knowledge_number_sequence` 迁移时种入 `(1, max(number, 0))`。
 - 新增唯一索引 `knowledge_point.number` 与 `plan_page.pageId` 前必须先清理重复值；迁移脚本遇到重复应失败并提示，不得静默重编号。
 - 新增表：`plan`（schema v8）、`source_tag`（schema v9）。v8→v9 的 `source_tag.name` 唯一索引在迁移内先按 `trim(sourcePage)` 去重种入再创建，不会因历史重复触发冲突。
+- schema v10：删除 `review_feedback`、`confirmation_decision_log`、`pending_feedback` 的 `isSupplemental` 列；历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`。SQLite 在 minSdk 26 不支持 `DROP COLUMN`，迁移建新表 → 回填 → 删旧表 → 重命名。
 - `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时不得按当前关联 + `number` 升序重算，应视为「无快照」并在回读/确认时阻断，提示重新生成计划并按新稿打印，同时记录警告（C-072 方案 A）。
 - 导出 JSON 的范围以 `backup.md` 的白名单为准，不再表述为「全部实体」；`PendingFeedback`、`ScanSession` 与 `CoolingOverrideEvent` 不导出（C-031/C-040/C-008）。
 

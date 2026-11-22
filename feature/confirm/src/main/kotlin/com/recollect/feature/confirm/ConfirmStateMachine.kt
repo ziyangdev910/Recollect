@@ -95,7 +95,7 @@ class ConfirmStateMachine(
                 UserDecision.NOT_REVIEWED -> true
                 UserDecision.ACCEPT ->
                     row.detectedTier != null || decision.selectedTier != null
-                UserDecision.CORRECTED, UserDecision.SUPPLEMENTED ->
+                UserDecision.CORRECTED ->
                     decision.selectedTier != null
             }
             val dateValid = decision.decision == UserDecision.NOT_REVIEWED ||
@@ -130,25 +130,13 @@ class ConfirmStateMachine(
         return MarkOutcome.Applied
     }
 
-    /** 修正：必须选择档位；保留已填写的修正文本。 */
+    /** 修改复习效果：必须选择档位；保留已填写的修正文本。 */
     fun correct(key: ConfirmRowKey, tier: Tier?): MarkOutcome {
         val row = rowByKey[key] ?: return unknownRow(key)
         rejectFuture(row)?.let { return it }
         if (tier == null) return MarkOutcome.NeedsTier
         decisions[key] = decisions.getValue(key).copy(
             decision = UserDecision.CORRECTED,
-            selectedTier = tier,
-        )
-        return MarkOutcome.Applied
-    }
-
-    /** 补填：必须选择档位，并标记为补填（C-088）；有效性由 UseCase 计入。 */
-    fun supplement(key: ConfirmRowKey, tier: Tier?): MarkOutcome {
-        val row = rowByKey[key] ?: return unknownRow(key)
-        rejectFuture(row)?.let { return it }
-        if (tier == null) return MarkOutcome.NeedsTier
-        decisions[key] = decisions.getValue(key).copy(
-            decision = UserDecision.SUPPLEMENTED,
             selectedTier = tier,
         )
         return MarkOutcome.Applied
@@ -201,7 +189,6 @@ class ConfirmStateMachine(
                 selectedTier = decision.selectedTier,
                 detectedRawOcr = row.detectedRawOcr,
                 correctedText = decision.correctedText,
-                isSupplemental = decision.decision == UserDecision.SUPPLEMENTED,
             )
         }
     }

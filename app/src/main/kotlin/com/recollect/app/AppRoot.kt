@@ -220,15 +220,19 @@ fun AppRoot(
                                 sourceTagRepository = container.sourceTagLibraryRepository,
                             )
                         }
-                        // 来源标签库在录入页内以全屏窗口打开：不离开当前页面，未保存的表单内容不会丢失。
+                        // 来源标签库与知识点标签库都在录入页内以全屏窗口打开：
+                        // 不离开当前页面，未保存的表单内容不会丢失。
                         val sourceTagViewModel = remember(container) {
                             SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
+                        }
+                        val knowledgePointViewModel = remember(container) {
+                            KnowledgePointLibraryViewModel(container.knowledgePointLibraryRepository)
                         }
                         QuestionEditScreen(
                             viewModel = viewModel,
                             sourceTagViewModel = sourceTagViewModel,
+                            knowledgePointViewModel = knowledgePointViewModel,
                             questionId = route.questionId,
-                            onManageTags = { navigator.push(AppRoute.KnowledgePoints) },
                             onSaved = {
                                 // 保存后返回题库：静默更新列表数据，但不重置滚动位置。
                                 entryViewModel.markNeedsRefresh()

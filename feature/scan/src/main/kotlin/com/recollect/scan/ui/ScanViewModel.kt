@@ -240,21 +240,21 @@ class ScanViewModel(
     private fun errorView(code: ScanErrorCode): ScanErrorView {
         val message = when (code) {
             ScanErrorCode.PAGE_NOT_FOUND ->
-                "未找到页面四角标记；请将整页放入取景框后重拍。"
+                "未找到页面四角标记，请将整页放入取景框后重拍。"
             ScanErrorCode.MULTIPLE_PAGES ->
-                "图中检测到多页；一次只拍一页，请重拍。"
+                "图中检测到多页，请重拍，一次只拍一页。"
             ScanErrorCode.PAGE_UNREADABLE ->
-                "页面图像不清晰或角度异常；请重拍。"
+                "页面图像不清晰或角度异常，请重拍。"
             ScanErrorCode.QR_NOT_FOUND ->
-                "未检测到题目二维码；请重拍，或手动输入页面 ID + 题号。"
+                "未检测到题目二维码，请重拍，或手动输入页面 ID + 题号。"
             ScanErrorCode.QR_UNREADABLE ->
-                "二维码无法识别；请重拍，或手动输入页面 ID + 题号。"
+                "二维码无法识别，请重拍，或手动输入页面 ID + 题号。"
             ScanErrorCode.QR_MULTIPLE ->
-                "二维码与题目无法一一对应；请重拍，或手动输入页面 ID + 题号。"
+                "二维码与题目无法一一对应，请重拍，或手动输入页面 ID + 题号。"
             ScanErrorCode.QR_INVALID ->
-                "二维码内容校验失败；请重拍，或手动输入页面 ID + 题号。"
+                "二维码内容校验失败，请重拍，或手动输入页面 ID + 题号。"
             ScanErrorCode.OWNERSHIP_MISMATCH ->
-                "该页不属于当前计划或题目归属不一致；请核对打印稿，必要时重新打印。"
+                "该页不属于当前计划或题目归属不一致，请核对打印稿，必要时重新打印。"
         }
         val manualAllowed = code in setOf(
             ScanErrorCode.QR_NOT_FOUND,

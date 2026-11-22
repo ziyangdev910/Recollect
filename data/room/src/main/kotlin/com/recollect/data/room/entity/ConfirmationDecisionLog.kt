@@ -26,6 +26,5 @@ data class ConfirmationDecisionLog(
     val decision: UserDecision, // 含 NOT_REVIEWED
     val selectedTier: Tier?,
     val correctedText: String?,
-    val isSupplemental: Boolean,
     val decidedAt: Instant,
 )

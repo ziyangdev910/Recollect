@@ -22,18 +22,17 @@ data class ConfirmedDecision(
     val selectedTier: Tier?,
     val detectedRawOcr: String?,
     val correctedText: String?,
-    val isSupplemental: Boolean,
 )
 
 /**
  * 解析本行要落库的有效档位（feedback-usecase.md 处理顺序第 3 步，C-022）。
  *
- * `ACCEPT` 优先使用 OMR 档位，OMR 为空时用用户选择的档位；`CORRECTED`/`SUPPLEMENTED`
- * 使用用户选择的档位。状态更新用例与写入入口共用这一份规则，避免两处漂移（C-083 方案 C）。
+ * `ACCEPT` 优先使用 OMR 档位，OMR 为空时用用户选择的档位；`CORRECTED` 使用用户选择的档位。
+ * 状态更新用例与写入入口共用这一份规则，避免两处漂移（C-083 方案 C）。
  */
 fun ConfirmedDecision.effectiveTier(): Tier? = when (decision) {
     UserDecision.ACCEPT -> detectedTier ?: selectedTier
-    UserDecision.CORRECTED, UserDecision.SUPPLEMENTED -> selectedTier
+    UserDecision.CORRECTED -> selectedTier
     UserDecision.NOT_REVIEWED, UserDecision.UNMARKED -> null
 }
 

@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.recollect.common.UiState
 import com.recollect.data.room.repository.EntryDraft
+import com.recollect.data.room.repository.KnowledgePointTag
 import kotlinx.coroutines.launch
 
 /**
@@ -52,8 +53,8 @@ import kotlinx.coroutines.launch
 fun QuestionEditScreen(
     viewModel: QuestionEditViewModel,
     sourceTagViewModel: SourceTagLibraryViewModel,
+    knowledgePointViewModel: KnowledgePointLibraryViewModel,
     questionId: String?,
-    onManageTags: () -> Unit,
     onSaved: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -91,8 +92,8 @@ fun QuestionEditScreen(
         is UiState.Content -> QuestionForm(
             viewModel = viewModel,
             sourceTagViewModel = sourceTagViewModel,
+            knowledgePointViewModel = knowledgePointViewModel,
             content = state.data,
-            onManageTags = onManageTags,
             onSaved = onSaved,
         )
     }
@@ -103,8 +104,8 @@ fun QuestionEditScreen(
 private fun QuestionForm(
     viewModel: QuestionEditViewModel,
     sourceTagViewModel: SourceTagLibraryViewModel,
+    knowledgePointViewModel: KnowledgePointLibraryViewModel,
     content: QuestionEditContent,
-    onManageTags: () -> Unit,
     onSaved: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -152,7 +153,10 @@ private fun QuestionForm(
     }
     // 来源候选独立于 content：窗口内增删改后只刷新候选，不重建表单。
     var sourceTags by remember(content) { mutableStateOf(content.sourceTags) }
+    // 知识点候选同样独立于 content：窗口内增删改后只刷新候选，不重建表单。
+    var knowledgeTags by remember(content) { mutableStateOf(content.tags) }
     var showSourceManager by remember { mutableStateOf(false) }
+    var showKnowledgeManager by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -317,11 +321,11 @@ private fun QuestionForm(
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onManageTags) { Text("管理知识点") }
+            TextButton(onClick = { showKnowledgeManager = true }) { Text("管理知识点") }
         }
-        if (content.tags.isEmpty()) {
+        if (knowledgeTags.isEmpty()) {
             Text(
-                text = "知识点标签库为空。请先到知识点标签库添加知识点标签，再回来关联。",
+                text = "知识点标签库为空。请点击「管理知识点」添加标签，再回来关联。",
                 color = MaterialTheme.colorScheme.error,
             )
         } else {
@@ -329,7 +333,7 @@ private fun QuestionForm(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                content.tags.forEach { tag ->
+                knowledgeTags.forEach { tag ->
                     val selected = tag.id in selectedIds
                     FilterChip(
                         selected = selected,
@@ -434,6 +438,27 @@ private fun QuestionForm(
                         applyDefaultCodeForSource(hasSource = true)
                     }
                 }
+            },
+        )
+    }
+
+    if (showKnowledgeManager) {
+        KnowledgePointManagerDialog(
+            viewModel = knowledgePointViewModel,
+            onDismiss = {
+                showKnowledgeManager = false
+                // 窗口内可能新增/重命名/删除知识点：关闭时同步最新候选，已填表单保持不变。
+                val latest: List<KnowledgePointTag> =
+                    when (val managerState = knowledgePointViewModel.state) {
+                        is UiState.Content -> managerState.data.tags
+                        UiState.Empty -> emptyList()
+                        else -> knowledgeTags
+                    }
+                knowledgeTags = latest
+                // 已选知识点被删除：从选择中移除，避免保存出不在标签库中的关联。
+                val availableIds = latest.mapTo(HashSet()) { it.id }
+                selectedIds.retainAll(availableIds)
+                selectionLimitReached = false
             },
         )
     }

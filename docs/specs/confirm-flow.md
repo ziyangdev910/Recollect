@@ -1,12 +1,12 @@
 # 人工确认页规格（feature/confirm）
 
 关联决策：D-06、D-09、D-13
-关联裁决：C-009、C-010、C-011、C-012、C-022、C-030、C-038、C-040、C-041、C-050、C-077、C-078、C-079、C-080、C-081、C-088
+关联裁决：C-009、C-010、C-011、C-012、C-022、C-030、C-038、C-040、C-041、C-050、C-077、C-078、C-079、C-080、C-081
 
 ## 冻结决策（D-09、D-13）
 
 - **D-09**：QR 失败走手动输入 pageId + 题号；确认页校验归属。
-- **D-13**：逐项标记接受/修正/本次未复习/补填；不得一键全部接受；`NOT_REVIEWED` 不写 `ReviewFeedback`，只写 `ConfirmationDecisionLog`，知识点状态不变。
+- **D-13**：逐项标记接受/修改复习效果/本次未复习；不得一键全部接受；`NOT_REVIEWED` 不写 `ReviewFeedback`，只写 `ConfirmationDecisionLog`，知识点状态不变。2026-11-22 用户要求取消「修正」与「补填」的区分，统一为「修改复习效果」，`isSupplemental` 退出数据模型。
 
 ## 页面结构
 
@@ -15,9 +15,10 @@
   - 行类型标记：`触发` / `关联`（C-009）
   - 来源页码：`来源页 {sourcePage}`，为用户可调编号或 `编号-说明`（如 `2-同步练习`）；说明为空时只有编号（2026-11-20 用户要求）
   - 知识点编号 + 全称
-  - 复习效果识别结果：直接显示「掌握 / 较熟悉 / 不会」；无填涂/冲突/无法识别时显示对应提示（2026-11-22 用户要求，不再显示内部术语“OMR”）
-  - 用户操作："接受 / 修正 / 本次未复习 / 补填"（D-13）
-  - 修正时弹出档位单选；补填时同样单选
+  - 复习效果识别结果：直接显示「掌握 / 较熟悉 / 不会」；无填涂/冲突/无法识别时显示对应提示（2026-11-22 用户要求，不再显示内部术语“OMR”）；该行标记「本次未复习」后改为显示「复习效果：本次未复习」（2026-11-22 用户要求）
+  - 用户操作："确认（ACCEPT）/ 修改复习效果（CORRECTED）/ 本次未复习（NOT_REVIEWED）"（D-13；2026-11-22 用户要求）
+  - 修改复习效果时弹出档位单选
+  - 单行完成任一操作后：在该行按钮同一行最右侧（与校对文本框右缘对齐、垂直居中）显示对勾图标，并禁用校对文本框与该行全部按钮，表示本题确认结束（2026-11-22 用户要求）
   - 只保留**一个可编辑文本框**，左上角提示「请核对笔记识别结果」；默认填入 ML Kit OCR 识别文本，原始 OCR 仍单独保存为 `detectedRawOcr`，编辑只改 `correctedText`（2026-11-22 用户要求）
   - 修正文本可一键「保存为笔记附件」（写 `NoteAttachmentItem(text=correctedText)`）
 - 题目级操作："本次提前复习"（创建一次性 `CoolingOverrideEvent`，C-008 方案二）
@@ -68,34 +69,32 @@ scan 端在进入本页前完成校验；本页渲染前与提交前各再校验
 
 ```text
 UNMARKED ──接受──▶ ACCEPT
-   │        ├─修正──▶ CORRECTED
-   │        ├─本次未复习──▶ NOT_REVIEWED
-   │        └─补填──▶ SUPPLEMENTED
+   │        ├─修改复习效果──▶ CORRECTED
+   │        └─本次未复习──▶ NOT_REVIEWED
    └─（未操作，提交被阻止）
 ```
 
 `PendingFeedback.userDecision` 初始为 `UNMARKED`（C-010）。状态转移规则：
 
 - `ACCEPT`：优先使用 `detectedTier`；若 `detectedTier == null`（NO_MARK/CONFLICT/UNREADABLE），允许用户先在该行选择 `selectedTier` 再点接受，写入 `detectedTier ?: selectedTier`；两者都为空时不可接受。`selectedTier` 仅在 `detectedTier` 为空时参与 ACCEPT（C-022）。
-- `CORRECTED`：必须选择 `selectedTier`；`rawOcrText` 与 `correctedText` 都保存。确认页加载时 `correctedText` 默认等于 OCR 原文，用户编辑后只覆盖 `correctedText`（2026-11-22 用户要求）。
+- `CORRECTED`（修改复习效果）：必须选择 `selectedTier`；`rawOcrText` 与 `correctedText` 都保存。确认页加载时 `correctedText` 默认等于 OCR 原文，用户编辑后只覆盖 `correctedText`（2026-11-22 用户要求）。
 - `NOT_REVIEWED`：**不写 `ReviewFeedback`**；写 `ConfirmationDecisionLog`；该知识点 `nextDueDate` 与所有状态不变（C-010）。
-- `SUPPLEMENTED`：必须选择 `selectedTier`；`isSupplemental = true`；**触发行**计入有效反馈；非触发行只更新 `continuousScore ×0.3`，`effectiveFeedbackCount` 不变。
 - 任何 `UNMARKED` 行存在时，"确认提交"禁用（D-13、R-04）。
 
 ### 识别结果与操作可用性（C-030；2026-11-22 起界面显示为复习效果识别结果）
 
 | detectionStatus | 含义 | 可用操作 |
 |---|---|---|
-| `OK` | 恰好一组填涂 | 接受 / 修正 / 本次未复习 / 补填 |
-| `NO_MARK` | 该行无填涂 | 接受（需先选档位）/ 修正 / 本次未复习 / 补填 |
-| `CONFLICT` | 多组填涂冲突，`conflict=true` | 接受（需先选档位）/ 修正 / 本次未复习 / 补填 |
-| `UNREADABLE` | 图像无法判定 | 接受（需先选档位）/ 修正 / 本次未复习 / 补填 |
+| `OK` | 恰好一组填涂 | 接受 / 修改复习效果 / 本次未复习 |
+| `NO_MARK` | 该行无填涂 | 接受（需先选档位）/ 修改复习效果 / 本次未复习 |
+| `CONFLICT` | 多组填涂冲突，`conflict=true` | 接受（需先选档位）/ 修改复习效果 / 本次未复习 |
+| `UNREADABLE` | 图像无法判定 | 接受（需先选档位）/ 修改复习效果 / 本次未复习 |
 
 ## 有效反馈计数（D-05、C-006）
 
 - `effectiveFeedbackCount` 是 `Float`，值为 0.5 的倍数。
 - 仅**触发行**计入 `effectiveFeedbackCount`：`MASTERED` / `UNKNOWN` 计 1.0，`FAMILIAR` 计 0.5，`NOT_REVIEWED` 计 0。
-- 非触发行即使选择 ACCEPT/CORRECTED/SUPPLEMENTED，也**不计入** `effectiveFeedbackCount`；它只更新 `continuousScore ×0.3`（C-009）。
+- 非触发行即使选择 ACCEPT/CORRECTED，也**不计入** `effectiveFeedbackCount`；它只更新 `continuousScore ×0.3`（C-009）。
 - 切换阈值为 `>= 3.0f`，不做 epsilon 容差（0.5 在二进制浮点中可精确表示）。
 - `continuousScore` 的加减与夹取在 `ApplyFeedbackUseCase` 内部用 `Double`，写入 Room 时转 `Float`（C-050）。
 - 计数由 `ApplyFeedbackUseCase` 在提交事务内更新；本页只收集决策。
@@ -123,13 +122,14 @@ UNMARKED ──接受──▶ ACCEPT
 
 - UI 测试（android-emu-agent）：构造 3 知识点场景，分别标记接受/修正/未复习，断言数据库写入符合状态机。
 - 「存在 UNMARKED 行时提交被阻止」的测试（按钮禁用 + UseCase 拒绝双保险）。
+- 单行完成决策后显示对勾，并禁用校对文本框与该行全部按钮（2026-11-22 用户要求）。
 - `NOT_REVIEWED` 只写 `ConfirmationDecisionLog`、不写 `ReviewFeedback` 的测试。
 - 非触发行填不同档位 → 按该行档位 ×0.3；非触发行「本次未复习」→ 不更新的测试。
 - 归属校验失败（版本/planId/pageId/questionId/校验码/知识点归属）逐项阻断测试。
 - 整题跳过（题目或关联知识点不存在）时：不写反馈/状态/复习日，仍写决定日志，返回并展示跳过清单，待确认行保留（C-077/C-078 方案 A）。
 - 已 `SUBMITTED` 会话重复提交被拒绝且不写任何行（C-080 方案 A）。
 - 复习日早于“计划日所在周 + 用户设置的周起始日”时提交被拒绝（C-081 方案 A）。
-- 补填（`SUPPLEMENTED`）按用户选择的档位计入有效反馈，`isSupplemental=true`（C-088 方案 A）。
+- 修改复习效果（`CORRECTED`）按用户选择的档位计入有效反馈，与接受走同一套档位解析（C-083 方案 C）。
 - 原始 OCR 与修正文本都被保存；原始 OCR 控件只读断言。
 - 「本次提前复习」创建一条未消费 `CoolingOverrideEvent`；题目排入下一份计划后事件被消费；重复点击不重复插入。
 - 「保存为笔记附件」写入 `NoteAttachmentItem(text=correctedText, order=当前最大+1)`；不改变原始 OCR。
