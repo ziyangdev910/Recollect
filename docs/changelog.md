@@ -791,3 +791,31 @@
 | 2026-11-22 | `app/build.gradle.kts`、`app/proguard-rules.pro`（新增） | release 开启 R8（`isMinifyEnabled`）与资源裁剪（`isShrinkResources`）；新增 OpenCV JNI 保留规则与 ML Kit 缺失类忽略；`ndk.abiFilters` 只保留 `arm64-v8a`/`armeabi-v7a` | 2026-11-22 用户要求「应用压缩」 |
 | 2026-11-22 | `evidence/2026-11-22-export/51-minified-release.png`～`61-minified-scan-result.png`（新增） | 真机验证压缩包：APK 246MB → 82.8MB；启动、导入（Room）、计划预览、导出分享、扫描识别（OpenCV ArUco + ML Kit QR/OCR，样张读出计划 769N80 3 行）均正常 | 2026-11-22 用户要求 |
 | 2026-11-22 | `CLAUDE.md`、`docs/specs/app.md`、`docs/agent-log/2026-11-22.md` | 回写 release 压缩、ABI 过滤与本地签名说明 | 2026-11-22 用户要求 |
+| 2026-11-23 | `app/build.gradle.kts` | 显式声明 `debug` 构建类型 `isMinifyEnabled = false`、`isShrinkResources = false`；release 保持 R8 压缩与资源裁剪 | 2026-11-23 用户要求 |
+| 2026-11-23 | `debug_compile_and_install.bat`、`release_compile.bat`（新增） | debug 脚本改为 `:app:assembleDebug` → `app-debug.apk` 并 `adb install -r`；新增 release 脚本执行 `:app:assembleRelease` 并输出 APK 路径与大小 | 2026-11-23 用户要求 |
+| 2026-11-23 | `release_compile.bat` → `release_compile_and_install.bat`（重命名） | release 脚本增加设备检测与 `adb install -r`，改为构建 minify 后的 release 包并安装到实机；真机 `AXRBUT6518000086` 安装 `Success` | 2026-11-23 用户要求 |
+| 2026-11-23 | `app/build.gradle.kts` | 新增 `signingConfigs.release`：从仓库根目录 `keystore.properties`（gitignore）读取正式 keystore，release 构建使用该签名；文件缺失时回退 debug 签名 | 2026-11-23 用户要求 |
+| 2026-11-23 | `release_compile_and_install.bat` | 安装失败时追加提示：`INSTALL_FAILED_UPDATE_INCOMPATIBLE` 为签名不一致，需先在应用内导出数据再 `adb uninstall org.recollect` | 2026-11-23 用户要求 |
+| 2026-11-23 | `CLAUDE.md`、`docs/specs/app.md`、`docs/agent-log/2026-11-23.md` | 回写正式签名来源、缺失回退与换签名迁移规则 | 2026-11-23 用户要求 |
+| 2026-11-23 | `CLAUDE.md`、`docs/specs/app.md`、`docs/agent-log/2026-11-23.md` | 同步 debug 不压缩、debug/release 两个脚本的职责划分 | 2026-11-23 用户要求 |
+| 2026-11-23 | `docs/ppt-outline.md`（新增） | 新增 20 页项目方案 PPT 大纲：创作理念、问题与需求、技术路径、设计过程、成果与团队协作；含统一视觉规范、逐页文案、素材清单与一键生成提示词 | 2026-11-23 用户要求 |
+| 2026-11-23 | `ppt/`（新增） | 将 `docs/ppt-outline.md` 与素材清单中的 13 个文件复制到项目根目录 `ppt/`，保留 `evidence/...` 相对路径；数据库文件仅作参考，PPT 中仍建议用截图或结构图 | 2026-11-23 用户要求 |
+| 2026-11-23 | `feature/planning/.../PlanPreviewViewModel.kt`、`PlanPreviewScreen.kt`、`app/.../AppRoot.kt`、`feature/planning/src/test/.../PlanWeekSettingsTest.kt`（新增） | 首页计划主卡改为“本周 + 下周”双区块：`currentWeekSettings`（今天所在自然周）/`nextWeekSettings` 替换“下一个周一”默认窗口；`PlanWeek` 仅 CURRENT/NEXT，首页只有这两个入口；预览页“重新生成…”文案随窗口变化；首页同时查询两个窗口的 `activePlan` | C-098；2026-11-23 用户要求 |
+| 2026-11-23 | `evidence/screens/plancurrent-01-home.png`～`plancurrent-07-current-preview.png`（新增） | 实体机 VKJ-AN00（release 包）验证：首页显示本周 2026-11-23 — 2026-11-29 与下周 2026-11-30 — 2026-12-06；本周已打印计划可见；生成下周计划 `06233A`（第 1 页 · 2026-11-30）后返回首页显示“待打印”，强停重开仍为“待打印”，再次查看仍为 `06233A`（未顺延到更远的周）；本周计划 `769N80`（第 1 页 · 2026-11-23）正常复用 | 2026-11-23 用户要求 |
+| 2026-11-23 | `docs/conflicts-archive.md`（C-098）、`docs/conflicts.md`、`docs/prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-23.md` | 归档 C-098 并同步文档；按用户授权回写 `docs/specs/planning.md`、`app.md` 的窗口描述 | C-098 |
+| 2026-11-23 | `data/room/.../PlanDao.kt`、`ConfirmationDecisionLogDao.kt`、`FeedbackRepository.kt`、`PlanRepository.kt`、`app/.../AppRoot.kt`、`data/room/src/test/.../FakeStores.kt`、`ApplyFeedbackUseCaseTest.kt` | 补齐 `COMPLETED`：计划全部页确认提交后在同一事务内标记完成；`activeForWeek` 与 `savePrintSnapshots` 纳入 COMPLETED，`markPrinted` 不把已完成降级；首页已完成时下周按钮提升为主按钮 | C-099；2026-11-23 用户要求 |
+| 2026-11-23 | `app/src/androidTest/.../PlanCompletionAndroidTest.kt`（新增）、`evidence/screens/plancomplete-03-home-completed.png`（新增） | 真实 Room 设备测试 2 个用例通过（全部页确认→COMPLETED；SUPERSEDED 不改写）；实体机首页显示“已完成”与引导文案，下周按钮为填充主按钮 | 2026-11-23 用户要求 |
+| 2026-11-23 | `docs/specs/planning.md`、`repository.md`、`app.md`、`conflicts-archive.md`（C-098/C-099）、`conflicts.md`、`prompts.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-23.md` | 按用户授权回写规格并归档 C-099 | C-098/C-099 |
+| 2026-11-23 | `app/.../AppRoot.kt` | 快捷操作四个大卡片改为与“录入题目”等高的横向小标签（固定 56dp）：`QuickActionCard` 改为图标 + 单行标题，去掉副标题与箭头；`WideActionCard` 同步固定 56dp；2×2 排列不变 | 2026-11-23 用户要求 |
+| 2026-11-23 | `evidence/screens/home-compact-01.png`（新增） | 实体机 VKJ-AN00 验证：五个入口高度均为 196px（56dp），页面最后一排卡片底部距屏幕底部约 247px，整个首页一屏完整显示、无滚动 | 2026-11-23 用户要求 |
+| 2026-11-23 | `docs/specs/app.md`、`docs/agent-log/2026-11-23.md` | 按用户授权回写 Home 行：录入题目含一句说明，2×2 小标签只显示图标 + 单行标题，五个入口统一 56dp、首页一屏显示 | 2026-11-23 用户授权 |
+| 2026-11-23 | `app/.../AppRoot.kt` | 下周计划的“未生成”从日期行移出，改为与本周同款胶囊，放在“生成/查看下周计划”按钮之上；`StatusPill` 增加 compact 模式 | 2026-11-23 用户要求 |
+| 2026-11-23 | `app/.../AppRoot.kt` | 下周区块纵向收紧：胶囊内边距 4→2dp、间距 6→3dp；新增 `CompactPlanAction`（30dp 胶囊点击容器，避开 Material Button 的 48dp 最小高度），主卡明显变矮 | 2026-11-23 用户要求 |
+| 2026-11-23 | `evidence/screens/home-compact-02-next-status.png`、`home-compact-03-next-compact.png`（新增） | 实体机 VKJ-AN00 验证：状态胶囊位于下周按钮上方、日期行不再带状态；收紧后主卡与快捷操作整体上移，首页仍一屏完整显示 | 2026-11-23 用户要求 |
+| 2026-11-23 | `app/.../AppRoot.kt` | `CompactPlanAction` 去掉右侧内边距：保持透明背景、不加纯色底，让“生成/查看下周计划”文字右缘与状态胶囊右缘对齐 | 2026-11-23 用户要求 |
+| 2026-11-23 | `evidence/screens/home-compact-04-next-aligned.png`（新增） | 实体机 VKJ-AN00 验证：按钮文字右缘 1131px 与胶囊背景右缘 1131px 对齐 | 2026-11-23 用户要求 |
+| 2026-11-23 | `app/.../AppRoot.kt` | 删除「录入题目」的说明副标题，标题在图标与箭头之间水平居中；`WideActionCard` 移除 `subtitle` 参数 | 2026-11-23 用户要求 |
+| 2026-11-23 | `evidence/screens/home-compact-05-entry-centered.png`（新增） | 实体机 VKJ-AN00 验证：「录入题目」只剩图标 + 居中标题 + 箭头，与 2×2 小标签等高，首页一屏显示；重新构建并安装 release 包 | 2026-11-23 用户要求 |
+| 2026-11-23 | `app/.../AppRoot.kt`、`app/src/main/res/drawable/ic_home_library.xml`（新增） | 首页快捷操作顶部改为一行两个主入口：「录入题目」直达新建题目页（`QuestionEdit(null)`），右侧新增「管理题库」进入题库列表页；两者文本左对齐、56dp 等高；移除不再使用的 `WideActionCard` | 2026-11-23 用户要求 |
+| 2026-11-23 | `evidence/screens/home-compact-06-entry-library.png`、`home-compact-07-library-page.png`（新增） | 实体机 VKJ-AN00 验证：首页两个入口左对齐并排；「录入题目」进入新建题目表单、「管理题库」进入题库页；首页一屏显示；重新构建并安装 release 包 | 2026-11-23 用户要求 |
+| 2026-11-23 | `docs/specs/app.md`、`docs/agent-log/2026-11-23.md` | 按用户授权同步 Home 行：顶部两个并排入口（录入题目直达新建题目页 / 管理题库进入题库页）、六个入口图标 + 左对齐标题且统一 56dp、下周状态胶囊位于按钮上方且与按钮文字右对齐；清理日志中过时的待授权项 | 2026-11-23 用户授权 |

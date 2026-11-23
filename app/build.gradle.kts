@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,16 @@ plugins {
     // C-052 方案 C：Android 单元测试使用 JUnit 5；androidTest 保持 JUnit 4。
     alias(libs.plugins.android.junit5)
 }
+
+// 正式签名凭据放在仓库外的 keystore.properties（已在 .gitignore 中忽略）。
+// 文件缺失时 release 回退 debug 签名，保证未配置密钥的机器仍可本地安装构建。
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "org.ziyangdev910.recollect"
@@ -28,7 +40,24 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        // 仅在配置了正式 keystore 时创建；无条件创建会因空凭据导致 assembleRelease 校验失败。
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // 开发构建保持不压缩：不做 R8 混淆/代码压缩与资源裁剪，便于调试与堆栈定位。
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
         release {
             // 代码压缩与资源裁剪：减小 DEX/资源体积；规则见 proguard-rules.pro。
             isMinifyEnabled = true
@@ -37,9 +66,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // 本地测试安装：release 构建沿用 debug 签名（~/.android/debug.keystore），
-            // 便于 adb install；正式分发前必须替换为正式 keystore。
-            signingConfig = signingConfigs.getByName("debug")
+            // 正式发布使用 keystore.properties 指向的正式 keystore；未配置时回退 debug 签名，
+            // 仅用于本地 adb install，不可用于分发。
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

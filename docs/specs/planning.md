@@ -62,7 +62,7 @@ data class PlanPreviewWarning(
 )
 
 data class PlanningSettings(
-    val planStartDate: LocalDate,          // 默认：生成日所在周末后的下一个周一
+    val planStartDate: LocalDate,          // 默认：今天所在自然周的周一（currentWeekSettings）
     val planEndDate: LocalDate,            // 默认：planStartDate + 6
     val dailyAvailableMinutes: Map<LocalDate, Int>, // 缺失默认 60
     val coolingPeriodDays: Int = 7,      // >= 0；0 = 关闭冷却（内部/测试），负数非法（C-057 方案 D）
@@ -104,7 +104,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ### 固定流程
 
-1. 读取 `PlanningSettings`；`planStartDate` 默认为“本周末之后的下一个周一”，`planEndDate = planStartDate + 6`；`dailyAvailableMinutes` 缺失按 60 分钟/天。
+1. 读取 `PlanningSettings`；`planStartDate` 默认为今天所在自然周的周一（`today.with(previousOrSame(MONDAY))`，C-098），`planEndDate = planStartDate + 6`；`dailyAvailableMinutes` 缺失按 60 分钟/天。首页另有紧随其后的下一自然周窗口（`nextWeekSettings`），只提供本周与下周两个入口，不允许生成更远的周。
 2. 读取 `KnowledgePointRepository.states()`、`QuestionRepository.schedulerQuestions()`、`PlanRepository.pendingCoolingOverrides()`。
 3. 调用 `Scheduler.plan(..., dateRange = planStartDate..planEndDate, coolingOverrides = 未消费事件 questionId 集合)`。
 4. 对每个 `PlannedQuestion`：
@@ -127,18 +127,26 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## PlanSession 与本周计划复用（C-097）
 
-- `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。
+- `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED/COMPLETED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。计划窗口由首页入口（本周/下周）决定，预览页不自行顺延到更远的周（C-098）。
 - `PlanSession.regenerate(settings)`：仅由用户在预览页显式确认后调用；把当前计划号传给 `PlanGenerator.regenerate(settings, previousPlanId)`，新计划保存事务内把旧计划标记为 SUPERSEDED。
 - `LoadPlanUseCase` 只读取 `plan` 头、`plan_page` 与 `plan.renderMeta`/题块几何重建 `PlannedPage`、`RenderableQuestion` 与附件文本；不重新调度、不重新分页。缺元数据/几何时直接失败，不按当前题库猜测。
 - `GeneratePlanUseCase` 在保存前冻结 `PlanRenderMeta`（题号、来源页、知识点名称、行数、附件数与附件文本）并传入 `PlanDraft`；`weekStartDate/weekEndDate` 取 `PlanningSettings` 的计划窗口。
 - `PlanPreviewViewModel` 首次进入调用 `refreshIfNeeded`（open），从打印页返回复用当前状态；`regenerate()` 才生成新计划号并清空旧打印任务。
+
+## 计划完成判定（C-099）
+
+- `PlanStatus.COMPLETED` 由确认提交驱动，不按日期自动判定：当一份计划的所有 `plan_page` 页都已在 `confirmation_decision_log` 中出现，且本次提交没有整题跳过时，`RoomFeedbackRepository.saveDecisions` 在**同一事务**内把计划状态从 GENERATED/PRINTED 迁移为 COMPLETED。
+- 判定比较的是页集合（`plan_page.pageId` ⊆ `confirmation_decision_log.pageId`），不是行数；其他计划或残留日志不会让计划提前完成。
+- 已被显式替代（SUPERSEDED）或已经 COMPLETED 的计划不会被改写；有整题跳过时本次不判定，留待修复后的重试。
+- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：首页仍能查看/重印已完成计划，并引导生成下周计划（本周完成时“生成下周计划”提升为主按钮）。
+- 已完成计划允许重印：`savePrintSnapshots` 可为 COMPLETED 写题目快照，但 `markPrinted` 只把 GENERATED/PRINTED 置为 PRINTED，不得把 COMPLETED 降级。
 
 ## ID、时区与默认设置
 
 - `planId`：6 位 Crockford Base32（去掉 I/L/O/U），由 `PlanIdGenerator` 生成；与 `PlanPage.planId` 冲突时重试 3 次，仍冲突则失败。该格式与全局唯一性是 `PagePlanner` 的前置条件，分页器只拼接、不校验（C-069 方案 A）。
 - `pageId`：`"{planId}-{pageNumber:02d}"`，`pageNumber` 由 `PagePlanner` 从 1 连续分配；超过 99 时 `PagePlanner` 返回 `PaginationResult.Failure(PaginationFailureCode.PLAN_TOO_LONG, ...)`，`GeneratePlanUseCase` 转 `PlanGenerationException`，不写库。
 - 业务日期用 `LocalDate`（设备本地时区）；审计/事件时间用 `Instant`（UTC）。生成计划时记录当时的本地日期；跨时区不自动改写已生成计划。
-- 默认每日可用 60 分钟；用户可按星期调整。`planStartDate` 默认下一个周一，`planEndDate = planStartDate + 6`（周一到周日），允许用户改选任意连续 1～7 天。
+- 默认每日可用 60 分钟；用户可按星期调整。`planStartDate` 默认为今天所在自然周的周一，`planEndDate = planStartDate + 6`（周一到周日），允许用户改选任意连续 1～7 天。
 - 扫描窗口：`planEndDate + 1` 到 `planEndDate + 7`；窗口内为正常批量；超过 `planEndDate + 7` 标 `LATE_BATCH`。扫描早于 `planEndDate` 时，未来日期行只能标 `NOT_REVIEWED`（C-041）。
 - `Question.lastReviewedDate` 由 `ApplyFeedbackUseCase` 在确认后写，规划层不写；规划层只写 `lastScheduledDate`（计划日）。
 
@@ -161,6 +169,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 - C-090 方案 A：`GeneratePlanUseCase.execute()` 返回 `PlanGenerationOutcome`；`Planned` 同时携带 `PrintJob`（打印层唯一输入）与 `PlanPreviewContent`（预览页唯一输入）；`Empty` 携带可读文案与 `PlanPreviewWarning`，不得只返回页列表或丢弃提示。`PaginationResult.Failure` 不进入结果包装，仍按 C-047 抛 `PlanGenerationException`。
 - 计划生成后：`PlanPage`、`Question.lastScheduledDate`、冷却事件消费、顺延在同一事务内；任一步失败全部回滚。
+- C-099：所有页确认提交后计划迁移为 COMPLETED；只确认部分页、或有整题跳过时保持原状态；SUPERSEDED 计划不得改回 COMPLETED。
 - `PagePlanner` 返回 `Failure` 时抛 `PlanGenerationException`，不进入事务、不写任何 `PlanPage`。
 - C-074 方案 A：`PlanDraft`/`PlanGenerationException` 位于 `data:room`；草稿携带冻结行快照，编排层不重算行组。
 - 同一 `planId` 重试生成不会产生重复 `PlanPage`；`planId` 冲突按规则重试/失败。

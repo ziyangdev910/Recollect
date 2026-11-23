@@ -41,7 +41,7 @@ sealed interface PlanPreviewUiState {
 class PlanPreviewViewModel(
     private val session: PlanSession,
     private val clock: Clock,
-    private val settingsFactory: (LocalDate) -> PlanningSettings = ::defaultPlanningSettings,
+    private val settingsFactory: (LocalDate) -> PlanningSettings = ::currentWeekSettings,
     /** 计划成功后把同一份 `PrintJob` 交给打印页；失败/空态时清空，避免打印旧计划。 */
     private val onPrintJobAvailable: (PrintJob?) -> Unit = {},
 ) {
@@ -53,7 +53,7 @@ class PlanPreviewViewModel(
     constructor(
         generator: PlanGenerator,
         clock: Clock,
-        settingsFactory: (LocalDate) -> PlanningSettings = ::defaultPlanningSettings,
+        settingsFactory: (LocalDate) -> PlanningSettings = ::currentWeekSettings,
         onPrintJobAvailable: (PrintJob?) -> Unit = {},
     ) : this(
         session = object : PlanSession {
@@ -134,8 +134,36 @@ class PlanPreviewViewModel(
     }
 }
 
-/** 默认计划区间：本周末后的下一个周一，共 7 天（planning.md）。 */
-fun defaultPlanningSettings(today: LocalDate): PlanningSettings {
-    val start = today.with(TemporalAdjusters.next(DayOfWeek.MONDAY))
+/**
+ * 首页可以查看/生成的两个计划窗口：今天所在的自然周与紧随其后的下一自然周。
+ *
+ * 只提供这两周，不允许生成更远的计划；已经存在的计划按窗口复用，不会因为再次点击而顺延。
+ */
+enum class PlanWeek {
+    CURRENT,
+    NEXT,
+}
+
+/** 今天所在自然周（周一至周日）。与首页“本周计划”标题一一对应。 */
+fun currentWeekSettings(today: LocalDate): PlanningSettings {
+    val start = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
     return PlanningSettings(planStartDate = start, planEndDate = start.plusDays(6))
 }
+
+/** 紧随其后的下一自然周（周一至周日）。 */
+fun nextWeekSettings(today: LocalDate): PlanningSettings {
+    val start = currentWeekSettings(today).planStartDate.plusWeeks(1)
+    return PlanningSettings(planStartDate = start, planEndDate = start.plusDays(6))
+}
+
+fun PlanWeek.settingsFor(today: LocalDate): PlanningSettings = when (this) {
+    PlanWeek.CURRENT -> currentWeekSettings(today)
+    PlanWeek.NEXT -> nextWeekSettings(today)
+}
+
+/** 预览页“重新生成…”按钮与确认框的文案：随打开窗口变化，避免把下周计划叫成本周计划。 */
+val PlanWeek.regenerateLabel: String
+    get() = when (this) {
+        PlanWeek.CURRENT -> "重新生成本周计划"
+        PlanWeek.NEXT -> "重新生成下周计划"
+    }

@@ -24,4 +24,8 @@ interface ConfirmationDecisionLogDao {
     // PlanCompletion.scannedPages：该 plan 出现过的 pageId 去重数。
     @Query("SELECT COUNT(DISTINCT pageId) FROM confirmation_decision_log WHERE planId = :planId")
     suspend fun scannedPageCount(planId: String): Int
+
+    // C-099：计划完成判定用；与 plan_page 的页集合比较，避免把其他计划的页计入。
+    @Query("SELECT DISTINCT pageId FROM confirmation_decision_log WHERE planId = :planId")
+    suspend fun confirmedPageIds(planId: String): List<String>
 }

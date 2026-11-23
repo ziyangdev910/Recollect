@@ -4,6 +4,8 @@ import com.recollect.data.room.dao.ConfirmationDecisionLogDao
 import com.recollect.data.room.dao.KnowledgePointDao
 import com.recollect.data.room.dao.NoteAttachmentItemDao
 import com.recollect.data.room.dao.PendingFeedbackDao
+import com.recollect.data.room.dao.PlanDao
+import com.recollect.data.room.dao.PlanPageDao
 import com.recollect.data.room.dao.QuestionDao
 import com.recollect.data.room.dao.ReviewFeedbackDao
 import com.recollect.data.room.dao.ScanSessionDao
@@ -71,6 +73,9 @@ class RoomFeedbackRepository(
     private val pendingFeedbackDao: PendingFeedbackDao,
     private val noteAttachmentItemDao: NoteAttachmentItemDao,
     private val scanSessionDao: ScanSessionDao,
+    /** C-099：最后一页确认后把计划标记为 COMPLETED，与反馈/日志同一事务。 */
+    private val planPageDao: PlanPageDao,
+    private val planDao: PlanDao,
     private val clock: Clock,
 ) : FeedbackRepository {
 
@@ -191,6 +196,9 @@ class RoomFeedbackRepository(
                 pendingFeedbackDao.deleteForSession(sessionId)
                 // C-080 方案 A：整批成功才把会话标为已提交，重复提交由 UseCase 拒绝。
                 scanSessionDao.markSubmitted(sessionId, decidedAt)
+                // C-099：计划的每一页都已确认成功后标记 COMPLETED；
+                // 有跳过时整页并未真正完成，留待修复后的重试再判定。
+                markCompletedIfAllPagesConfirmed(decisions.first().planId)
             } else {
                 // 有跳过时保留待确认行（含被跳过题目），会话维持 READY 供修复后重试。
                 writtenQuestionIds.forEach { pendingFeedbackDao.deleteForSessionQuestion(sessionId, it) }
@@ -202,6 +210,21 @@ class RoomFeedbackRepository(
                 skippedQuestionIds = skippedQuestionIds.toList(),
                 skippedKnowledgePointIds = skippedKnowledgePointIds.toList(),
             )
+        }
+    }
+
+    /**
+     * C-099：该计划的全部页面都已有确认日志时，把计划迁移为 COMPLETED。
+     *
+     * 比较的是 `plan_page` 的页集合与日志里的 `pageId` 集合，而不是计数，
+     * 避免把其他计划/残留日志的页误算进来；计划已被替代或已完成时 `markCompleted` 不生效。
+     */
+    private suspend fun markCompletedIfAllPagesConfirmed(planId: String) {
+        val pageIds = planPageDao.forPlan(planId).map { it.pageId }.toSet()
+        if (pageIds.isEmpty()) return
+        val confirmedPageIds = confirmationDecisionLogDao.confirmedPageIds(planId).toSet()
+        if (confirmedPageIds.containsAll(pageIds)) {
+            planDao.markCompleted(planId)
         }
     }
 

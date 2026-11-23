@@ -23,7 +23,7 @@ if not defined SERIAL (
 )
 echo Using device: %SERIAL%
 
-echo [2/3] Building Release APK...
+echo [2/3] Building Release APK (R8 minify + resource shrink)...
 call "%PROJECT_DIR%\gradlew.bat" :app:assembleRelease
 if errorlevel 1 (
     echo [ERROR] Gradle build failed.
@@ -39,10 +39,13 @@ echo [3/3] Installing APK...
 adb -s "%SERIAL%" install -r "%APK%"
 if errorlevel 1 (
     echo [ERROR] adb install failed.
+    echo [HINT] INSTALL_FAILED_UPDATE_INCOMPATIBLE means the installed build has a different signature.
+    echo        Export data inside the app first, then run: adb uninstall org.recollect
     exit /b 1
 )
 
 echo.
 echo Done. APK: %APK%
+for %%F in ("%APK%") do echo Size: %%~zF bytes
 echo Device: %SERIAL%
 exit /b 0

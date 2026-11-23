@@ -1310,6 +1310,18 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 
 【落地说明（2026-11-22）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；实体机验证主卡跳转预览、快捷卡进入进度/知识点页，证据见 `evidence/screens/homelayout-0*.png`。
 
+**2026-11-23 追加（C-098）**：主卡改为**本周 + 下周双区块**，不再使用“下一个周一”的默认窗口。
+- `currentWeekSettings` 取今天所在自然周（`previousOrSame(MONDAY)`），`nextWeekSettings` 紧随其后；`PlanWeek` 只有 CURRENT/NEXT 两个值，首页也只有这两个入口，不提供更远的周。
+- Home 同时查询两个窗口的 `activePlan`：主卡显示本周窗口、状态与生成/查看主操作；卡内附加“下周计划 日期 · 状态”和“生成/查看下周计划”。
+- `PlanPreviewViewModel` 的窗口由首页入口传入；`PlanPreviewScreen` 的“重新生成…”文案随窗口显示“重新生成本周计划 / 重新生成下周计划”。
+- 已存在的计划按窗口复用（`PlanSession.open`），再次点击不会顺延到更远的周。
+
+**2026-11-23 追加（C-099）**：补齐 `PlanStatus.COMPLETED` 的写入路径与“本周已完成 → 引导下周”。
+- 判定：计划的所有 `plan_page` 页都出现在 `confirmation_decision_log`，且本次提交无整题跳过时，`RoomFeedbackRepository.saveDecisions` 在同一事务内把计划从 GENERATED/PRINTED 迁移为 COMPLETED；SUPERSEDED/已 COMPLETED 不生效。
+- `PlanDao.activeForWeek` 与 `savePrintSnapshots` 把 COMPLETED 视为可用；`markPrinted` 带状态条件，重印只更新快照、不降级。
+- 首页：`planStatusMessage(COMPLETED)` 提示可生成下周；本周完成时下周按钮提升为填充主按钮。
+- 测试：JVM `c099_*` 两个用例；设备真实 Room `PlanCompletionAndroidTest` 2 个用例通过。
+
 ---
 
 ## 追加：应用名资源化与图标入口（2026-11-22）【done】

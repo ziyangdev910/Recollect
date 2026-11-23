@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.recollect.app.navigation.AppNavigator
 import com.recollect.app.navigation.AppRoute
@@ -66,8 +69,11 @@ import com.recollect.feature.entry.SourceTagLibraryScreen
 import com.recollect.feature.entry.SourceTagLibraryViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
 import com.recollect.feature.planning.PlanPreviewViewModel
+import com.recollect.feature.planning.PlanWeek
 import com.recollect.feature.planning.PrintJob
-import com.recollect.feature.planning.defaultPlanningSettings
+import com.recollect.feature.planning.currentWeekSettings
+import com.recollect.feature.planning.nextWeekSettings
+import com.recollect.feature.planning.settingsFor
 import com.recollect.feature.progress.ReviewProgressAggregator
 import com.recollect.feature.progress.ReviewProgressScreen
 import com.recollect.feature.progress.ReviewProgressViewModel
@@ -153,24 +159,33 @@ fun AppRoot(
     // 分支内 remember 的 ViewModel 会被丢弃；若在分支内创建，从打印页返回
     // 预览页时会重建 ViewModel 并触发 LaunchedEffect 重新生成计划，计划号随之变化。
     // 顶部持有同一实例即可让“预览 → 打印 → 返回预览”复用原计划；
-    // 只有再次从 Home/Entry 点击“生成本周计划”时才递增 generation 重新生成。
+    // 只有再次从 Home/Entry 点击某个窗口时才递增 generation 重新生成。
     var planPreviewGeneration by remember(container) { mutableStateOf(0) }
-    val planPreviewViewModel = remember(container, planPreviewGeneration) {
+    // 本次预览打开的是本周还是下周：窗口只由首页入口决定，预览页内不会顺延到更远的周。
+    var planPreviewWeek by remember(container) { mutableStateOf(PlanWeek.CURRENT) }
+    val planPreviewViewModel = remember(container, planPreviewGeneration, planPreviewWeek) {
         PlanPreviewViewModel(
             session = container.planSession,
             clock = container.clock,
+            settingsFactory = { today -> planPreviewWeek.settingsFor(today) },
             onPrintJobAvailable = { container.printPlanSession.update(it) },
         )
     }
 
-    // 首页概览：计划状态、本周窗口与题目/知识点/到期统计。
+    // 首页概览：本周/下周两个计划窗口的状态与题目/知识点/到期统计。
     // 任一统计读取失败只显示“—”，不阻塞首页入口（计划按钮仍可用）。
-    val initialHomeSettings = remember(container) {
-        defaultPlanningSettings(LocalDate.now(container.clock))
+    val initialThisWeek = remember(container) {
+        currentWeekSettings(LocalDate.now(container.clock))
     }
-    var homeWeekStart by remember(container) { mutableStateOf(initialHomeSettings.planStartDate) }
-    var homeWeekEnd by remember(container) { mutableStateOf(initialHomeSettings.planEndDate) }
-    var planStatus by remember(container) { mutableStateOf<PlanStatus?>(null) }
+    val initialNextWeek = remember(container) {
+        nextWeekSettings(LocalDate.now(container.clock))
+    }
+    var thisWeekStart by remember(container) { mutableStateOf(initialThisWeek.planStartDate) }
+    var thisWeekEnd by remember(container) { mutableStateOf(initialThisWeek.planEndDate) }
+    var nextWeekStart by remember(container) { mutableStateOf(initialNextWeek.planStartDate) }
+    var nextWeekEnd by remember(container) { mutableStateOf(initialNextWeek.planEndDate) }
+    var thisWeekPlanStatus by remember(container) { mutableStateOf<PlanStatus?>(null) }
+    var nextWeekPlanStatus by remember(container) { mutableStateOf<PlanStatus?>(null) }
     var questionCount by remember(container) { mutableStateOf<Int?>(null) }
     var knowledgeCount by remember(container) { mutableStateOf<Int?>(null) }
     var overdueCount by remember(container) { mutableStateOf<Int?>(null) }
@@ -179,13 +194,22 @@ fun AppRoot(
     LaunchedEffect(current, container, homeRefreshKey) {
         if (current != AppRoute.Home) return@LaunchedEffect
         val today = LocalDate.now(container.clock)
-        val settings = defaultPlanningSettings(today)
-        homeWeekStart = settings.planStartDate
-        homeWeekEnd = settings.planEndDate
-        planStatus = quietly {
+        val thisWeek = currentWeekSettings(today)
+        val nextWeek = nextWeekSettings(today)
+        thisWeekStart = thisWeek.planStartDate
+        thisWeekEnd = thisWeek.planEndDate
+        nextWeekStart = nextWeek.planStartDate
+        nextWeekEnd = nextWeek.planEndDate
+        thisWeekPlanStatus = quietly {
             container.planRepository.activePlan(
-                weekStart = settings.planStartDate,
-                weekEnd = settings.planEndDate,
+                weekStart = thisWeek.planStartDate,
+                weekEnd = thisWeek.planEndDate,
+            )?.status
+        }
+        nextWeekPlanStatus = quietly {
+            container.planRepository.activePlan(
+                weekStart = nextWeek.planStartDate,
+                weekEnd = nextWeek.planEndDate,
             )?.status
         }
         questionCount = quietly { container.entryRepository.summaries().size }
@@ -197,7 +221,8 @@ fun AppRoot(
         overdueCount = stats?.overdueQuestions
         dueWithinWeekCount = stats?.dueWithinWeekQuestions
     }
-    val openPlanPreview = {
+    val openPlanPreview: (PlanWeek) -> Unit = { week ->
+        planPreviewWeek = week
         planPreviewGeneration += 1
         navigator.push(AppRoute.PlanPreview)
     }
@@ -284,14 +309,18 @@ fun AppRoot(
             ) {
                 when (val route = current) {
                     AppRoute.Home -> HomeScreen(
-                        planStatus = planStatus,
-                        weekStart = homeWeekStart,
-                        weekEnd = homeWeekEnd,
+                        thisWeekPlanStatus = thisWeekPlanStatus,
+                        thisWeekStart = thisWeekStart,
+                        thisWeekEnd = thisWeekEnd,
+                        nextWeekPlanStatus = nextWeekPlanStatus,
+                        nextWeekStart = nextWeekStart,
+                        nextWeekEnd = nextWeekEnd,
                         questionCount = questionCount,
                         knowledgeCount = knowledgeCount,
                         overdueCount = overdueCount,
                         dueWithinWeekCount = dueWithinWeekCount,
                         onEntry = { navigator.push(AppRoute.Entry) },
+                        onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
                         onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
                         onManageSources = { navigator.push(AppRoute.SourceTags) },
                         onProgress = { navigator.push(AppRoute.Progress) },
@@ -305,7 +334,7 @@ fun AppRoot(
                         EntryScreen(
                             viewModel = entryViewModel,
                             listState = entryListState,
-                            onCreatePlan = openPlanPreview,
+                            onCreatePlan = { openPlanPreview(PlanWeek.CURRENT) },
                             onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
                             onEditQuestion = { questionId ->
                                 navigator.push(AppRoute.QuestionEdit(questionId))
@@ -369,6 +398,7 @@ fun AppRoot(
 
                     AppRoute.PlanPreview -> PlanPreviewScreen(
                         viewModel = planPreviewViewModel,
+                        planWeek = planPreviewWeek,
                         onPrint = { navigator.push(AppRoute.Print) },
                     )
 
@@ -456,38 +486,46 @@ private val IMPORT_MIME_TYPES = arrayOf(
 )
 
 /**
- * 首页仪表盘：本周计划主卡 + 数据概览 + 2×2 快捷操作。
+ * 首页仪表盘：本周计划主卡（含下周入口） + 数据概览 + 快捷操作。
  *
+ * 快捷操作顶部是「录入题目」「管理题库」两个主入口，其下为 2×2 小标签。
  * 计划是主流程，放在最上方并用主色容器突出；题目/知识点/到期统计用于扫一眼掌握情况；
- * 其余入口收纳为带图标的快捷卡片。统计读取失败时显示“—”，不影响任何入口。
+ * 统计读取失败时显示“—”，不影响任何入口。
  */
 @Composable
 private fun HomeScreen(
-    planStatus: PlanStatus?,
-    weekStart: LocalDate,
-    weekEnd: LocalDate,
+    thisWeekPlanStatus: PlanStatus?,
+    thisWeekStart: LocalDate,
+    thisWeekEnd: LocalDate,
+    nextWeekPlanStatus: PlanStatus?,
+    nextWeekStart: LocalDate,
+    nextWeekEnd: LocalDate,
     questionCount: Int?,
     knowledgeCount: Int?,
     overdueCount: Int?,
     dueWithinWeekCount: Int?,
     onEntry: () -> Unit,
+    onCreateQuestion: () -> Unit,
     onManageKnowledgePoints: () -> Unit,
     onManageSources: () -> Unit,
     onProgress: () -> Unit,
-    onPlanPreview: () -> Unit,
+    onPlanPreview: (PlanWeek) -> Unit,
     onScan: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        // 2×2 主操作 + 通栏「管理题目来源」在常见屏幕高度内完整显示；更小屏幕仍可滚动。
+        // 主卡 + 概览 + 六个等高快捷入口在常见手机上一屏完整显示；更小屏幕仍可滚动。
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             PlanHeroCard(
-                planStatus = planStatus,
-                weekStart = weekStart,
-                weekEnd = weekEnd,
+                thisWeekStatus = thisWeekPlanStatus,
+                thisWeekStart = thisWeekStart,
+                thisWeekEnd = thisWeekEnd,
+                nextWeekStatus = nextWeekPlanStatus,
+                nextWeekStart = nextWeekStart,
+                nextWeekEnd = nextWeekEnd,
                 onPlanPreview = onPlanPreview,
             )
         }
@@ -507,15 +545,25 @@ private fun HomeScreen(
             )
         }
         item {
-            // 2026-11-22 用户要求：录入题目作为「快捷操作」顶部的通栏主入口。
-            WideActionCard(
-                iconRes = R.drawable.ic_home_entry,
-                title = "录入题目",
-                subtitle = "添加新题与知识点",
-                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                onClick = onEntry,
-            )
+            // 顶部两个主入口：录入题目直达新建题目页，管理题库进入题库列表页。
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_entry,
+                    title = "录入题目",
+                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onCreateQuestion,
+                )
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_home_library,
+                    title = "管理题库",
+                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onEntry,
+                )
+            }
         }
         item {
             // 上排：操作类入口。
@@ -524,7 +572,6 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     iconRes = R.drawable.ic_home_scan,
                     title = "扫描回读",
-                    subtitle = "拍照回读填涂结果",
                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                     iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                     onClick = onScan,
@@ -533,7 +580,6 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     iconRes = R.drawable.ic_home_progress,
                     title = "查看复习进度",
-                    subtitle = "掌握度与到期时间",
                     iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                     iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                     onClick = onProgress,
@@ -547,7 +593,6 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     iconRes = R.drawable.ic_home_knowledge,
                     title = "管理知识点",
-                    subtitle = "维护标签库",
                     iconContainer = MaterialTheme.colorScheme.surfaceVariant,
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = onManageKnowledgePoints,
@@ -556,7 +601,6 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     iconRes = R.drawable.ic_home_source,
                     title = "管理题目来源",
-                    subtitle = "维护来源标签库",
                     iconContainer = MaterialTheme.colorScheme.surfaceVariant,
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = onManageSources,
@@ -566,13 +610,21 @@ private fun HomeScreen(
     }
 }
 
-/** 本周计划主卡：状态、周窗口与唯一主操作。 */
+/**
+ * 计划主卡：本周状态与主操作，附下周计划入口。
+ *
+ * 只提供“本周”和“下周”两个窗口；下周计划存在时复用同一计划号，
+ * 不会因为再次点击而顺延到更远的周。
+ */
 @Composable
 private fun PlanHeroCard(
-    planStatus: PlanStatus?,
-    weekStart: LocalDate,
-    weekEnd: LocalDate,
-    onPlanPreview: () -> Unit,
+    thisWeekStatus: PlanStatus?,
+    thisWeekStart: LocalDate,
+    thisWeekEnd: LocalDate,
+    nextWeekStatus: PlanStatus?,
+    nextWeekStart: LocalDate,
+    nextWeekEnd: LocalDate,
+    onPlanPreview: (PlanWeek) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -592,22 +644,22 @@ private fun PlanHeroCard(
                         color = colors.onPrimaryContainer,
                     )
                     Text(
-                        text = "$weekStart — $weekEnd",
+                        text = "$thisWeekStart — $thisWeekEnd",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.onPrimaryContainer.copy(alpha = 0.75f),
                     )
                 }
-                StatusPill(planStatusLabel(planStatus))
+                StatusPill(planStatusLabel(thisWeekStatus))
             }
             Text(
-                text = planStatusMessage(planStatus),
+                text = planStatusMessage(thisWeekStatus),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onPrimaryContainer.copy(alpha = 0.85f),
             )
             // 打印入口只在“计划预览”页内提供：生成与打印是同一条流程的两个步骤，
             // 避免 Home 在没有内存计划时进入打印页只看到空态。
             Button(
-                onClick = onPlanPreview,
+                onClick = { onPlanPreview(PlanWeek.CURRENT) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.primary,
@@ -620,25 +672,98 @@ private fun PlanHeroCard(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (planStatus == null) "生成本周计划" else "查看并打印本周计划")
+                Text(if (thisWeekStatus == null) "生成本周计划" else "查看并打印本周计划")
+            }
+
+            // 下周计划：同一张卡内的次要入口，周日提前准备下周、工作日提前排下周都可以。
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.onPrimaryContainer.copy(alpha = 0.15f)),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "下周计划",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onPrimaryContainer,
+                    )
+                    Text(
+                        text = "$nextWeekStart — $nextWeekEnd",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onPrimaryContainer.copy(alpha = 0.75f),
+                    )
+                }
+                // 状态与本周主卡同款胶囊：从日期行移出，放在生成/查看按钮之上。
+                // 下周是次要入口，胶囊与按钮都用紧凑高度，避免把整张主卡撑高。
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    StatusPill(planStatusLabel(nextWeekStatus), compact = true)
+                    // C-099：本周计划完成后，把“生成/查看下周计划”提升为主按钮，
+                    // 引导用户接着准备下一周；其余状态保持次要文本样式。
+                    CompactPlanAction(
+                        label = if (nextWeekStatus == null) "生成下周计划" else "查看下周计划",
+                        primary = thisWeekStatus == PlanStatus.COMPLETED,
+                        onClick = { onPlanPreview(PlanWeek.NEXT) },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun StatusPill(text: String) {
+private fun StatusPill(text: String, compact: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(colors.surface.copy(alpha = 0.65f))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(
+                horizontal = if (compact) 8.dp else 10.dp,
+                vertical = if (compact) 2.dp else 4.dp,
+            ),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
             color = colors.onPrimaryContainer,
+        )
+    }
+}
+
+/**
+ * 下周入口的紧凑操作按钮。
+ *
+ * 不用 Material Button/TextButton：它们有 48dp 的最小触摸高度，会把下周区块撑高；
+ * 这里用可点击容器固定 30dp，保证主卡紧凑，视觉上仍是胶囊形状。
+ * 右侧不留内边距，文字右缘与状态胶囊的右缘对齐（两者都贴齐 Column 右缘）。
+ */
+@Composable
+private fun CompactPlanAction(
+    label: String,
+    primary: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (primary) colors.primary else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(start = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium,
+            color = if (primary) colors.onPrimary else colors.onPrimaryContainer,
         )
     }
 }
@@ -711,27 +836,38 @@ private fun HomeStat(
     }
 }
 
+/** 首页快捷入口统一高度：通栏「录入题目」与 2×2 小标签保持同一高度。 */
+private val HOME_ACTION_CARD_HEIGHT = 56.dp
+
+/**
+ * 2×2 小标签入口：图标在左、标题居中，与通栏「录入题目」等高。
+ *
+ * 半屏宽度不再放副标题与箭头，标题单行显示，保证一屏内完整呈现四个入口。
+ */
 @Composable
 private fun QuickActionCard(
     iconRes: Int,
     title: String,
-    subtitle: String,
     iconContainer: Color,
     iconTint: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(onClick = onClick, modifier = modifier) {
-        Column(
+    Card(
+        onClick = onClick,
+        modifier = modifier.height(HOME_ACTION_CARD_HEIGHT),
+    ) {
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(iconContainer),
                 contentAlignment = Alignment.Center,
             ) {
@@ -739,79 +875,15 @@ private fun QuickActionCard(
                     painter = painterResource(iconRes),
                     contentDescription = null,
                     tint = iconTint,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * 通栏管理入口：图标在左、标题与说明居中、右侧箭头提示可进入。
- * 用于在不打破 2×2 主操作网格的前提下增加次要管理入口。
- */
-@Composable
-private fun WideActionCard(
-    iconRes: Int,
-    title: String,
-    subtitle: String,
-    iconContainer: Color,
-    iconTint: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(iconContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                painter = painterResource(R.drawable.ic_chevron_right),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -829,7 +901,7 @@ private fun planStatusMessage(status: PlanStatus?): String = when (status) {
     null -> "按本周到期的知识点生成计划，打印到纸上开始复习。"
     PlanStatus.GENERATED -> "计划已生成，打印后按日期完成复习。"
     PlanStatus.PRINTED -> "已打印。按日期完成复习，完成后拍照回读。"
-    PlanStatus.COMPLETED -> "本周计划已完成，可以查看复习进度。"
+    PlanStatus.COMPLETED -> "本周计划已完成，可以生成下周计划或查看复习进度。"
     PlanStatus.SUPERSEDED -> "本周计划已被新的计划替代，请查看最新计划。"
 }
 

@@ -33,10 +33,12 @@
 
 ## 构建与打包
 
+- debug：`isMinifyEnabled = false`、`isShrinkResources = false`，保持类名与堆栈可读，便于调试。
 - release：`isMinifyEnabled = true`、`isShrinkResources = true`，规则见 `app/proguard-rules.pro`（OpenCV JNI 类保留）。
 - ABI：只打包 `arm64-v8a` 与 `armeabi-v7a`，去掉 x86/x86_64 模拟器原生库以减小 APK；如需在 x86 模拟器运行，临时移除该过滤。
-- 签名：项目尚无正式 keystore，release 本地构建沿用 debug 签名便于 `adb install`；正式分发前必须替换。
-- `compile_and_install.bat` 一键构建并安装 release APK（`app/build/outputs/apk/release/app-release.apk`）。
+- 签名：release 读取仓库根目录 `keystore.properties`（已 gitignore）指向的正式 keystore；该文件缺失时回退 debug 签名，仅用于本地 `adb install`，不可分发。更换签名后旧安装无法覆盖，需先在应用内导出数据、卸载旧包、安装新包再导入。
+- `debug_compile_and_install.bat`：构建 debug APK（`app/build/outputs/apk/debug/app-debug.apk`）并 `adb install -r` 到已连接的实机。
+- `release_compile_and_install.bat`：构建 minify 后的 release APK（`app/build/outputs/apk/release/app-release.apk`）并 `adb install -r` 到已连接的实机。
 
 ## DI 与导航
 
@@ -84,14 +86,14 @@ sealed interface UiState<out T> {
 
 | 屏幕 | 内容 | 关键状态 |
 |---|---|---|
-| Home | 仪表盘式布局：顶部本周计划主卡（周窗口、状态“未生成/待打印/已打印/已完成”，按状态显示“生成本周计划/查看并打印本周计划”）；其下为题目/知识点/已逾期/7 天内概览（读取失败显示“—”，不阻塞入口）；再下为「快捷操作」：顶部通栏「录入题目」，下方 2×2 卡片左上「扫描回读」、右上「查看复习进度」、左下「管理知识点」、右下「管理题目来源」，每张卡片含语义化图标与一句说明 | 无计划、计划已完成、待扫描、统计加载失败、`LATE_BATCH` |
+| Home | 仪表盘式布局：顶部本周计划主卡（真实本周窗口、状态胶囊“未生成/待打印/已打印/已完成”，按状态显示“生成本周计划/查看并打印本周计划”）；卡内下周区块为“下周计划 + 日期”，状态胶囊位于“生成/查看下周计划”按钮上方且两者右缘对齐，本周已完成时该按钮提升为填充主按钮以引导下周，只提供本周与下周两个窗口（C-098/C-099）；其下为题目/知识点/已逾期/7 天内概览（读取失败显示“—”，不阻塞入口）；再下为「快捷操作」：顶部一行两个并排小标签，左「录入题目」直达新建题目页、右「管理题库」进入题库列表页；下方 2×2 小标签左上「扫描回读」、右上「查看复习进度」、左下「管理知识点」、右下「管理题目来源」；六个入口均为图标 + 左对齐单行标题、统一 56dp 高，整个首页在常见手机上一屏完整显示（2026-11-23） | 无计划、计划已完成、待扫描、统计加载失败、`LATE_BATCH` |
 | Progress | 复习进度可视化（只读）：题目总数/已逾期/今天到期/7 天内统计、未来 14 天到期分布、逐题题号/来源页/上次复习/最早到期与每个知识点的档位、连续掌握度、下次到期日、冷启动或半衰期 | 空题库、加载失败（可重试） |
 | Entry | 题目列表、搜索（题号/页码/知识点）、归档筛选、新建 | 空题库、无匹配、加载失败 |
 | QuestionEdit | 题号与页码编号同行并排、各占一半；来源（单选标签，可空）、关联知识点（≤4）、预估分钟、笔记附件 | 关联超限、已打印旧稿提示、来源标签库为空 |
 | KnowledgePoints | 编号/名称列表、rename、删除 | 被题目引用不可删、删除确认 |
 | SourceTags | `AppRoute.SourceTags` 独立页面（顶部标题「来源标签」）：名称列表、搜索、新增、rename、删除确认；由首页快捷操作 2×2 右下方的「管理题目来源」卡片进入 | 被题目引用不可删、名称重复、空库 |
 | 来源标签（录入页内全屏窗口） | 导航栏与「知识点」页一致（左侧语义关闭图标 + 标题的 TopAppBar）；名称列表、搜索、新增、rename、删除确认；关闭后录入页保留未保存内容 | 被题目引用不可删、名称重复、空库 |
-| PlanPreview | 计划页、overflow 警告、每日容量、打印入口（打印页只从此进入）；“重新生成本周计划”为二次确认的显式操作 | 容量不足、`KNOWLEDGE_TEXT_OVERFLOW`、`ITEM_TOO_TALL`、`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG` |
+| PlanPreview | 计划页、overflow 警告、每日容量、打印入口（打印页只从此进入）；按打开的窗口显示“重新生成本周计划/重新生成下周计划”的二次确认（C-098） | 容量不足、`KNOWLEDGE_TEXT_OVERFLOW`、`ITEM_TOO_TALL`、`INVALID_TEMPLATE_GEOMETRY`、`PLAN_TOO_LONG` |
 
 > 警告代码（`PaginationWarningCode`）只给程序/日志使用；PlanPreview 必须把代码映射为中文标签，并展示给用户看的 `message`，不得直接显示枚举名（C-065 方案 B）。`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并与分页警告合并（C-064 方案 A）。
 | Print | 由 PlanPreview 进入；系统打印适配器、文档生成后的结果确认 | 打印中、失败、等待「已打印/未打印」确认；确认「已打印」后只为当前计划写 pageId/QR，SUPERSEDED 计划不写（C-094 方案 B、C-097） |
@@ -124,9 +126,9 @@ sealed interface UiState<out T> {
 - Entry → QuestionEdit → 返回 Entry：复用 ViewModel 与 `LazyListState`，不重新加载、保留滚动位置；保存后静默刷新列表。
 - QuestionEdit 内「管理来源」：来源标签库以全屏窗口（`Dialog`）打开，不进入返回栈；关闭后仅刷新来源候选，题号/页码/来源选择/知识点/预估分钟等未保存内容保持原样。
 - Home → SourceTags：首页快捷操作 2×2 右下方的「管理题目来源」卡片进入独立的来源标签页（`AppRoute.SourceTags`，顶部标题「来源标签」），返回首页由全局返回栈处理；从该页返回后再进入 Entry/QuestionEdit 时会重新读取来源候选。
-- Home → PlanPreview：本周已有 GENERATED/PRINTED 计划时进入预览复用同一计划号；不会再次点击首页按钮就生成新计划。只有预览页的“重新生成本周计划”经确认后才生成新计划号并替代旧计划（C-097）。
+- Home → PlanPreview：本周或下周已有 GENERATED/PRINTED/COMPLETED 计划时进入预览复用同一计划号；不会再次点击首页按钮就生成新计划。只有预览页的“重新生成本周计划/重新生成下周计划”经确认后才生成新计划号并替代该窗口的旧计划（C-097/C-098）。
 - 打印确认：App 内“已记录本次打印”只在计划仍为当前计划时出现；若计划已被重新生成替代，显示“本次计划已被新的计划替代，未更新打印快照。”
-- PlanPreview → Print → 返回 PlanPreview 复用同一份计划，不重新生成、计划号不变；只有再次从 Home/Entry 点击“生成本周计划”才生成新计划。
+- PlanPreview → Print → 返回 PlanPreview 复用同一份计划，不重新生成、计划号不变；只有再次从 Home/Entry 点击某个窗口的生成入口才生成新计划。
 - 不在 ViewModel 持有 `Context`；文件/相机/打印操作通过 UseCase/Repository 注入。
 
 ## 验收

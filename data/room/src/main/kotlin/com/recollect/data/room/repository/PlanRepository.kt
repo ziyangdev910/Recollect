@@ -262,6 +262,11 @@ class RoomPlanRepository(
     }
 
     private companion object {
-        val ACTIVE_STATUSES = setOf(PlanStatus.GENERATED.name, PlanStatus.PRINTED.name)
+        // C-099：COMPLETED 仍可重印；打印确认只更新快照，不把状态降级回 PRINTED。
+        val ACTIVE_STATUSES = setOf(
+            PlanStatus.GENERATED.name,
+            PlanStatus.PRINTED.name,
+            PlanStatus.COMPLETED.name,
+        )
     }
 }

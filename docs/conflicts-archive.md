@@ -557,6 +557,39 @@
 - **用户可见变化**：再次点首页按钮不会悄悄换计划号；要换计划必须点“重新生成本周计划”并确认。旧打印稿仍可回读，但不再是最新计划；打印确认只更新当前计划。
 - **遗留**：旧（SUPERSEDED）计划页面仍可扫描并提交反馈，若用户同时扫描新旧两稿可能重复计数；是否在确认链路拒绝 SUPERSEDED 计划需产品另行决定。
 
+### C-098 首页“本周计划”实际是下周计划（已裁决：本周 + 下周双区块，2026-11-23）
+
+- **关联决策/规格**：D-01、C-097；`docs/specs/planning.md`、`docs/specs/app.md`。
+- **现象**：首页主卡标题为“本周计划”，但默认窗口用 `TemporalAdjusters.next(MONDAY)` 取严格的下一个周一；周一当天也会跳到下周一。因此任何一天打开 App，主卡展示的都是下一自然周；周一无法生成当周计划，而当周正在使用的计划因为首页只按这一个窗口查询，也完全不可见。
+- **裁决（2026-11-23，对话中用户选定）**：首页主卡改为**本周 + 下周双区块**。本周窗口固定为今天所在自然周（周一至周日），下周窗口紧随其后；只提供这两个入口，不允许生成更远的周。
+- **落地**：
+  - `feature:planning` 新增 `currentWeekSettings`（`previousOrSame(MONDAY)`）、`nextWeekSettings`、`PlanWeek` 枚举、`settingsFor` 与 `regenerateLabel`；`defaultPlanningSettings` 删除，`PlanPreviewViewModel` 默认窗口改为本周。
+  - `AppRoot` 的 `PlanPreviewViewModel` 按首页入口传入的窗口构造；Home 同时查询本周/下周两个窗口的 `activePlan`，主卡显示本周状态与主操作，卡内附“下周计划 日期 · 状态”与“生成/查看下周计划”按钮。
+  - `PlanPreviewScreen` 增加 `planWeek` 参数，“重新生成…”按钮与确认框按窗口显示“重新生成本周计划 / 重新生成下周计划”。
+  - 数据层不改：`plan_dao.activeForWeek` 按窗口隔离，本周与下周计划可并存，跨窗口不会互相 SUPERSEDE。
+- **测试/证据**：`./gradlew test verifyCorePurity` 通过；新增 `PlanWeekSettingsTest` 锁定周一/周三/周日的本周与下周窗口。实体机 VKJ-AN00 验证（release 包）：首页显示“本周计划 2026-11-23 — 2026-11-29”与“下周计划 2026-11-30 — 2026-12-06”；种子库的本周已打印计划在首页可见；生成下周计划得到 `06233A`（第 1 页 · 2026-11-30），返回首页显示“待打印”，强停重开仍为“待打印”，再次进入仍为 `06233A`（未顺延到更远的周）；本周计划 `769N80`（第 1 页 · 2026-11-23）正常复用。证据见 `evidence/screens/plancurrent-0*.png`。
+- **规格同步**：已按 2026-11-23 用户授权回写 `planning.md`（`planStartDate` 默认值改为“今天所在自然周”、PlanSession 窗口）与 `app.md`（Home 双区块、PlanPreview 窗口参数）。
+- **用户可见变化**：首页看到的“本周计划”就是今天所在的这一周；可以随时查看正在使用的当周计划，也可以在周末或任意时间提前生成下周计划。点击下周计划只会复用该窗口已有计划，不会继续顺延到下下周。
+- **遗留**：设置页未实现，两个窗口的日期暂不可自定义。`PlanStatus.COMPLETED` 的写入路径已由 C-099 补齐。
+
+### C-099 本周计划完成后无“已完成”状态与下周引导（已裁决：全部页确认后标记 COMPLETED，2026-11-23）
+
+- **关联决策/规格**：D-13、C-080、C-097、C-098；`docs/specs/planning.md`、`repository.md`、`app.md`。
+- **现象**：`PlanStatus` 枚举与首页文案里有 `COMPLETED`，但没有任何写入路径；本周计划即使全部页都已回读确认，首页也永远停在“已打印”，不会出现“已完成”，也不会把用户引向下周。
+- **裁决（2026-11-23，对话中用户选定）**：以“计划的每一页都已确认提交”作为完成判定；首页在“已完成”时把“生成下周计划”提升为主按钮，引导准备下一周。
+- **落地**：
+  - `ConfirmationDecisionLogDao.confirmedPageIds(planId)` 返回日志中的页集合；`PlanDao.markCompleted(planId)` 只在 GENERATED/PRINTED 时迁移为 COMPLETED。
+  - `RoomFeedbackRepository.saveDecisions` 在写确认日志、删除待确认行、标记会话已提交的**同一事务**内比较 `plan_page` 页集合与日志页集合；全部覆盖且本次无整题跳过时标记 COMPLETED。有跳过时留待修复后的重试。
+  - `PlanDao.activeForWeek` / `PlanRepository.activePlan` 包含 COMPLETED：已完成计划仍可在首页查看与重印；`PlanDao.markPrinted` 加状态条件，重印只更新快照，不把 COMPLETED 降级为 PRINTED；`savePrintSnapshots` 的可用状态加入 COMPLETED。
+  - 首页 `planStatusMessage(COMPLETED)` 改为“本周计划已完成，可以生成下周计划或查看复习进度。”；下周区块在本周已完成时把“生成/查看下周计划”从文本按钮提升为填充主按钮。
+- **测试/证据**：
+  - JVM：`ApplyFeedbackUseCaseTest.c099_plan_becomes_completed_only_after_every_page_is_confirmed`、`c099_superseded_plan_is_not_marked_completed`；`./gradlew test verifyCorePurity` 通过。
+  - 设备（真实 Room，`android.test.InstrumentationTestRunner`）：新增 `PlanCompletionAndroidTest`，2 个用例在 VKJ-AN00 通过——两页计划确认第一页仍为 PRINTED、确认第二页变为 COMPLETED；SUPERSEDED 计划确认后保持 SUPERSEDED。
+  - 首页呈现：把种子库本周计划置为 COMPLETED 后启动，首页显示“已完成”与引导文案，“生成下周计划”为主按钮，证据 `evidence/screens/plancomplete-03-home-completed.png`。
+- **规格同步**：已按 2026-11-23 用户授权回写 `planning.md`（完成判定小节与验收）、`repository.md`（PlanRepository 状态契约）、`app.md`（Home/PlanPreview 状态）。
+- **用户可见变化**：本周最后一页确认提交后，首页计划状态变为“已完成”；“生成下周计划”从次要文本按钮变成主按钮，用户可直接准备下周，同时仍可查看或重印本周计划。
+- **遗留**：`COMPLETED` 只在确认提交时判定，不按计划窗口结束自动完成；未做的页会让计划一直停在“已打印/待打印”。重复扫描已完成计划的旧稿仍可能重复累计反馈（C-097 遗留），本轮未改。
+
 ## 已裁决但待验证（非新冲突）
 
 - C-050 的 `Double` 内部算术与 `Float` 边界转换，需在 `ApplyFeedbackUseCase` 实现后用 U-01～U-19 验证。

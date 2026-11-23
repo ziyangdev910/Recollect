@@ -298,6 +298,8 @@ class AppContainer(context: Context) {
             pendingFeedbackDao = database.pendingFeedbackDao(),
             noteAttachmentItemDao = database.noteAttachmentItemDao(),
             scanSessionDao = database.scanSessionDao(),
+            planPageDao = database.planPageDao(),
+            planDao = database.planDao(),
             clock = clock,
         )
     }

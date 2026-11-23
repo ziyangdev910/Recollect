@@ -46,6 +46,8 @@ class FeedbackRepositoryTransactionTest {
         pendingFeedbackDao = FakePendingFeedbackDao(stores),
         noteAttachmentItemDao = FakeNoteAttachmentItemDao(stores),
         scanSessionDao = FakeScanSessionDao(stores),
+        planPageDao = FakePlanPageDao(stores),
+        planDao = FakePlanDao(stores),
         clock = clock,
     )
 

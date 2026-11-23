@@ -3,6 +3,8 @@ package com.recollect.data.room.usecase
 import com.recollect.data.room.entity.DetectionStatus
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.PendingFeedback
+import com.recollect.data.room.entity.Plan
+import com.recollect.data.room.entity.PlanPage
 import com.recollect.data.room.entity.Question
 import com.recollect.data.room.entity.ReviewFeedback
 import com.recollect.data.room.entity.ScanSession
@@ -13,6 +15,8 @@ import com.recollect.data.room.repository.FakeConfirmationDecisionLogDao
 import com.recollect.data.room.repository.FakeKnowledgePointDao
 import com.recollect.data.room.repository.FakeNoteAttachmentItemDao
 import com.recollect.data.room.repository.FakePendingFeedbackDao
+import com.recollect.data.room.repository.FakePlanDao
+import com.recollect.data.room.repository.FakePlanPageDao
 import com.recollect.data.room.repository.FakeQuestionDao
 import com.recollect.data.room.repository.FakeQuestionLookupRepository
 import com.recollect.data.room.repository.FakeReviewFeedbackDao
@@ -77,6 +81,8 @@ class ApplyFeedbackUseCaseTest {
         pendingFeedbackDao = FakePendingFeedbackDao(stores),
         noteAttachmentItemDao = FakeNoteAttachmentItemDao(stores),
         scanSessionDao = FakeScanSessionDao(stores),
+        planPageDao = FakePlanPageDao(stores),
+        planDao = FakePlanDao(stores),
         clock = clock,
     )
     private val useCase = ApplyFeedbackUseCase(
@@ -225,6 +231,7 @@ class ApplyFeedbackUseCaseTest {
         detectedRawOcr: String? = null,
         correctedText: String? = null,
         reviewedOn: LocalDate = reviewDate,
+        pageId: String = this.pageId,
     ) = ConfirmedDecision(
         planId = planId,
         pageId = pageId,
@@ -1156,6 +1163,72 @@ class ApplyFeedbackUseCaseTest {
             setOf("q1" to "k1", "q2" to "k2"),
             stores.pendingFeedbacks.map { it.questionId to it.knowledgePointId }.toSet(),
             "回滚后待确认行保留，供重试",
+        )
+    }
+
+    private fun plan(status: String = "PRINTED") = Plan(
+        planId = planId,
+        weekStart = plannedDate,
+        weekEnd = plannedDate.plusDays(6),
+        createdAt = createdAtInstant,
+        status = status,
+        printedAt = createdAtInstant,
+        supersededBy = null,
+    )
+
+    private fun planPage(pageNumber: Int) = PlanPage(
+        planId = planId,
+        pageId = "$planId-${pageNumber.toString().padStart(2, '0')}",
+        pageNumber = pageNumber,
+        date = plannedDate.plusDays(pageNumber - 1L),
+        itemCount = 1,
+        questionIds = "[]",
+        knowledgeRows = "[]",
+        continuationMarkers = "[]",
+    )
+
+    /** C-099：每一页都确认成功后，计划才迁移为 COMPLETED。 */
+    @Test
+    fun c099_plan_becomes_completed_only_after_every_page_is_confirmed() = runBlocking {
+        stores.knowledgePoints["k1"] = knowledgePoint("k1")
+        stores.questions["q1"] = question("q1")
+        stores.questions["q2"] = question("q2")
+        stores.plans[planId] = plan()
+        val firstPage = "$planId-01"
+        val secondPage = "$planId-02"
+        stores.planPages[firstPage] = planPage(1)
+        stores.planPages[secondPage] = planPage(2)
+
+        submit(listOf(decision("q1", "k1", pageId = firstPage)))
+        assertEquals(
+            "PRINTED",
+            stores.plans.getValue(planId).status,
+            "只确认其中一页时计划不能算完成",
+        )
+
+        submit(listOf(decision("q2", "k1", pageId = secondPage)))
+        assertEquals(
+            "COMPLETED",
+            stores.plans.getValue(planId).status,
+            "全部页面确认后计划应标记为已完成",
+        )
+    }
+
+    /** C-099：已被显式替代的计划不得改回 COMPLETED。 */
+    @Test
+    fun c099_superseded_plan_is_not_marked_completed() = runBlocking {
+        stores.knowledgePoints["k1"] = knowledgePoint("k1")
+        stores.questions["q1"] = question("q1")
+        stores.plans[planId] = plan(status = "SUPERSEDED")
+        val page = "$planId-01"
+        stores.planPages[page] = planPage(1)
+
+        submit(listOf(decision("q1", "k1", pageId = page)))
+
+        assertEquals(
+            "SUPERSEDED",
+            stores.plans.getValue(planId).status,
+            "已被替代的计划不得改回 COMPLETED",
         )
     }
 }

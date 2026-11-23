@@ -36,6 +36,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlanPreviewScreen(
     viewModel: PlanPreviewViewModel,
+    /** 本次预览打开的是哪一周：决定“重新生成…”文案，避免把下周计划叫成本周计划。 */
+    planWeek: PlanWeek = PlanWeek.CURRENT,
     onPrint: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -87,9 +89,9 @@ fun PlanPreviewScreen(
                 }
                 WarningList(state.warnings)
 
-                // 显式重新生成：新计划号会替代本周当前计划；默认路径只复用已有计划。
+                // 显式重新生成：新计划号会替代该窗口的当前计划；默认路径只复用已有计划。
                 TextButton(onClick = { showRegenerateConfirm = true }) {
-                    Text("重新生成本周计划")
+                    Text(planWeek.regenerateLabel)
                 }
             }
 
@@ -112,7 +114,7 @@ fun PlanPreviewScreen(
     if (showRegenerateConfirm) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
-            title = { Text("重新生成本周计划") },
+            title = { Text(planWeek.regenerateLabel) },
             text = {
                 Text(
                     "将生成新的计划号。旧计划仍可回读，但不再是最新计划；" +

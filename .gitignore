@@ -14,3 +14,11 @@ captures/
 
 # 截图证据
 evidence/
+
+# ppt大纲
+ppt/
+
+# 密钥文件
+*.keystore
+*.jks
+keystore.properties

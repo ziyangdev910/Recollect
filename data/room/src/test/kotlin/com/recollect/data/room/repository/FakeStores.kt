@@ -170,6 +170,9 @@ internal class FakeConfirmationDecisionLogDao(private val stores: InMemoryStores
 
     override suspend fun scannedPageCount(planId: String): Int =
         stores.decisionLogs.filter { it.planId == planId }.map { it.pageId }.distinct().size
+
+    override suspend fun confirmedPageIds(planId: String): List<String> =
+        stores.decisionLogs.filter { it.planId == planId }.map { it.pageId }.distinct()
 }
 
 internal class FakePendingFeedbackDao(private val stores: InMemoryStores) : PendingFeedbackDao {
@@ -249,9 +252,16 @@ internal class FakePlanDao(private val stores: InMemoryStores) : PlanDao {
         stores.plans.values
             .filter {
                 it.weekStart == weekStart && it.weekEnd == weekEnd &&
-                    it.status in setOf("GENERATED", "PRINTED")
+                    it.status in setOf("GENERATED", "PRINTED", "COMPLETED")
             }
             .maxByOrNull { it.createdAt }
+
+    override suspend fun markCompleted(planId: String): Int {
+        val plan = stores.plans[planId] ?: return 0
+        if (plan.status !in setOf("GENERATED", "PRINTED")) return 0
+        stores.plans[planId] = plan.copy(status = "COMPLETED")
+        return 1
+    }
 
     override suspend fun supersede(planId: String, supersededBy: String) {
         stores.plans[planId]?.let {
@@ -260,9 +270,9 @@ internal class FakePlanDao(private val stores: InMemoryStores) : PlanDao {
     }
 
     override suspend fun markPrinted(planId: String, printedAt: Instant) {
-        stores.plans[planId]?.let {
-            stores.plans[planId] = it.copy(status = "PRINTED", printedAt = printedAt)
-        }
+        val plan = stores.plans[planId] ?: return
+        if (plan.status !in setOf("GENERATED", "PRINTED")) return
+        stores.plans[planId] = plan.copy(status = "PRINTED", printedAt = printedAt)
     }
 }
 
