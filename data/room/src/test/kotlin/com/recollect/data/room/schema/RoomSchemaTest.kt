@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/12.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/13.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,10 +39,11 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(12, database.required("version").asInt(), "schema 版本")
+        assertEquals(13, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
+                "knowledge_category",
                 "knowledge_point",
                 "question",
                 "question_knowledge_cross_ref",
@@ -60,7 +61,21 @@ class RoomSchemaTest {
                 "app_settings",
             ),
             entities.keys,
-            "v12 应落 data-model.md 已定义的 15 个实体（含来源标签库与每日复习时长设置）",
+            "v13 应落 data-model.md 已定义的 16 个实体（含知识点分类）",
+        )
+
+        assertTable(
+            table = "knowledge_category",
+            columns = mapOf(
+                "id" to Column("TEXT", true),
+                "name" to Column("TEXT", true),
+                "createdAt" to Column("INTEGER", true),
+            ),
+            primaryKey = listOf("id"),
+            autoGenerate = false,
+            indices = mapOf(
+                "index_knowledge_category_name" to IndexSpec(listOf("name"), unique = true),
+            ),
         )
 
         assertTable(
@@ -78,6 +93,7 @@ class RoomSchemaTest {
                 "difficulty" to Column("INTEGER", false),
                 "halfLifeDays" to Column("REAL", false),
                 "createdAt" to Column("INTEGER", true),
+                "categoryId" to Column("TEXT", true),
             ),
             primaryKey = listOf("id"),
             autoGenerate = false,

@@ -4,6 +4,8 @@ import com.recollect.data.room.RecollectDatabase
 import com.recollect.data.room.dao.BackupRestoreDao
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
+import com.recollect.data.room.entity.KnowledgeCategory
+import com.recollect.data.room.entity.KnowledgeCategoryDefaults
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.KnowledgePointTombstone
@@ -119,11 +121,13 @@ class RoomDatabaseImporter(
         restoreDao.clearNoteAttachments()
         restoreDao.clearQuestions()
         restoreDao.clearKnowledgePoints()
+        restoreDao.clearKnowledgeCategories()
         restoreDao.clearTombstones()
         restoreDao.clearNumberSequences()
         restoreDao.clearSourceTags()
         restoreDao.clearAppSettings()
 
+        restoreDao.insertKnowledgeCategories(parsed.knowledgeCategories)
         restoreDao.insertKnowledgePoints(parsed.knowledgePoints)
         restoreDao.insertQuestions(parsed.questions)
         restoreDao.insertCrossRefs(parsed.crossRefs)
@@ -152,6 +156,9 @@ class RoomDatabaseImporter(
         if (schemaVersion < 1) fail("备份文件的 schema 版本不合法。")
         val data = root.obj("data", "备份文件")
 
+        val backupCategories = data.array("knowledgeCategories").mapIndexed { index, row ->
+            parseKnowledgeCategory(row.asObject("knowledgeCategories[$index]"))
+        }
         var knowledgePoints = data.array("knowledgePoints").mapIndexed { index, row ->
             parseKnowledgePoint(row.asObject("knowledgePoints[$index]"))
         }
@@ -191,6 +198,14 @@ class RoomDatabaseImporter(
             ?: AppSettings()
 
         validateNumbers(knowledgePoints, tombstones)
+
+        // v13：分类随备份恢复；旧备份（v12 及更早）没有分类，补默认分类，
+        // 并保证每个知识点的 categoryId 都指向一个存在的分类（缺失时归入「语文」）。
+        val (knowledgeCategories, normalizedPoints) = resolveCategories(
+            categories = backupCategories,
+            knowledgePoints = knowledgePoints,
+        )
+        knowledgePoints = normalizedPoints
 
         // 悬空关联跳过并记录，不产生半恢复的引用（backup.md「悬空引用」）。
         val questionIds = questions.mapTo(mutableSetOf()) { it.id }
@@ -244,6 +259,7 @@ class RoomDatabaseImporter(
         val sequences = listOf(KnowledgeNumberSequence(lastIssued = maxIssued))
 
         val counts = linkedMapOf(
+            RoomDatabaseExporter.KEY_KNOWLEDGE_CATEGORIES to knowledgeCategories.size,
             RoomDatabaseExporter.KEY_KNOWLEDGE_POINTS to knowledgePoints.size,
             RoomDatabaseExporter.KEY_QUESTIONS to questions.size,
             RoomDatabaseExporter.KEY_CROSS_REFS to crossRefs.size,
@@ -259,6 +275,7 @@ class RoomDatabaseImporter(
         )
 
         return ParsedBackup(
+            knowledgeCategories = knowledgeCategories,
             knowledgePoints = knowledgePoints,
             questions = questions,
             crossRefs = crossRefs,
@@ -314,6 +331,15 @@ class RoomDatabaseImporter(
         return counts
     }
 
+    private fun parseKnowledgeCategory(row: Map<String, JsonValue>): KnowledgeCategory {
+        val context = "知识点分类"
+        return KnowledgeCategory(
+            id = row.string("id", context),
+            name = row.string("name", context),
+            createdAt = row.instant("createdAt", context),
+        )
+    }
+
     private fun parseKnowledgePoint(row: Map<String, JsonValue>): KnowledgePoint {
         val context = "知识点"
         return KnowledgePoint(
@@ -329,7 +355,46 @@ class RoomDatabaseImporter(
             difficulty = row.optionalInt("difficulty", context),
             halfLifeDays = row.optionalFloat("halfLifeDays", context),
             createdAt = row.instant("createdAt", context),
+            // v13 之前的备份没有分类，统一归入「语文」。
+            categoryId = row.optionalString("categoryId", context)
+                ?: KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID,
         )
+    }
+
+    /**
+     * 分类缺失时补默认分类，并把指向不存在分类的知识点归入「语文」。
+     *
+     * 新备份（v13+）总是带完整分类；这里的兜底只针对旧备份或手工编辑过的文件，
+     * 保证恢复后不会出现无分类的知识点。
+     */
+    private fun resolveCategories(
+        categories: List<KnowledgeCategory>,
+        knowledgePoints: List<KnowledgePoint>,
+    ): Pair<List<KnowledgeCategory>, List<KnowledgePoint>> {
+        val seeded = if (categories.isEmpty()) {
+            val base = clock.instant()
+            KnowledgeCategoryDefaults.NAMES.mapIndexed { index, (id, name) ->
+                KnowledgeCategory(id = id, name = name, createdAt = base.plusSeconds(index.toLong()))
+            }
+        } else {
+            categories
+        }
+        val fallbackId = KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID
+        // 旧备份没有分类、或分类被用户改得没有「语文」时，补一个「语文」承接旧知识点。
+        val resolvedCategories = if (seeded.any { it.id == fallbackId }) {
+            seeded
+        } else {
+            seeded + KnowledgeCategory(
+                id = fallbackId,
+                name = KnowledgeCategoryDefaults.NAMES.first { it.first == fallbackId }.second,
+                createdAt = clock.instant(),
+            )
+        }
+        val knownIds = resolvedCategories.mapTo(mutableSetOf()) { it.id }
+        val points = knowledgePoints.map {
+            if (it.categoryId in knownIds) it else it.copy(categoryId = fallbackId)
+        }
+        return resolvedCategories to points
     }
 
     private fun parseQuestion(row: Map<String, JsonValue>): Question {
@@ -481,6 +546,7 @@ class RoomDatabaseImporter(
     }
 
     private data class ParsedBackup(
+        val knowledgeCategories: List<KnowledgeCategory>,
         val knowledgePoints: List<KnowledgePoint>,
         val questions: List<Question>,
         val crossRefs: List<QuestionKnowledgeCrossRef>,

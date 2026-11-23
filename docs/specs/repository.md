@@ -23,6 +23,21 @@ interface KnowledgePointRepository {
     suspend fun deleteWithTombstone(knowledgePointId: String, reason: String)
 }
 
+// 知识点标签库与分类（2026-11-23 用户要求；schema v13）。
+interface KnowledgeCategoryRepository {
+    suspend fun categories(): List<KnowledgeCategoryItem>   // id/name/知识点数，按 createdAt 升序
+    suspend fun create(name: String): KnowledgeCategoryItem
+    suspend fun rename(categoryId: String, name: String)
+    suspend fun delete(categoryId: String)                   // 仍有知识点时拒绝
+}
+
+interface KnowledgePointLibraryRepository {
+    suspend fun tags(): List<KnowledgePointTag>             // 含 categoryId 与未归档题目引用数
+    suspend fun create(name: String, categoryId: String): KnowledgePointTag
+    suspend fun update(knowledgePointId: String, name: String, categoryId: String)
+    suspend fun deleteWithTombstone(knowledgePointId: String, reason: String = "deleted")
+}
+
 interface QuestionRepository {
     suspend fun schedulerQuestions(): List<SchedulerQuestion>
     suspend fun markScheduled(questionId: String, targetDate: LocalDate)
@@ -230,6 +245,8 @@ fun PlanPage.toPlanPageRows(): List<PlanPageRows>
 - `QuestionRepository.archive`：`archived=true`、`archivedAt=now`，并对每个关联知识点调用 `onQuestionArchived`；若计数为 0 则 `dormant=true`。
 - `unarchive` 反向操作；`continuousScore` 不变。
 - `KnowledgePointRepository.deleteWithTombstone`：先检查是否仍有未归档题目引用；有则拒绝；否则写墓碑并删除。
+- `KnowledgePointLibraryRepository.create/update`：在同一事务内校验 `categoryId` 指向存在的分类，否则抛 `KnowledgeCategoryNotFoundException` 并回滚；编号分配、墓碑与更新规则不变。
+- `KnowledgeCategoryRepository`：名称去首尾空格后非空且唯一（`KnowledgeCategoryNameConflictException`）；删除前统计归属该分类的全部知识点（含休眠），大于 0 时抛 `KnowledgeCategoryInUseException`。
 - 题目不提供硬删除；历史反馈永远保留。
 
 ## 验收
@@ -242,3 +259,4 @@ fun PlanPage.toPlanPageRows(): List<PlanPageRows>
 - C-099：`RoomFeedbackRepository.saveDecisions` 在写入确认日志与删除待确认行的同一事务内判定计划完成：`plan_page` 的全部 `pageId` 都出现在 `confirmation_decision_log` 且本次无整题跳过时，把计划从 GENERATED/PRINTED 迁移为 COMPLETED；`PlanDao.markCompleted` 带状态条件，SUPERSEDED 与已 COMPLETED 不生效。`activeForWeek` / `activePlan` 包含 COMPLETED，首页据此显示“已完成”，并在本周 COMPLETED 时把下周计划升为卡片主区块、本周降为次要行（C-100）。
 - `data/room` 映射测试覆盖：Entity ↔ Scheduler/Pagination DTO 字段一一对应，无丢失/重命名漂移；`PlanPage.knowledgeRows` 解码后每题一条、条数与顺序不变，且不按 `number` 重排（C-071）。
 - `core:model` 纯度测试：`src/main` 与 `src/test` 均不得出现 `android.*` / `androidx.*` import；`KnowledgeRowsCodec` 可独立测试。
+- 知识点分类（schema v13）：分类名重复被拒绝、有知识点的分类不可删、空分类可删；新增/编辑知识点携带不存在或已删除的分类被拒绝；`KnowledgeCategoryRepositoryTest` 与 `KnowledgePointLibraryRepositoryTest` 覆盖。

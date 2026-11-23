@@ -3,6 +3,7 @@ package com.recollect.data.room.export
 import com.recollect.data.room.dao.BackupDao
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
+import com.recollect.data.room.entity.KnowledgeCategory
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.KnowledgePointTombstone
@@ -45,10 +46,11 @@ class RoomDatabaseExporterTest {
 
         assertEquals("recollect-20261122-1605.json", document.fileName)
         assertContains(document.json, "\"backupFormatVersion\": 1")
-        assertContains(document.json, "\"roomSchemaVersion\": 12")
+        assertContains(document.json, "\"roomSchemaVersion\": 13")
         assertContains(document.json, "\"appVersionName\": \"0.1.0\"")
         assertContains(document.json, "\"exportedAt\": \"2026-11-22T08:05:00Z\"")
         listOf(
+            "knowledgeCategories",
             "knowledgePoints",
             "questions",
             "questionKnowledgeCrossRefs",
@@ -76,6 +78,13 @@ class RoomDatabaseExporterTest {
     @Test
     fun `实体字段按属性名导出并统计行数`() = runBlocking {
         val dao = FakeBackupDao(
+            knowledgeCategories = listOf(
+                KnowledgeCategory(
+                    id = "cat-chinese",
+                    name = "语文",
+                    createdAt = Instant.parse("2026-11-18T00:00:00Z"),
+                ),
+            ),
             knowledgePoints = listOf(
                 KnowledgePoint(
                     id = "kp-1",
@@ -90,6 +99,7 @@ class RoomDatabaseExporterTest {
                     difficulty = null,
                     halfLifeDays = null,
                     createdAt = Instant.parse("2026-11-20T10:00:00Z"),
+                    categoryId = "cat-chinese",
                 ),
             ),
             questions = listOf(
@@ -198,6 +208,7 @@ class RoomDatabaseExporterTest {
 
         val document = exporter(dao).export()
 
+        assertEquals(1, document.entityCounts[RoomDatabaseExporter.KEY_KNOWLEDGE_CATEGORIES])
         assertEquals(1, document.entityCounts[RoomDatabaseExporter.KEY_KNOWLEDGE_POINTS])
         assertEquals(1, document.entityCounts[RoomDatabaseExporter.KEY_QUESTIONS])
         assertEquals(1, document.entityCounts[RoomDatabaseExporter.KEY_CROSS_REFS])
@@ -221,6 +232,8 @@ class RoomDatabaseExporterTest {
         assertContains(document.json, "\"reviewedOn\": null")
         assertContains(document.json, "\"lastIssued\": 3")
         assertContains(document.json, "\"status\": \"PRINTED\"")
+        assertContains(document.json, "\"categoryId\": \"cat-chinese\"")
+        assertContains(document.json, "\"name\": \"语文\"")
     }
 
     @Test
@@ -250,6 +263,7 @@ class RoomDatabaseExporterTest {
 
 /** 导出器只读 DAO 的测试替身；未使用的写方法由 BackupDao 的只读签名保证不存在。 */
 private class FakeBackupDao(
+    private val knowledgeCategories: List<KnowledgeCategory> = emptyList(),
     private val knowledgePoints: List<KnowledgePoint> = emptyList(),
     private val questions: List<Question> = emptyList(),
     private val crossRefs: List<QuestionKnowledgeCrossRef> = emptyList(),
@@ -263,6 +277,7 @@ private class FakeBackupDao(
     private val sourceTags: List<SourceTag> = emptyList(),
     private val appSettings: List<AppSettings> = emptyList(),
 ) : BackupDao {
+    override suspend fun knowledgeCategories() = knowledgeCategories
     override suspend fun knowledgePoints() = knowledgePoints
     override suspend fun questions() = questions
     override suspend fun crossRefs() = crossRefs

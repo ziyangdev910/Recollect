@@ -2,6 +2,7 @@ package com.recollect.data.room.repository
 
 import com.recollect.data.room.dao.ConfirmationDecisionLogDao
 import com.recollect.data.room.dao.CoolingOverrideEventDao
+import com.recollect.data.room.dao.KnowledgeCategoryDao
 import com.recollect.data.room.dao.KnowledgePointDao
 import com.recollect.data.room.dao.NoteAttachmentItemDao
 import com.recollect.data.room.dao.PendingFeedbackDao
@@ -13,6 +14,7 @@ import com.recollect.data.room.dao.ScanSessionDao
 import com.recollect.data.room.dao.SourceTagDao
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.CoolingOverrideEvent
+import com.recollect.data.room.entity.KnowledgeCategory
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.NoteAttachmentItem
 import com.recollect.data.room.entity.PendingFeedback
@@ -39,6 +41,7 @@ internal class InMemoryStores {
     val planPages = linkedMapOf<String, PlanPage>() // key = pageId
     val questions = linkedMapOf<String, Question>() // key = id
     val knowledgePoints = linkedMapOf<String, KnowledgePoint>() // key = id
+    val knowledgeCategories = linkedMapOf<String, KnowledgeCategory>() // key = id
     val coolingEvents = linkedMapOf<Long, CoolingOverrideEvent>() // key = id
     val reviewFeedbacks = mutableListOf<ReviewFeedback>()
     val decisionLogs = mutableListOf<ConfirmationDecisionLog>()
@@ -78,6 +81,7 @@ internal class InMemoryStores {
         val planPages: Map<String, PlanPage>,
         val questions: Map<String, Question>,
         val knowledgePoints: Map<String, KnowledgePoint>,
+        val knowledgeCategories: Map<String, KnowledgeCategory>,
         val coolingEvents: Map<Long, CoolingOverrideEvent>,
         val reviewFeedbacks: List<ReviewFeedback>,
         val decisionLogs: List<ConfirmationDecisionLog>,
@@ -92,6 +96,7 @@ internal class InMemoryStores {
         planPages = planPages.toMap(),
         questions = questions.toMap(),
         knowledgePoints = knowledgePoints.toMap(),
+        knowledgeCategories = knowledgeCategories.toMap(),
         coolingEvents = coolingEvents.toMap(),
         reviewFeedbacks = reviewFeedbacks.toList(),
         decisionLogs = decisionLogs.toList(),
@@ -110,6 +115,8 @@ internal class InMemoryStores {
         questions.putAll(snapshot.questions)
         knowledgePoints.clear()
         knowledgePoints.putAll(snapshot.knowledgePoints)
+        knowledgeCategories.clear()
+        knowledgeCategories.putAll(snapshot.knowledgeCategories)
         coolingEvents.clear()
         coolingEvents.putAll(snapshot.coolingEvents)
         reviewFeedbacks.clear()
@@ -428,6 +435,33 @@ internal class FakeScanSessionDao(private val stores: InMemoryStores) : ScanSess
 internal class FakeQuestionLookupRepository(private val stores: InMemoryStores) : QuestionLookupRepository {
     override suspend fun linkedKnowledgePointIds(questionId: String): Set<String>? =
         if (stores.questions[questionId] == null) null else stores.questionLinks[questionId].orEmpty().toSet()
+}
+
+internal class FakeKnowledgeCategoryDao(private val stores: InMemoryStores) : KnowledgeCategoryDao {
+    override suspend fun all(): List<KnowledgeCategory> =
+        stores.knowledgeCategories.values.sortedWith(
+            compareBy<KnowledgeCategory> { it.createdAt }.thenBy { it.id },
+        )
+
+    override suspend fun byId(id: String): KnowledgeCategory? = stores.knowledgeCategories[id]
+
+    override suspend fun byName(name: String): KnowledgeCategory? =
+        stores.knowledgeCategories.values.firstOrNull { it.name == name }
+
+    override suspend fun insert(entity: KnowledgeCategory) {
+        stores.knowledgeCategories[entity.id] = entity
+    }
+
+    override suspend fun update(entity: KnowledgeCategory) {
+        stores.knowledgeCategories[entity.id] = entity
+    }
+
+    override suspend fun delete(id: String) {
+        stores.knowledgeCategories.remove(id)
+    }
+
+    override suspend fun knowledgePointCount(categoryId: String): Int =
+        stores.knowledgePoints.values.count { it.categoryId == categoryId }
 }
 
 internal class FakeKnowledgePointDao(private val stores: InMemoryStores) : KnowledgePointDao {

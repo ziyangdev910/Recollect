@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -155,8 +156,21 @@ private fun QuestionForm(
     var sourceTags by remember(content) { mutableStateOf(content.sourceTags) }
     // 知识点候选同样独立于 content：窗口内增删改后只刷新候选，不重建表单。
     var knowledgeTags by remember(content) { mutableStateOf(content.tags) }
+    var knowledgeCategories by remember(content) { mutableStateOf(content.knowledgeCategories) }
+    // 知识点标签区的分类筛选；null 表示「全部」（2026-11-23 用户要求）。
+    var knowledgeFilterId by remember { mutableStateOf<String?>(null) }
     var showSourceManager by remember { mutableStateOf(false) }
     var showKnowledgeManager by remember { mutableStateOf(false) }
+
+    // 分类被删除后，失效的筛选回到「全部」。
+    LaunchedEffect(knowledgeCategories) {
+        if (knowledgeFilterId != null && knowledgeCategories.none { it.id == knowledgeFilterId }) {
+            knowledgeFilterId = null
+        }
+    }
+    val filteredKnowledgeTags = knowledgeTags.filter {
+        knowledgeFilterId == null || it.categoryId == knowledgeFilterId
+    }
 
     Column(
         modifier = Modifier
@@ -323,17 +337,34 @@ private fun QuestionForm(
             )
             TextButton(onClick = { showKnowledgeManager = true }) { Text("管理知识点") }
         }
+        // 分类筛选选项卡放在「知识点标签」标题之下、标签列表之上；
+        // 列表只显示当前分类下的知识点（2026-11-23 用户要求）。
+        KnowledgeCategoryFilterRow(
+            categories = knowledgeCategories,
+            selectedCategoryId = knowledgeFilterId,
+            onSelect = { knowledgeFilterId = it },
+        )
+        // 分割线明确区分「上方筛选项」与「下方知识点条目」（2026-11-23 用户要求）。
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 2.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
         if (knowledgeTags.isEmpty()) {
             Text(
                 text = "知识点标签库为空。请点击「管理知识点」添加标签，再回来关联。",
                 color = MaterialTheme.colorScheme.error,
+            )
+        } else if (filteredKnowledgeTags.isEmpty()) {
+            Text(
+                text = "当前分类下暂无知识点，可切换其他分类或「全部」。",
+                style = MaterialTheme.typography.bodySmall,
             )
         } else {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                knowledgeTags.forEach { tag ->
+                filteredKnowledgeTags.forEach { tag ->
                     val selected = tag.id in selectedIds
                     FilterChip(
                         selected = selected,
@@ -448,13 +479,18 @@ private fun QuestionForm(
             onDismiss = {
                 showKnowledgeManager = false
                 // 窗口内可能新增/重命名/删除知识点：关闭时同步最新候选，已填表单保持不变。
-                val latest: List<KnowledgePointTag> =
-                    when (val managerState = knowledgePointViewModel.state) {
-                        is UiState.Content -> managerState.data.tags
-                        UiState.Empty -> emptyList()
-                        else -> knowledgeTags
-                    }
+                val managerState = knowledgePointViewModel.state
+                val latest: List<KnowledgePointTag> = when (managerState) {
+                    is UiState.Content -> managerState.data.tags
+                    UiState.Empty -> emptyList()
+                    else -> knowledgeTags
+                }
                 knowledgeTags = latest
+                // 窗口内也可能增删改分类：同步最新分类，失效筛选自动回到「全部」。
+                knowledgeCategories = when (managerState) {
+                    is UiState.Content -> managerState.data.categories
+                    else -> knowledgeCategories
+                }
                 // 已选知识点被删除：从选择中移除，避免保存出不在标签库中的关联。
                 val availableIds = latest.mapTo(HashSet()) { it.id }
                 selectedIds.retainAll(availableIds)

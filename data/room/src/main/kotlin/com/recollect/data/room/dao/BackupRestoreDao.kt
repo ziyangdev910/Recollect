@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
+import com.recollect.data.room.entity.KnowledgeCategory
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.KnowledgePointTombstone
@@ -25,6 +26,9 @@ import com.recollect.data.room.entity.SourceTag
  */
 @Dao
 interface BackupRestoreDao {
+
+    @Query("DELETE FROM knowledge_category")
+    suspend fun clearKnowledgeCategories()
 
     @Query("DELETE FROM knowledge_point")
     suspend fun clearKnowledgePoints()
@@ -71,6 +75,9 @@ interface BackupRestoreDao {
     /** 导入会覆盖应用设置；恢复时始终写回至少一行默认值。 */
     @Query("DELETE FROM app_settings")
     suspend fun clearAppSettings()
+
+    @Insert
+    suspend fun insertKnowledgeCategories(rows: List<KnowledgeCategory>)
 
     @Insert
     suspend fun insertKnowledgePoints(rows: List<KnowledgePoint>)

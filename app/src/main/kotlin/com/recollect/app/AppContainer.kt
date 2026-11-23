@@ -9,6 +9,7 @@ import com.recollect.data.room.export.RoomDatabaseExporter
 import com.recollect.data.room.export.RoomDatabaseImporter
 import com.recollect.data.room.repository.EntryRepository
 import com.recollect.data.room.repository.FeedbackRepository
+import com.recollect.data.room.repository.KnowledgeCategoryRepository
 import com.recollect.data.room.repository.KnowledgePointLibraryRepository
 import com.recollect.data.room.repository.KnowledgePointRepository
 import com.recollect.data.room.repository.MondayPlanWeekStartProvider
@@ -20,6 +21,7 @@ import com.recollect.data.room.repository.QuestionRepository
 import com.recollect.data.room.repository.ReviewFeedbackHistoryRepository
 import com.recollect.data.room.repository.RoomEntryRepository
 import com.recollect.data.room.repository.RoomFeedbackRepository
+import com.recollect.data.room.repository.RoomKnowledgeCategoryRepository
 import com.recollect.data.room.repository.RoomKnowledgePointLibraryRepository
 import com.recollect.data.room.repository.RoomKnowledgePointRepository
 import com.recollect.data.room.repository.RoomNoteAttachmentRepository
@@ -142,11 +144,22 @@ class AppContainer(context: Context) {
         RoomKnowledgePointRepository(database.knowledgePointDao())
     }
 
+    /** 知识点分类（知识点之上一层，可增删改，schema v13）。 */
+    val knowledgeCategoryRepository: KnowledgeCategoryRepository by lazy {
+        RoomKnowledgeCategoryRepository(
+            transactionRunner = RoomTransactionRunner(database),
+            categoryDao = database.knowledgeCategoryDao(),
+            knowledgePointDao = database.knowledgePointDao(),
+            clock = clock,
+        )
+    }
+
     /** 知识点标签库（增删改查、编号序列与墓碑，D-12）。 */
     val knowledgePointLibraryRepository: KnowledgePointLibraryRepository by lazy {
         RoomKnowledgePointLibraryRepository(
             transactionRunner = RoomTransactionRunner(database),
             knowledgePointDao = database.knowledgePointDao(),
+            categoryDao = database.knowledgeCategoryDao(),
             crossRefDao = database.questionKnowledgeCrossRefDao(),
             questionDao = database.questionDao(),
             sequenceDao = database.knowledgeNumberSequenceDao(),

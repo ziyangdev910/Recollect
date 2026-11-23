@@ -94,7 +94,7 @@ flowchart TD
 
 | 阶段 | 读什么 | 写什么 | 字段变化 |
 |---|---|---|---|
-| 录入 | 表单、标签库（知识点列表）、已有题目 | KnowledgePoint、KnowledgeNumberSequence、KnowledgePointTombstone、Question、CrossRef、NoteAttachmentItem | 标签库创建时分配 `number`（跳过墓碑）并写入初始 tier/score/count/nextDueDate/dormant；题目从标签库选择 1～4 个标签并写入 `estimatedReviewMinutes`；来源页码写入系统编号 `sourcePageCode` 与可选说明 `sourcePage`；删除标签先校验未被未归档题目引用，再写墓碑 |
+| 录入 | 表单、标签库（按分类筛选的知识点列表）、已有题目 | KnowledgeCategory、KnowledgePoint、KnowledgeNumberSequence、KnowledgePointTombstone、Question、CrossRef、NoteAttachmentItem | 标签库创建时分配 `number`（跳过墓碑）并写入初始 tier/score/count/nextDueDate/dormant；知识点必须归属一个分类（`categoryId`，schema v13，默认 11 个学科分类，可增删改；分类名唯一、有知识点的分类不可删，旧数据归入「语文」）；题目从标签库选择 1～4 个标签并写入 `estimatedReviewMinutes`；来源页码写入系统编号 `sourcePageCode` 与可选说明 `sourcePage`；删除标签先校验未被未归档题目引用，再写墓碑 |
 | 规划 | KnowledgePoint 状态、Question 状态、未消费 CoolingOverrideEvent、CrossRef、每日分钟 | PlanResult、PlanPage（pageId/pageNumber/date/questionIds/knowledgeRows/markers；markers 仅内部元数据，C-063）、Question.lastScheduledDate | 冷却顺延 `nextDueDate` +1（与计划保存在 `savePlan` 同一事务，C-076 方案 A）；`lastScheduledDate = targetDate`；命中 `coolingOverrides` 的题目跳过冷却 |
 | 打印 | PlanPage、RenderableQuestion、NoteAttachmentItem | PDF（含日期大标题、「掌握 / 较熟悉 / 不会」表头、页码/题号/来源页、页脚小字 pageId）、evidence、Question.pageId/qrPayload | 用户确认「已打印」后写最近一次 pageId/QR（C-094 方案 B）；不改调度状态；2026-11-22 起删除图例与每日总题数（C-063）；右上页码只显示页序，QR 与页脚小字仍含完整 pageId（C-095 方案 B） |
 | 回读 | 打印稿图像 | ScanSession、PendingFeedback | `planId/pageId/plannedDate`；`detectedTier/detectionStatus/conflict/detectedRawOcr`；`userDecision=UNMARKED` |
@@ -120,7 +120,7 @@ flowchart TD
 | Planning / data:room | PlanDraft（data:room，C-074 方案 A）/ PrintJob、PlanGenerationOutcome（Planning） | PlanDraft：planId/pages/知识行快照/scheduledDates/coolingEventIds/deferred；PrintJob：planId/pages/questions/notes/template；PlanGenerationOutcome：`Planned(printJob, preview)` 或 `Empty(message, warnings)` | PlanDraft 是数据层事务入参；PrintJob 是打印输入；PlanGenerationOutcome 是计划生成唯一出口，预览只消费其中的 preview/空态提示（C-090 方案 A） |
 | Room | PendingFeedback → ConfirmedDecision（UseCase）→ ReviewFeedback | 逐行决策字段；ReviewFeedback 保留 tier/triggered/OCR/权重/时间 | 临时态只活到确认；历史只增不改 |
 
-> Room 是全集，其余是子集；转换函数在 `data/room`，`core/model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含调度 DTO，C-046 方案 A、C-053）；id 唯一与关联完整由 `data/room` 保证（C-056）。`source_tag`（schema v9）只服务录入时的来源候选，`Question.sourcePage` 保存标签名称；来源不参与调度、分页与打印布局。Print 消费 `PrintJob`，Confirm 消费 `PendingFeedback`/`ConfirmedDecision`，不自行查库分页。
+> Room 是全集，其余是子集；转换函数在 `data/room`，`core/model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含调度 DTO，C-046 方案 A、C-053）；id 唯一与关联完整由 `data/room` 保证（C-056）。`source_tag`（schema v9）只服务录入时的来源候选，`Question.sourcePage` 保存标签名称；来源不参与调度、分页与打印布局。`knowledge_category`（schema v13）只服务知识点的分类展示与筛选，不参与调度、分页与打印布局；分类随备份导出/导入，旧备份缺失时补默认 11 个分类并把知识点归入「语文」。Print 消费 `PrintJob`，Confirm 消费 `PendingFeedback`/`ConfirmedDecision`，不自行查库分页。
 
 ## 5. 最小状态集
 

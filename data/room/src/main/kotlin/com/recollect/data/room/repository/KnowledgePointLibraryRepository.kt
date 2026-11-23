@@ -1,5 +1,6 @@
 package com.recollect.data.room.repository
 
+import com.recollect.data.room.dao.KnowledgeCategoryDao
 import com.recollect.data.room.dao.KnowledgeNumberSequenceDao
 import com.recollect.data.room.dao.KnowledgePointDao
 import com.recollect.data.room.dao.KnowledgePointTombstoneDao
@@ -24,11 +25,14 @@ interface KnowledgePointLibraryRepository {
     /** 标签库列表（按编号升序），附带未归档题目的引用数。 */
     suspend fun tags(): List<KnowledgePointTag>
 
-    /** 新建标签；编号由 Repository 在事务内分配（D-12 / C-028）。 */
-    suspend fun create(name: String): KnowledgePointTag
+    /**
+     * 新建标签并指定分类；编号由 Repository 在事务内分配（D-12 / C-028）。
+     * 分类必须存在（2026-11-23 用户要求：添加知识点必须指定分类）。
+     */
+    suspend fun create(name: String, categoryId: String): KnowledgePointTag
 
-    /** 重命名标签；`number` 不变（E-07）。 */
-    suspend fun rename(knowledgePointId: String, name: String)
+    /** 编辑标签名称与分类；`number` 不变（E-07）。 */
+    suspend fun update(knowledgePointId: String, name: String, categoryId: String)
 
     /** 删除标签；仍被未归档题目引用时拒绝，否则写墓碑后删除（D-12）。 */
     suspend fun deleteWithTombstone(knowledgePointId: String, reason: String = "deleted")
@@ -39,6 +43,7 @@ data class KnowledgePointTag(
     val id: String,
     val number: Int,
     val name: String,
+    val categoryId: String,
     val linkedQuestionCount: Int,
 )
 
@@ -54,6 +59,7 @@ class KnowledgePointNotFoundException(message: String) : Exception(message)
 class RoomKnowledgePointLibraryRepository(
     private val transactionRunner: TransactionRunner,
     private val knowledgePointDao: KnowledgePointDao,
+    private val categoryDao: KnowledgeCategoryDao,
     private val crossRefDao: QuestionKnowledgeCrossRefDao,
     private val questionDao: QuestionDao,
     private val sequenceDao: KnowledgeNumberSequenceDao,
@@ -72,16 +78,18 @@ class RoomKnowledgePointLibraryRepository(
                 id = it.id,
                 number = it.number,
                 name = it.name,
+                categoryId = it.categoryId,
                 linkedQuestionCount = countsByKnowledgePoint[it.id] ?: 0,
             )
         }
     }
 
-    override suspend fun create(name: String): KnowledgePointTag {
+    override suspend fun create(name: String, categoryId: String): KnowledgePointTag {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) throw InvalidKnowledgePointNameException("标签名称不能为空。")
 
         return transactionRunner.inTransaction {
+            requireCategory(categoryId)
             val number = allocateNumber()
             val entity = KnowledgePoint(
                 id = UUID.randomUUID().toString(),
@@ -96,26 +104,35 @@ class RoomKnowledgePointLibraryRepository(
                 difficulty = null,
                 halfLifeDays = null,
                 createdAt = clock.instant(),
+                categoryId = categoryId,
             )
             knowledgePointDao.insert(entity)
             KnowledgePointTag(
                 id = entity.id,
                 number = entity.number,
                 name = entity.name,
+                categoryId = entity.categoryId,
                 linkedQuestionCount = 0,
             )
         }
     }
 
-    override suspend fun rename(knowledgePointId: String, name: String) {
+    override suspend fun update(knowledgePointId: String, name: String, categoryId: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) throw InvalidKnowledgePointNameException("标签名称不能为空。")
 
         transactionRunner.inTransaction {
             val existing = knowledgePointDao.byId(knowledgePointId)
                 ?: throw KnowledgePointNotFoundException("知识点不存在或已被删除。")
-            knowledgePointDao.update(existing.copy(name = trimmed))
+            requireCategory(categoryId)
+            knowledgePointDao.update(existing.copy(name = trimmed, categoryId = categoryId))
         }
+    }
+
+    /** 分类必须已存在：添加/编辑知识点时强制指定有效分类（2026-11-23 用户要求）。 */
+    private suspend fun requireCategory(categoryId: String) {
+        categoryDao.byId(categoryId)
+            ?: throw KnowledgeCategoryNotFoundException("分类不存在或已被删除，请重新选择分类。")
     }
 
     override suspend fun deleteWithTombstone(knowledgePointId: String, reason: String) {

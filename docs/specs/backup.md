@@ -40,6 +40,7 @@
   "appVersionName": "0.1.0",
   "exportedAt": "2026-11-13T10:00:00Z",
   "data": {
+    "knowledgeCategories": [],
     "knowledgePoints": [],
     "questions": [],
     "questionKnowledgeCrossRefs": [],
@@ -58,6 +59,10 @@
 
 > 2026-11-23 回写：v12 的应用设置单行表 `app_settings`（每日复习时长）纳入导出，
 > 对应 `appSettings`（固定 1 行；库中无行时导出默认 60 分钟）。
+
+> 2026-11-23 回写：v13 的知识点分类 `knowledge_category` 纳入导出，对应
+> `knowledgeCategories`；`knowledgePoints` 每行新增 `categoryId`。旧备份缺少该键时，
+> 导入端补默认 11 个分类并把知识点归入「语文」。
 
 > 2026-11-22 回写：v8 的计划头 `plan` 与 v9 的来源标签库 `source_tag` 纳入导出，
 > 分别对应 `plans` 与 `sourceTags`；旧数组键名与字段名不变。单一笔记条目表在实现中
@@ -145,6 +150,7 @@ data class ImportReport(
   - `KnowledgeNumberSequence`
   - `SourceTag`（v9 来源标签库）
   - `AppSettings`（v12 应用设置，键 `appSettings`：每日复习时长）
+  - `KnowledgeCategory`（v13 知识点分类，键 `knowledgeCategories`；`KnowledgePoint` 行携带 `categoryId`）
 - **不导出** `PendingFeedback` 与 `CoolingOverrideEvent`：前者是人工确认前的临时状态，未确认决策不得通过备份绕过 R-04（C-031 明确排除）；后者是一次性冷却覆盖操作，导入后重新触发即可（C-008 方案二）。
 - 含归档与休眠状态。
 - 位置：通过 SAF 让用户选择；默认建议 `Downloads/Recollect/recollect-YYYYMMDD-HHmm.json`
@@ -158,6 +164,7 @@ data class ImportReport(
 - 不做自动合并；如果用户需要合并，后续另行设计（本版不做）。
 - 恢复 `KnowledgePoint.number` 前先建墓碑/序列表；若备份内编号重复或与墓碑冲突，导入失败并列出冲突编号，不得静默重编号。
 - 恢复后校正 `KnowledgeNumberSequence.lastIssued = max(lastIssued, max(number), max(tombstone.number))`。
+- 分类：备份内 `knowledgeCategories` 为空或不含「语文」但存在旧知识点时，补默认分类；知识点 `categoryId` 缺失或指向不存在的分类时归入「语文」（2026-11-23 用户要求）。
 
 ### 逐字段恢复矩阵（C-023）
 
@@ -171,6 +178,8 @@ data class ImportReport(
 | KnowledgePoint | `nextDueDate` | 恢复 | 重置为导入日 + 1 天 |
 | KnowledgePoint | `activeQuestionCount` | 恢复 | 按恢复后的未归档题目重算 |
 | KnowledgePoint | `dormant` | 恢复 | 按 `activeQuestionCount == 0` 重算 |
+| KnowledgePoint | `categoryId` | 恢复 | 恢复；缺失或指向不存在分类时归入「语文」 |
+| KnowledgeCategory | `id` / `name` / `createdAt` | 恢复 | 恢复；旧备份缺失时补默认 11 个分类 |
 | Question | `id` / `questionNumber` / `estimatedReviewMinutes` / `createdAt` | 恢复 | 恢复；缺失时 `estimatedReviewMinutes = 15` |
 | Question | `archived` / `archivedAt` | 恢复 | 恢复 |
 | Question | `pageId` / `qrPayload` | 恢复 | 清空为 `""`；旧打印稿失效 |

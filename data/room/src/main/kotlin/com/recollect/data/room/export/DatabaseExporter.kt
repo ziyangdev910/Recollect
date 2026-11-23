@@ -45,6 +45,7 @@ class RoomDatabaseExporter(
 
     override suspend fun export(): BackupDocument = withContext(Dispatchers.IO) {
         val exportedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS)
+        val knowledgeCategories = backupDao.knowledgeCategories()
         val knowledgePoints = backupDao.knowledgePoints()
         val questions = backupDao.questions()
         val crossRefs = backupDao.crossRefs()
@@ -62,6 +63,7 @@ class RoomDatabaseExporter(
         }
 
         val counts = linkedMapOf(
+            KEY_KNOWLEDGE_CATEGORIES to knowledgeCategories.size,
             KEY_KNOWLEDGE_POINTS to knowledgePoints.size,
             KEY_QUESTIONS to questions.size,
             KEY_CROSS_REFS to crossRefs.size,
@@ -77,6 +79,7 @@ class RoomDatabaseExporter(
         )
 
         val data = jsonObject(
+            KEY_KNOWLEDGE_CATEGORIES to knowledgeCategories.map { it.toJson() }.asJsonArray(),
             KEY_KNOWLEDGE_POINTS to knowledgePoints.map { it.toJson() }.asJsonArray(),
             KEY_QUESTIONS to questions.map { it.toJson() }.asJsonArray(),
             KEY_CROSS_REFS to crossRefs.map { it.toJson() }.asJsonArray(),
@@ -108,6 +111,12 @@ class RoomDatabaseExporter(
         )
     }
 
+    private fun com.recollect.data.room.entity.KnowledgeCategory.toJson() = jsonObject(
+        "id" to id.asJsonString(),
+        "name" to name.asJsonString(),
+        "createdAt" to createdAt.asJsonInstant(),
+    )
+
     private fun com.recollect.data.room.entity.KnowledgePoint.toJson() = jsonObject(
         "id" to id.asJsonString(),
         "number" to number.asJsonNumber(),
@@ -121,6 +130,7 @@ class RoomDatabaseExporter(
         "difficulty" to difficulty.asJsonNumber(),
         "halfLifeDays" to halfLifeDays.asJsonNumber(),
         "createdAt" to createdAt.asJsonInstant(),
+        "categoryId" to categoryId.asJsonString(),
     )
 
     private fun com.recollect.data.room.entity.Question.toJson() = jsonObject(
@@ -242,6 +252,7 @@ class RoomDatabaseExporter(
     companion object {
         const val BACKUP_FORMAT_VERSION = 1
 
+        const val KEY_KNOWLEDGE_CATEGORIES = "knowledgeCategories"
         const val KEY_KNOWLEDGE_POINTS = "knowledgePoints"
         const val KEY_QUESTIONS = "questions"
         const val KEY_CROSS_REFS = "questionKnowledgeCrossRefs"

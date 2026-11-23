@@ -1555,6 +1555,22 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 
 ---
 
+### 8.1 知识点分类【done】
+
+【本轮背景】用户要求：为「知识点」增加一层上层分类，默认分别为「语文，数学，英语，物理，化学，生物，政治，历史，地理，信息技术，通用技术」，允许增删改；强制新增知识点时指定分类，编辑知识点时可修改分类；现有实机数据库中的知识点全部分到「语文」；分类筛选同时用于「知识点」页与「录入题目」的「知识点标签」区；「知识点」页缩小搜索框与导航栏间距，筛选选项卡（横向选择卡）放在搜索框下、「新增标签」按钮上；「录入题目」的知识点标签区也放置同样的筛选选项卡，并只显示当前分类下的知识点。
+
+【本轮任务】
+- `data:room` 新增 `KnowledgeCategory` 实体与 `KnowledgeCategoryDao`（schema v13；名称唯一），`KnowledgePoint` 增加 `categoryId`（默认 `cat-chinese`），`MIGRATION_12_13` 建表、种入 11 个默认分类并把旧知识点归入「语文」；空库创建时由 Room `onCreate` 回调种入默认分类；
+- 新增 `KnowledgeCategoryRepository`（增删改查；名称唯一；有知识点不可删），`KnowledgePointLibraryRepository` 的 `create`/`update` 改为必须携带有效 `categoryId`；
+- 备份导出/导入新增 `knowledgeCategories` 键与知识点 `categoryId`；旧备份缺分类时补默认分类并把知识点归入「语文」；
+- `KnowledgePointLibraryViewModel` 同时持有标签与分类；「知识点」页加入横向分类筛选卡（「全部」+ 各分类）、「管理分类」入口，新增/编辑知识点对话框增加必选分类；
+- `QuestionEditViewModel` 透传分类候选；「录入题目」的知识点标签区在标题下加入同样的筛选卡，并让标签列表服从筛选；
+- 同步 `CLAUDE.md`、`docs/architecture/overview.md`、changelog、agent-log；`docs/specs/{data-model,entry,app,backup,repository}.md` 按用户授权回写。
+
+【落地说明（2026-11-23）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；KSP 生成 `schemas/.../13.json`；数据层与 feature:entry 单元测试覆盖分类校验、删除保护、旧备份补默认分类与视图模型增删改；实体机已验证迁移与两页筛选。规格已按用户授权回写。
+
+---
+
 ## 附录：固定循环速查
 
 ```text

@@ -3,6 +3,8 @@ package com.recollect.feature.entry
 import com.recollect.data.room.repository.EntryDraft
 import com.recollect.data.room.repository.EntryRepository
 import com.recollect.data.room.repository.EntrySummary
+import com.recollect.data.room.repository.KnowledgeCategoryItem
+import com.recollect.data.room.repository.KnowledgeCategoryRepository
 import com.recollect.data.room.repository.KnowledgePointLibraryRepository
 import com.recollect.data.room.repository.KnowledgePointTag
 import com.recollect.data.room.repository.SourceTagItem
@@ -75,26 +77,63 @@ internal class FakeLibraryRepository(
 
     override suspend fun tags(): List<KnowledgePointTag> = stored.sortedBy { it.number }
 
-    override suspend fun create(name: String): KnowledgePointTag {
+    override suspend fun create(name: String, categoryId: String): KnowledgePointTag {
         val tag = KnowledgePointTag(
             id = "kp-${stored.size + 1}",
             number = stored.size + 1,
             name = name,
+            categoryId = categoryId,
             linkedQuestionCount = 0,
         )
         stored += tag
         return tag
     }
 
-    override suspend fun rename(knowledgePointId: String, name: String) {
+    override suspend fun update(knowledgePointId: String, name: String, categoryId: String) {
         val index = stored.indexOfFirst { it.id == knowledgePointId }
-        stored[index] = stored[index].copy(name = name)
+        stored[index] = stored[index].copy(name = name, categoryId = categoryId)
     }
 
     override suspend fun deleteWithTombstone(knowledgePointId: String, reason: String) {
         stored.removeAll { it.id == knowledgePointId }
     }
 }
+
+/** 分类端口的内存 fake。 */
+internal class FakeCategoryRepository(
+    initial: List<KnowledgeCategoryItem> = listOf(defaultCategory()),
+) : KnowledgeCategoryRepository {
+    val stored = initial.toMutableList()
+
+    override suspend fun categories(): List<KnowledgeCategoryItem> = stored.toList()
+
+    override suspend fun create(name: String): KnowledgeCategoryItem {
+        val item = KnowledgeCategoryItem(
+            id = "cat-${stored.size + 1}",
+            name = name.trim(),
+            linkedKnowledgePointCount = 0,
+        )
+        stored += item
+        return item
+    }
+
+    override suspend fun rename(categoryId: String, name: String) {
+        val index = stored.indexOfFirst { it.id == categoryId }
+        stored[index] = stored[index].copy(name = name.trim())
+    }
+
+    override suspend fun delete(categoryId: String) {
+        stored.removeAll { it.id == categoryId }
+    }
+}
+
+internal const val DEFAULT_CATEGORY_ID = "cat-chinese"
+
+internal fun defaultCategory() = KnowledgeCategoryItem(
+    id = DEFAULT_CATEGORY_ID,
+    name = "语文",
+    linkedKnowledgePointCount = 0,
+)
 
 /** 来源标签库端口的内存 fake。 */
 internal class FakeSourceTagRepository(
@@ -127,8 +166,18 @@ internal class FakeSourceTagRepository(
 internal fun sourceTag(id: String, name: String, linkedQuestionCount: Int = 0) =
     SourceTagItem(id = id, name = name, linkedQuestionCount = linkedQuestionCount)
 
-internal fun tag(id: String, number: Int, name: String) =
-    KnowledgePointTag(id = id, number = number, name = name, linkedQuestionCount = 0)
+internal fun tag(
+    id: String,
+    number: Int,
+    name: String,
+    categoryId: String = DEFAULT_CATEGORY_ID,
+) = KnowledgePointTag(
+    id = id,
+    number = number,
+    name = name,
+    categoryId = categoryId,
+    linkedQuestionCount = 0,
+)
 
 internal fun entrySummary(
     questionId: String,

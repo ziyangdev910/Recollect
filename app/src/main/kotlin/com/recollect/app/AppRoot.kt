@@ -387,6 +387,7 @@ fun AppRoot(
                             QuestionEditViewModel(
                                 repository = container.entryRepository,
                                 libraryRepository = container.knowledgePointLibraryRepository,
+                                categoryRepository = container.knowledgeCategoryRepository,
                                 sourceTagRepository = container.sourceTagLibraryRepository,
                             )
                         }
@@ -396,7 +397,10 @@ fun AppRoot(
                             SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
                         }
                         val knowledgePointViewModel = remember(container) {
-                            KnowledgePointLibraryViewModel(container.knowledgePointLibraryRepository)
+                            KnowledgePointLibraryViewModel(
+                                repository = container.knowledgePointLibraryRepository,
+                                categoryRepository = container.knowledgeCategoryRepository,
+                            )
                         }
                         QuestionEditScreen(
                             viewModel = viewModel,
@@ -414,7 +418,10 @@ fun AppRoot(
                     AppRoute.KnowledgePoints -> {
                         // 导入成功后重建并重读标签库，打开该页即显示新数据。
                         val viewModel = remember(container, dataRevision) {
-                            KnowledgePointLibraryViewModel(container.knowledgePointLibraryRepository)
+                            KnowledgePointLibraryViewModel(
+                                repository = container.knowledgePointLibraryRepository,
+                                categoryRepository = container.knowledgeCategoryRepository,
+                            )
                         }
                         KnowledgePointLibraryScreen(viewModel)
                     }

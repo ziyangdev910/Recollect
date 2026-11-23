@@ -34,6 +34,7 @@ class QuestionEditViewModelTest {
         return QuestionEditViewModel(
             repository = repository,
             libraryRepository = FakeLibraryRepository(tags),
+            categoryRepository = FakeCategoryRepository(),
             sourceTagRepository = FakeSourceTagRepository(sourceTags),
         ) to repository
     }
@@ -54,6 +55,7 @@ class QuestionEditViewModelTest {
         assertEquals(15, content.estimatedReviewMinutes)
         assertTrue(content.selectedKnowledgePointIds.isEmpty())
         assertEquals(tags, content.tags)
+        assertEquals(listOf(defaultCategory()), content.knowledgeCategories)
         assertEquals(sourceTags, content.sourceTags)
         assertFalse(content.printed)
     }

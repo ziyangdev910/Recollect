@@ -3,6 +3,8 @@ package com.recollect.data.room.export
 import com.recollect.data.room.dao.BackupRestoreDao
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
+import com.recollect.data.room.entity.KnowledgeCategory
+import com.recollect.data.room.entity.KnowledgeCategoryDefaults
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.KnowledgePointTombstone
@@ -38,6 +40,7 @@ class RoomDatabaseImporterTest {
         val result = importer.validate(backupJson())
 
         val valid = assertIs<ImportValidation.Valid>(result)
+        assertEquals(2, valid.summary.entityCounts[RoomDatabaseExporter.KEY_KNOWLEDGE_CATEGORIES])
         assertEquals(1, valid.summary.entityCounts[RoomDatabaseExporter.KEY_KNOWLEDGE_POINTS])
         assertEquals(1, valid.summary.entityCounts[RoomDatabaseExporter.KEY_QUESTIONS])
         assertEquals(1, valid.summary.entityCounts[RoomDatabaseExporter.KEY_CROSS_REFS])
@@ -85,6 +88,8 @@ class RoomDatabaseImporterTest {
 
         assertIs<ImportResult.Success>(result)
         assertTrue(dao.cleared)
+        assertEquals(2, dao.knowledgeCategories.size)
+        assertEquals("cat-chinese", dao.knowledgePoints.single().categoryId)
         assertEquals(1, dao.knowledgePoints.size)
         assertEquals(1, dao.questions.size)
         assertEquals(1, dao.crossRefs.size)
@@ -128,6 +133,25 @@ class RoomDatabaseImporterTest {
     }
 
     @Test
+    fun `旧备份没有分类时补默认分类并归入语文`() = runBlocking {
+        val dao = FakeRestoreDao()
+        val importer = importer(dao)
+
+        val result = importer.apply(backupJson(schemaVersion = 12, withCategories = false))
+
+        assertIs<ImportResult.Success>(result)
+        assertEquals(
+            KnowledgeCategoryDefaults.NAMES.size,
+            dao.knowledgeCategories.size,
+            "旧备份没有分类时种入全部默认分类",
+        )
+        assertEquals(
+            KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID,
+            dao.knowledgePoints.single().categoryId,
+        )
+    }
+
+    @Test
     fun `悬空关联被跳过而不产生半恢复引用`() = runBlocking {
         val dao = FakeRestoreDao()
         val importer = importer(dao)
@@ -152,9 +176,21 @@ class RoomDatabaseImporterTest {
     )
 
     private fun backupJson(
-        schemaVersion: Int = 12,
+        schemaVersion: Int = 13,
         withHistory: Boolean = false,
+        withCategories: Boolean = true,
     ): String {
+        val categories = if (withCategories) {
+            """
+            [
+              { "id": "cat-chinese", "name": "语文", "createdAt": "2026-11-01T00:00:00Z" },
+              { "id": "cat-math", "name": "数学", "createdAt": "2026-11-01T00:00:01Z" }
+            ]
+            """
+        } else {
+            "[]"
+        }
+        val categoryField = if (withCategories) ",\n                \"categoryId\": \"cat-chinese\"" else ""
         val reviewFeedback = if (withHistory) {
             """
             {
@@ -238,6 +274,7 @@ class RoomDatabaseImporterTest {
           "appVersionName": "0.1.0",
           "exportedAt": "2026-11-22T08:00:00Z",
           "data": {
+            "knowledgeCategories": $categories,
             "knowledgePoints": [
               {
                 "id": "kp-1",
@@ -251,7 +288,7 @@ class RoomDatabaseImporterTest {
                 "dormant": false,
                 "difficulty": 2,
                 "halfLifeDays": 10.0,
-                "createdAt": "2026-11-20T10:00:00Z"
+                "createdAt": "2026-11-20T10:00:00Z"$categoryField
               }
             ],
             "questions": [
@@ -312,6 +349,7 @@ class RoomDatabaseImporterTest {
 /** 记录清空/写入的导入 DAO 测试替身；不依赖 Room。 */
 private class FakeRestoreDao : BackupRestoreDao {
     var cleared = false
+    var knowledgeCategories: List<KnowledgeCategory> = emptyList()
     var knowledgePoints: List<KnowledgePoint> = emptyList()
     var questions: List<Question> = emptyList()
     var crossRefs: List<QuestionKnowledgeCrossRef> = emptyList()
@@ -325,6 +363,7 @@ private class FakeRestoreDao : BackupRestoreDao {
     var sourceTags: List<SourceTag> = emptyList()
     var appSettings: List<AppSettings> = emptyList()
 
+    override suspend fun clearKnowledgeCategories() = Unit
     override suspend fun clearKnowledgePoints() { cleared = true }
     override suspend fun clearQuestions() = Unit
     override suspend fun clearCrossRefs() = Unit
@@ -341,6 +380,7 @@ private class FakeRestoreDao : BackupRestoreDao {
     override suspend fun clearCoolingEvents() = Unit
     override suspend fun clearAppSettings() = Unit
 
+    override suspend fun insertKnowledgeCategories(rows: List<KnowledgeCategory>) { knowledgeCategories = rows }
     override suspend fun insertKnowledgePoints(rows: List<KnowledgePoint>) { knowledgePoints = rows }
     override suspend fun insertQuestions(rows: List<Question>) { questions = rows }
     override suspend fun insertCrossRefs(rows: List<QuestionKnowledgeCrossRef>) { crossRefs = rows }

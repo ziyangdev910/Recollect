@@ -5,11 +5,13 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.recollect.data.room.dao.AppSettingsDao
 import com.recollect.data.room.dao.BackupDao
 import com.recollect.data.room.dao.BackupRestoreDao
 import com.recollect.data.room.dao.ConfirmationDecisionLogDao
 import com.recollect.data.room.dao.CoolingOverrideEventDao
+import com.recollect.data.room.dao.KnowledgeCategoryDao
 import com.recollect.data.room.dao.KnowledgeNumberSequenceDao
 import com.recollect.data.room.dao.NoteAttachmentItemDao
 import com.recollect.data.room.dao.KnowledgePointDao
@@ -25,6 +27,8 @@ import com.recollect.data.room.dao.SourceTagDao
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.CoolingOverrideEvent
+import com.recollect.data.room.entity.KnowledgeCategory
+import com.recollect.data.room.entity.KnowledgeCategoryDefaults
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.KnowledgePointTombstone
@@ -49,7 +53,9 @@ import com.recollect.data.room.migration.RecollectMigrations
  * v9 增加 `source_tag` 来源标签库，并把已有题目的来源说明去重后作为初始标签；
  * v10 删除 `isSupplemental`，取消「修正」与「补填」的区分；
  * v11 给 `plan` 增加被推迟题目的快照（题号 + 原因）；
- * v12 增加 `app_settings` 单行表，持久化「每日复习时长」并纳入备份。
+ * v12 增加 `app_settings` 单行表，持久化「每日复习时长」并纳入备份；
+ * v13 增加知识点分类 `knowledge_category`，并给知识点增加 `categoryId`，
+ * 旧知识点统一归入「语文」，空库创建时种入 11 个默认分类（2026-11-23 用户要求）。
  * 不允许 destructive migration。
  */
 @Database(
@@ -69,6 +75,7 @@ import com.recollect.data.room.migration.RecollectMigrations
         Plan::class,
         SourceTag::class,
         AppSettings::class,
+        KnowledgeCategory::class,
     ],
     version = RecollectDatabase.SCHEMA_VERSION,
     exportSchema = true,
@@ -83,6 +90,9 @@ abstract class RecollectDatabase : RoomDatabase() {
     abstract fun backupRestoreDao(): BackupRestoreDao
 
     abstract fun knowledgePointDao(): KnowledgePointDao
+
+    /** 知识点分类（schema v13）。 */
+    abstract fun knowledgeCategoryDao(): KnowledgeCategoryDao
 
     abstract fun knowledgePointTombstoneDao(): KnowledgePointTombstoneDao
 
@@ -115,13 +125,34 @@ abstract class RecollectDatabase : RoomDatabase() {
 
     companion object {
         /** Room schema 版本；备份 JSON 的 `roomSchemaVersion` 直接取此值（backup.md）。 */
-        const val SCHEMA_VERSION = 12
+        const val SCHEMA_VERSION = 13
 
         const val DATABASE_NAME = "recollect.db"
 
         fun build(context: Context): RecollectDatabase =
             Room.databaseBuilder(context, RecollectDatabase::class.java, DATABASE_NAME)
                 .addMigrations(*RecollectMigrations.ALL)
+                .addCallback(SeedDefaultCategoriesCallback)
                 .build()
+    }
+}
+
+/**
+ * 空库创建时种入默认分类（v13）。
+ *
+ * 升级路径由 `MIGRATION_11_12` 之后的 `MIGRATION_12_13` 种入；这里只负责全新安装。
+ * `createdAt` 递增 1 毫秒，保证展示顺序与 [KnowledgeCategoryDefaults.NAMES] 一致。
+ */
+private object SeedDefaultCategoriesCallback : RoomDatabase.Callback() {
+    override fun onCreate(db: SupportSQLiteDatabase) {
+        super.onCreate(db)
+        val base = System.currentTimeMillis()
+        KnowledgeCategoryDefaults.NAMES.forEachIndexed { index, (id, name) ->
+            db.execSQL(
+                "INSERT OR IGNORE INTO `knowledge_category` (`id`, `name`, `createdAt`) " +
+                    "VALUES (?, ?, ?)",
+                arrayOf(id, name, base + index),
+            )
+        }
     }
 }

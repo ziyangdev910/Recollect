@@ -2,6 +2,7 @@ package com.recollect.data.room.migration
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.recollect.data.room.entity.KnowledgeCategoryDefaults
 
 /**
  * 数据库迁移清单。
@@ -18,6 +19,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v10 删除三张表的 `isSupplemental` 列，并把历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`。
  * v11 给 `plan` 增加被推迟题目的快照 `deferred`，旧计划为空数组。
  * v12 新增 `app_settings` 单行表（每日复习时长），并写入默认 60 分钟。
+ * v13 新增知识点分类表 `knowledge_category` 与 `knowledge_point.categoryId`：
+ * 种入 11 个默认分类，已有知识点统一回填到「语文」。
  */
 object RecollectMigrations {
 
@@ -308,6 +311,41 @@ object RecollectMigrations {
         }
     }
 
+    /**
+     * v12 → v13：新增知识点分类（2026-11-23 用户要求）。
+     *
+     * 先建分类表并种入默认分类（按用户给定顺序递增 `createdAt`），
+     * 再给 `knowledge_point` 增加 `categoryId`；列默认值为「语文」，
+     * 因此现有知识点无需逐行回填就归入「语文」分类。
+     */
+    val MIGRATION_12_13: Migration = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `knowledge_category` (" +
+                    "`id` TEXT NOT NULL, " +
+                    "`name` TEXT NOT NULL, " +
+                    "`createdAt` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_knowledge_category_name` " +
+                    "ON `knowledge_category` (`name`)",
+            )
+            val base = System.currentTimeMillis()
+            KnowledgeCategoryDefaults.NAMES.forEachIndexed { index, (id, name) ->
+                db.execSQL(
+                    "INSERT OR IGNORE INTO `knowledge_category` (`id`, `name`, `createdAt`) " +
+                        "VALUES (?, ?, ?)",
+                    arrayOf(id, name, base + index),
+                )
+            }
+            db.execSQL(
+                "ALTER TABLE `knowledge_point` ADD COLUMN `categoryId` TEXT NOT NULL " +
+                    "DEFAULT ${KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID_SQL}",
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -320,5 +358,6 @@ object RecollectMigrations {
         MIGRATION_9_10,
         MIGRATION_10_11,
         MIGRATION_11_12,
+        MIGRATION_12_13,
     )
 }

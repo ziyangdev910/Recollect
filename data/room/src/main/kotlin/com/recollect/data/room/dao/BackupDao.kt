@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Query
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
+import com.recollect.data.room.entity.KnowledgeCategory
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.KnowledgePointTombstone
@@ -25,6 +26,10 @@ import com.recollect.data.room.entity.SourceTag
  */
 @Dao
 interface BackupDao {
+
+    /** 知识点分类（v13 起纳入备份，随知识点一起恢复）。 */
+    @Query("SELECT * FROM knowledge_category ORDER BY createdAt ASC, id ASC")
+    suspend fun knowledgeCategories(): List<KnowledgeCategory>
 
     @Query("SELECT * FROM knowledge_point ORDER BY number ASC")
     suspend fun knowledgePoints(): List<KnowledgePoint>

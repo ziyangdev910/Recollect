@@ -7,6 +7,8 @@ import com.recollect.common.UiError
 import com.recollect.common.UiState
 import com.recollect.data.room.repository.EntryDraft
 import com.recollect.data.room.repository.EntryRepository
+import com.recollect.data.room.repository.KnowledgeCategoryItem
+import com.recollect.data.room.repository.KnowledgeCategoryRepository
 import com.recollect.data.room.repository.KnowledgePointLibraryRepository
 import com.recollect.data.room.repository.KnowledgePointTag
 import com.recollect.data.room.repository.SourceTagItem
@@ -26,6 +28,8 @@ data class QuestionEditContent(
     val estimatedReviewMinutes: Int,
     val selectedKnowledgePointIds: List<String>,
     val tags: List<KnowledgePointTag>,
+    /** 知识点分类候选；知识点标签区据此筛选（2026-11-23 用户要求）。 */
+    val knowledgeCategories: List<KnowledgeCategoryItem>,
     /** 来源标签库候选；录入页以单选标签填写来源。 */
     val sourceTags: List<SourceTagItem>,
     val printed: Boolean,
@@ -40,6 +44,7 @@ data class QuestionEditContent(
 class QuestionEditViewModel(
     private val repository: EntryRepository,
     private val libraryRepository: KnowledgePointLibraryRepository,
+    private val categoryRepository: KnowledgeCategoryRepository,
     private val sourceTagRepository: SourceTagLibraryRepository,
 ) {
     var state by mutableStateOf<UiState<QuestionEditContent>>(UiState.Loading)
@@ -60,6 +65,7 @@ class QuestionEditViewModel(
     suspend fun load(questionId: String?) {
         state = try {
             val tags = libraryRepository.tags()
+            val categories = categoryRepository.categories()
             val sourceTags = sourceTagRepository.tags()
             val defaultWithoutSource = repository.defaultSourcePageCode(hasSource = false)
             val defaultWithSource = repository.defaultSourcePageCode(hasSource = true)
@@ -74,6 +80,7 @@ class QuestionEditViewModel(
                     estimatedReviewMinutes = EntryDraft.DEFAULT_REVIEW_MINUTES,
                     selectedKnowledgePointIds = emptyList(),
                     tags = tags,
+                    knowledgeCategories = categories,
                     sourceTags = sourceTags,
                     printed = false,
                 )
@@ -90,6 +97,7 @@ class QuestionEditViewModel(
                     estimatedReviewMinutes = summary.estimatedReviewMinutes,
                     selectedKnowledgePointIds = summary.knowledgePointIds,
                     tags = tags,
+                    knowledgeCategories = categories,
                     sourceTags = sourceTags,
                     printed = summary.printed,
                 )

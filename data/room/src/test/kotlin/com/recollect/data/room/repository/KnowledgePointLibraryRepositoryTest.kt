@@ -3,6 +3,8 @@ package com.recollect.data.room.repository
 import com.recollect.data.room.dao.KnowledgeNumberSequenceDao
 import com.recollect.data.room.dao.KnowledgePointTombstoneDao
 import com.recollect.data.room.dao.QuestionKnowledgeCrossRefDao
+import com.recollect.data.room.entity.KnowledgeCategory
+import com.recollect.data.room.entity.KnowledgeCategoryDefaults
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePointTombstone
 import com.recollect.data.room.entity.Question
@@ -82,16 +84,26 @@ class KnowledgePointLibraryRepositoryTest {
     private class Fixture {
         val stores = InMemoryStores()
         val knowledgePointDao = FakeKnowledgePointDao(stores)
+        val categoryDao = FakeKnowledgeCategoryDao(stores)
         val questionDao = FakeQuestionDao(stores)
         val crossRefDao = FakeCrossRefDao(stores)
         val sequenceDao = FakeSequenceDao()
         val tombstoneDao = FakeTombstoneDao()
+
+        init {
+            stores.knowledgeCategories[CATEGORY_ID] = KnowledgeCategory(
+                id = CATEGORY_ID,
+                name = "语文",
+                createdAt = Instant.parse("2026-11-01T00:00:00Z"),
+            )
+        }
     }
 
     private fun repository(fixture: Fixture, clock: Clock = this.clock) =
         RoomKnowledgePointLibraryRepository(
             transactionRunner = RollbackTransactionRunner(fixture.stores),
             knowledgePointDao = fixture.knowledgePointDao,
+            categoryDao = fixture.categoryDao,
             crossRefDao = fixture.crossRefDao,
             questionDao = fixture.questionDao,
             sequenceDao = fixture.sequenceDao,
@@ -128,13 +140,17 @@ class KnowledgePointLibraryRepositoryTest {
         createdAt = Instant.parse("2026-11-01T00:00:00Z"),
     )
 
+    companion object {
+        private const val CATEGORY_ID = KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID
+    }
+
     @Test
     fun `create allocates increasing numbers from an empty sequence`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)
 
-        val first = repository.create("分数")
-        val second = repository.create("几何")
+        val first = repository.create("分数", CATEGORY_ID)
+        val second = repository.create("几何", CATEGORY_ID)
 
         assertEquals(1, first.number)
         assertEquals(2, second.number)
@@ -148,7 +164,7 @@ class KnowledgePointLibraryRepositoryTest {
         val existing = knowledgePoint(id = "kp-old", number = 7, name = "旧标签")
         fixture.knowledgePointDao.insert(existing)
 
-        val created = repository(fixture).create("新标签")
+        val created = repository(fixture).create("新标签", CATEGORY_ID)
 
         assertEquals(8, created.number, "空序列表按现有最大编号种子（E-10）")
         assertEquals(8, fixture.sequenceDao.row?.lastIssued)
@@ -167,29 +183,47 @@ class KnowledgePointLibraryRepositoryTest {
             ),
         )
 
-        val created = repository(fixture).create("分数")
+        val created = repository(fixture).create("分数", CATEGORY_ID)
 
         assertEquals(3, created.number, "新编号跳过墓碑编号（E-05）")
     }
 
     @Test
-    fun `rename keeps the number`() = runBlocking {
+    fun `update keeps the number and can change the category`() = runBlocking {
         val fixture = Fixture()
+        fixture.stores.knowledgeCategories["cat-math"] = KnowledgeCategory(
+            id = "cat-math",
+            name = "数学",
+            createdAt = Instant.parse("2026-11-01T00:00:01Z"),
+        )
         val repository = repository(fixture)
-        val created = repository.create("分数")
+        val created = repository.create("分数", CATEGORY_ID)
 
-        repository.rename(created.id, "分式")
+        repository.update(created.id, "分式", "cat-math")
 
         val tag = repository.tags().single()
         assertEquals("分式", tag.name)
+        assertEquals("cat-math", tag.categoryId, "编辑可修改分类（2026-11-23 用户要求）")
         assertEquals(created.number, tag.number, "重命名不改编号（E-07）")
+    }
+
+    @Test
+    fun `create requires an existing category`() = runBlocking {
+        val fixture = Fixture()
+        val repository = repository(fixture)
+
+        assertFailsWith<KnowledgeCategoryNotFoundException> {
+            repository.create("分数", "cat-missing")
+        }
+
+        assertTrue(repository.tags().isEmpty(), "无效分类不得创建知识点")
     }
 
     @Test
     fun `delete is rejected while an unarchived question references the tag`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)
-        val created = repository.create("分数")
+        val created = repository.create("分数", CATEGORY_ID)
         fixture.questionDao.insert(question("q1"))
         fixture.crossRefDao.insert(
             QuestionKnowledgeCrossRef(questionId = "q1", knowledgePointId = created.id),
@@ -207,10 +241,10 @@ class KnowledgePointLibraryRepositoryTest {
     fun `delete writes a tombstone and the number is not reused`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)
-        val first = repository.create("分数")
+        val first = repository.create("分数", CATEGORY_ID)
 
         repository.deleteWithTombstone(first.id)
-        val second = repository.create("几何")
+        val second = repository.create("几何", CATEGORY_ID)
 
         assertTrue(fixture.tombstoneDao.rows.single().number == first.number)
         assertEquals(first.number + 1, second.number, "删除后的编号不复用（E-05）")
@@ -220,7 +254,7 @@ class KnowledgePointLibraryRepositoryTest {
     fun `archived references do not block deletion and are not counted`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)
-        val created = repository.create("分数")
+        val created = repository.create("分数", CATEGORY_ID)
         fixture.questionDao.insert(question("q-archived", archived = true))
         fixture.crossRefDao.insert(
             QuestionKnowledgeCrossRef(questionId = "q-archived", knowledgePointId = created.id),
@@ -237,8 +271,8 @@ class KnowledgePointLibraryRepositoryTest {
     fun `tags orders by number and counts active references`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)
-        val first = repository.create("分数")
-        val second = repository.create("几何")
+        val first = repository.create("分数", CATEGORY_ID)
+        val second = repository.create("几何", CATEGORY_ID)
         fixture.questionDao.insert(question("q1"))
         fixture.questionDao.insert(question("q2", archived = true))
         fixture.crossRefDao.insert(
