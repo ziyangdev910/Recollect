@@ -33,7 +33,9 @@ import com.recollect.data.room.repository.RoomReviewFeedbackHistoryRepository
 import com.recollect.data.room.repository.RoomSourceTagLibraryRepository
 import com.recollect.data.room.repository.RoomReviewProgressRepository
 import com.recollect.data.room.repository.ReviewProgressRepository
+import com.recollect.data.room.repository.RoomSettingsRepository
 import com.recollect.data.room.repository.RoomTransactionRunner
+import com.recollect.data.room.repository.SettingsRepository
 import com.recollect.data.room.usecase.ApplyFeedbackUseCase
 import com.recollect.data.room.usecase.MaimemoNextDueCalculator
 import com.recollect.feature.backup.BackupFileReader
@@ -92,13 +94,21 @@ class AppContainer(context: Context) {
 
     private val database by lazy { RecollectDatabase.build(applicationContext) }
 
+    /** 应用版本名；导出备份只作诊断字段，「关于」页展示给用户。 */
+    val appVersionName: String by lazy { resolveAppVersionName() }
+
     /** 导出数据库（backup.md 白名单）；版本号只作诊断，不参与兼容判断。 */
     val databaseExporter: DatabaseExporter by lazy {
         RoomDatabaseExporter(
             backupDao = database.backupDao(),
-            appVersionName = appVersionName(),
+            appVersionName = appVersionName,
             clock = clock,
         )
+    }
+
+    /** 应用设置（每日复习时长）；持久化在 Room，随备份导入/导出。 */
+    val settingsRepository: SettingsRepository by lazy {
+        RoomSettingsRepository(database.appSettingsDao())
     }
 
     /** 导出后的系统分享；`FileProvider` 与 `Intent` 只停留在 app 层（R-03）。 */
@@ -118,7 +128,7 @@ class AppContainer(context: Context) {
         AndroidBackupFileReader(applicationContext)
     }
 
-    private fun appVersionName(): String = try {
+    private fun resolveAppVersionName(): String = try {
         @Suppress("DEPRECATION")
         applicationContext.packageManager
             .getPackageInfo(applicationContext.packageName, 0)
@@ -338,7 +348,11 @@ class AppContainer(context: Context) {
     }
 
     private val loadPlanUseCase: LoadPlanUseCase by lazy {
-        LoadPlanUseCase(planRepository)
+        LoadPlanUseCase(
+            planRepository = planRepository,
+            // 旧计划的推迟快照缺来源页码时，重开预览从题库补齐展示。
+            sourcePages = { questionRepository.sourcePages() },
+        )
     }
 
     /** 本周计划会话：已有计划时复用同一 planId，显式重新生成才替换旧计划。 */

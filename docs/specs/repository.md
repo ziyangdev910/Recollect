@@ -98,8 +98,19 @@ data class PlanDraft(
     val knowledgeRowsByQuestionId: Map<String, PlanPageRows>, // 打印时冻结的每题行快照（C-071/C-072）
     val scheduledDates: Map<String, LocalDate>,                // questionId -> targetDate
     val coolingEventIdsToConsume: List<Long>,
-    val deferred: List<DeferredItem>
+    val deferred: List<DeferredItem>,
+    val deferredRecords: List<PlanDeferredRecord> = emptyList() // 随 plan.deferred 冻结的推迟快照
 )
+
+// 推迟题目的冻结快照：题号与来源页码随计划冻结，重开计划不再查题库。
+data class PlanDeferredRecord(
+    val questionId: String,
+    val questionNumber: String,
+    val sourcePage: String = "",  // 已格式化为 `编号-说明`；空串表示快照未记录（改动前的旧计划）
+    val reason: DeferReason
+)
+// PlanDeferredJson 严格编解码 `plan.deferred`：缺 questionId/questionNumber/reason、
+// 结构非法或未知原因抛 IllegalArgumentException；sourcePage 缺失按空串兼容旧计划。
 
 class PlanGenerationException(
     val code: PaginationFailureCode,
@@ -143,7 +154,7 @@ interface SettingsRepository {
 
 ### 事务规则
 
-- `PlanRepository.savePlan(draft)` 必须在一个 Room 事务内完成：写 `PlanPage`（`knowledgeRows` 只编码草稿中的冻结行快照，不从当前关联重算，C-071/C-072）、更新 `Question.lastScheduledDate`、消费 `CoolingOverrideEvent`、应用冷却顺延。分页 `Failure` 在进入事务前转 `PlanGenerationException`（C-047）。冷却顺延不另设独立的 UseCase，统一由本事务写入（C-076 方案 A）。
+- `PlanRepository.savePlan(draft)` 必须在一个 Room 事务内完成：写 `plan` 头（`renderMeta` 与 `deferred` 快照只编码草稿，不回读题库）、写 `PlanPage`（`knowledgeRows` 只编码草稿中的冻结行快照，不从当前关联重算，C-071/C-072）、更新 `Question.lastScheduledDate`、消费 `CoolingOverrideEvent`、应用冷却顺延。分页 `Failure` 在进入事务前转 `PlanGenerationException`（C-047）。冷却顺延不另设独立的 UseCase，统一由本事务写入（C-076 方案 A）。
 - `FeedbackRepository.saveDecisions` 必须在一个事务内完成：写 `ReviewFeedback`、`ConfirmationDecisionLog`、按 `updatedKnowledgeStates` 更新 `KnowledgePoint`（`continuousScore` 已是 `Float`，C-050）、按 `questionLastReviewedDates` 更新 `Question.lastReviewedDate`、写 `NoteAttachmentItem`、删除 `PendingFeedback`。知识点状态由 UseCase 计算，Repository 不重算。
 - 任何一步失败 → 整体回滚；`PendingFeedback` 保留供重试。
 - 关联 id 解析不到的题目整题跳过、不补默认知识点，其待确认行保留供数据修复后重试；跳过清单通过 `SaveDecisionsResult` 返回（C-055 方案 C）。
@@ -228,6 +239,6 @@ fun PlanPage.toPlanPageRows(): List<PlanPageRows>
 - 前置校验（C-079 方案 A）：空决策、重复行、会话未就绪/已提交、待确认行集合不完整、计划日/触发标记不一致、知识点不属于题目、复习日上下界、档位缺失均有负例测试。
 - C-074 方案 A：`savePlan`/`saveDecisions` 的成功路径与「任一步失败整体回滚」均有自动化用例；`SaveDecisionsResult` 返回关联失效的整题跳过清单，且不补默认知识点。
 - C-097：`savePlan` 同一事务内写 `plan` 计划头；若 `supersedesPlanId` 非空，把旧计划标记为 SUPERSEDED。同一周已有非替代计划时拒绝保存，防止隐式替换。`savePrintSnapshots` 对 GENERATED/PRINTED/COMPLETED 计划写入 `Question.pageId/qrPayload`，只把 GENERATED/PRINTED 标记为 PRINTED（不得把 COMPLETED 降级），SUPERSEDED 计划返回 `false`，调用方不得提示“已记录”。`renderMeta` 由 `planning` 冻结、`data:room` 只编码/解码，不在回读时按当前题库重算。
-- C-099：`RoomFeedbackRepository.saveDecisions` 在写入确认日志与删除待确认行的同一事务内判定计划完成：`plan_page` 的全部 `pageId` 都出现在 `confirmation_decision_log` 且本次无整题跳过时，把计划从 GENERATED/PRINTED 迁移为 COMPLETED；`PlanDao.markCompleted` 带状态条件，SUPERSEDED 与已 COMPLETED 不生效。`activeForWeek` / `activePlan` 包含 COMPLETED，首页据此显示“已完成”并引导下周。
+- C-099：`RoomFeedbackRepository.saveDecisions` 在写入确认日志与删除待确认行的同一事务内判定计划完成：`plan_page` 的全部 `pageId` 都出现在 `confirmation_decision_log` 且本次无整题跳过时，把计划从 GENERATED/PRINTED 迁移为 COMPLETED；`PlanDao.markCompleted` 带状态条件，SUPERSEDED 与已 COMPLETED 不生效。`activeForWeek` / `activePlan` 包含 COMPLETED，首页据此显示“已完成”，并在本周 COMPLETED 时把下周计划升为卡片主区块、本周降为次要行（C-100）。
 - `data/room` 映射测试覆盖：Entity ↔ Scheduler/Pagination DTO 字段一一对应，无丢失/重命名漂移；`PlanPage.knowledgeRows` 解码后每题一条、条数与顺序不变，且不按 `number` 重排（C-071）。
 - `core:model` 纯度测试：`src/main` 与 `src/test` 均不得出现 `android.*` / `androidx.*` import；`KnowledgeRowsCodec` 可独立测试。

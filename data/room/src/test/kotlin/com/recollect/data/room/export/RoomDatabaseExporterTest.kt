@@ -1,6 +1,7 @@
 package com.recollect.data.room.export
 
 import com.recollect.data.room.dao.BackupDao
+import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
@@ -44,7 +45,7 @@ class RoomDatabaseExporterTest {
 
         assertEquals("recollect-20261122-1605.json", document.fileName)
         assertContains(document.json, "\"backupFormatVersion\": 1")
-        assertContains(document.json, "\"roomSchemaVersion\": 10")
+        assertContains(document.json, "\"roomSchemaVersion\": 12")
         assertContains(document.json, "\"appVersionName\": \"0.1.0\"")
         assertContains(document.json, "\"exportedAt\": \"2026-11-22T08:05:00Z\"")
         listOf(
@@ -63,6 +64,10 @@ class RoomDatabaseExporterTest {
             assertContains(document.json, "\"$key\": []")
             assertEquals(0, document.entityCounts[key])
         }
+        // v12：即使库中没有设置行，也必须导出默认的「每日复习时长」。
+        assertContains(document.json, "\"appSettings\"")
+        assertContains(document.json, "\"dailyReviewMinutes\": 60")
+        assertEquals(1, document.entityCounts[RoomDatabaseExporter.KEY_APP_SETTINGS])
         assertFalse(document.json.contains("pendingFeedback"))
         assertFalse(document.json.contains("scanSession"))
         assertFalse(document.json.contains("coolingOverrideEvent"))
@@ -256,6 +261,7 @@ private class FakeBackupDao(
     private val tombstones: List<KnowledgePointTombstone> = emptyList(),
     private val numberSequences: List<KnowledgeNumberSequence> = emptyList(),
     private val sourceTags: List<SourceTag> = emptyList(),
+    private val appSettings: List<AppSettings> = emptyList(),
 ) : BackupDao {
     override suspend fun knowledgePoints() = knowledgePoints
     override suspend fun questions() = questions
@@ -268,4 +274,5 @@ private class FakeBackupDao(
     override suspend fun tombstones() = tombstones
     override suspend fun numberSequences() = numberSequences
     override suspend fun sourceTags() = sourceTags
+    override suspend fun appSettings() = appSettings
 }

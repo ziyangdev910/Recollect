@@ -21,6 +21,11 @@ data class PlanDraft(
     val scheduledDates: Map<String, LocalDate>, // questionId -> targetDate
     val coolingEventIdsToConsume: List<Long>,
     val deferred: List<DeferredItem>,
+    /**
+     * 被推迟题目的展示快照（题号 + 原因）：与计划头一起落库，
+     * 重新打开计划时预览页仍能说明哪些题没有排入。
+     */
+    val deferredRecords: List<PlanDeferredRecord> = emptyList(),
     // 回读几何快照（C-093 方案 A）：pageId → 该页每个题块的几何；旧草稿可为空。
     val geometryByPage: Map<String, List<ScanItemGeometry>> = emptyMap(),
     /** 计划头所属周；从分页日期推导，生产路径显式传入设置里的计划窗口。 */
@@ -42,6 +47,7 @@ data class PlanDraft(
             scheduledDates: Map<String, LocalDate>,
             coolingEventIdsToConsume: List<Long>,
             deferred: List<DeferredItem>,
+            deferredRecords: List<PlanDeferredRecord> = emptyList(),
             geometryByPage: Map<String, List<ScanItemGeometry>> = emptyMap(),
             weekStartDate: LocalDate? = null,
             weekEndDate: LocalDate? = null,
@@ -56,6 +62,7 @@ data class PlanDraft(
                 scheduledDates = scheduledDates,
                 coolingEventIdsToConsume = coolingEventIdsToConsume,
                 deferred = deferred,
+                deferredRecords = deferredRecords,
                 geometryByPage = geometryByPage,
                 weekStartDate = weekStartDate
                     ?: result.pages.minOfOrNull { it.date }

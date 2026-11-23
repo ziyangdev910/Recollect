@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -79,12 +80,16 @@ fun PlanPreviewScreen(
                     items(state.pages, key = { it.pageNumber }) { page ->
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("第 ${page.pageNumber} 页 · ${page.date} · ${page.questionNumbers.size} 条")
-                                page.questionNumbers.forEach { number ->
-                                    Text("· 题号 $number")
+                                Text("第 ${page.pageNumber} 页 · ${page.date} · ${page.questionLabels.size} 条")
+                                // 题目标识统一为「页码-第X题」，避免不同来源页的相同题号无法区分。
+                                page.questionLabels.forEach { label ->
+                                    Text("· $label")
                                 }
                             }
                         }
+                    }
+                    if (state.deferred.isNotEmpty()) {
+                        item { DeferredList(state.deferred) }
                     }
                 }
                 WarningList(state.warnings)
@@ -97,6 +102,7 @@ fun PlanPreviewScreen(
 
             is PlanPreviewUiState.Empty -> {
                 Text(state.message, style = MaterialTheme.typography.titleMedium)
+                DeferredList(state.deferred)
                 WarningList(state.warnings)
             }
 
@@ -135,6 +141,42 @@ fun PlanPreviewScreen(
                 TextButton(onClick = { showRegenerateConfirm = false }) { Text("取消") }
             },
         )
+    }
+}
+
+/**
+ * 被推迟题目：让“首页显示 N 题、计划只有 N-1 题”有可读解释。
+ *
+ * 只展示中文标签与说明，不暴露调度器内部原因代码。
+ */
+@Composable
+private fun DeferredList(deferred: List<PlanPreviewDeferred>) {
+    if (deferred.isEmpty()) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "有 ${deferred.size} 道题未排入本次计划",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            // Text(
+            //     text = "由于每日可用复习时长不足，以下题目本次被推迟安排：",
+            //     style = MaterialTheme.typography.bodySmall,
+            // )
+            deferred.forEach { item ->
+                Column {
+                    Text("${item.questionLabel} · ${item.label}")
+                    Text(item.message, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }
 

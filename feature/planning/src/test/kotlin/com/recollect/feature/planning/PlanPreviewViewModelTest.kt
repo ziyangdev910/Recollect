@@ -60,7 +60,7 @@ class PlanPreviewViewModelTest {
                         ),
                         preview = PlanPreviewContent(
                             planId = "ABC123",
-                            pages = listOf(PlanPreviewPage(1, today, listOf("T-1"))),
+                            pages = listOf(PlanPreviewPage(1, today, listOf("第T-1题"))),
                             warnings = emptyList(),
                         ),
                     )
@@ -73,8 +73,8 @@ class PlanPreviewViewModelTest {
         val content = viewModel.state as? PlanPreviewUiState.Content
             ?: error("预期内容态，实际为 ${viewModel.state}")
         assertEquals(1, content.pages.size)
-        assertEquals(1, content.pages.single().questionNumbers.size)
-        assertEquals("T-1", content.pages.single().questionNumbers.single())
+        assertEquals(1, content.pages.single().questionLabels.size)
+        assertEquals("第T-1题", content.pages.single().questionLabels.single())
     }
 
     @Test
@@ -100,7 +100,7 @@ class PlanPreviewViewModelTest {
                     ),
                     preview = PlanPreviewContent(
                         planId = "ABC123",
-                        pages = listOf(PlanPreviewPage(1, today, listOf("T-1"))),
+                        pages = listOf(PlanPreviewPage(1, today, listOf("第T-1题"))),
                         warnings = emptyList(),
                     ),
                 )
@@ -138,7 +138,7 @@ class PlanPreviewViewModelTest {
                         ),
                         preview = PlanPreviewContent(
                             planId = planId,
-                            pages = listOf(PlanPreviewPage(1, today, listOf("T-1"))),
+                            pages = listOf(PlanPreviewPage(1, today, listOf("第T-1题"))),
                             warnings = emptyList(),
                         ),
                     )
@@ -190,5 +190,56 @@ class PlanPreviewViewModelTest {
             ?: error("预期空态，实际为 ${viewModel.state}")
         assertEquals("本计划没有可打印的题目。", empty.message)
         assertEquals(listOf(warning), empty.warnings, "空态不得丢掉 overflow 提示（C-060/C-061）")
+    }
+
+    @Test
+    fun `deferred questions stay visible in content and empty states`() = runBlocking {
+        val deferred = PlanPreviewDeferred(
+            questionId = "q-2",
+            questionLabel = "第T-2题",
+            label = "复习时间不足",
+            message = "当天可用复习时间不够，本次未排入。",
+        )
+        var asEmpty = false
+        val viewModel = PlanPreviewViewModel(
+            generator = object : PlanGenerator {
+                override suspend fun execute(settings: PlanningSettings): PlanGenerationOutcome =
+                    if (asEmpty) {
+                        PlanGenerationOutcome.Empty(
+                            message = "本计划没有可打印的题目。",
+                            warnings = emptyList(),
+                            deferred = listOf(deferred),
+                        )
+                    } else {
+                        PlanGenerationOutcome.Planned(
+                            printJob = PrintJob(
+                                planId = "ABC123",
+                                pages = emptyList(),
+                                questions = emptyMap(),
+                                notes = emptyMap(),
+                                template = settings.template,
+                            ),
+                            preview = PlanPreviewContent(
+                                planId = "ABC123",
+                                pages = listOf(PlanPreviewPage(1, today, listOf("第T-1题"))),
+                                warnings = emptyList(),
+                                deferred = listOf(deferred),
+                            ),
+                        )
+                    }
+            },
+            clock = clock,
+        )
+
+        viewModel.refresh()
+        val content = viewModel.state as? PlanPreviewUiState.Content
+            ?: error("预期内容态，实际为 ${viewModel.state}")
+        assertEquals(listOf(deferred), content.deferred, "预览页必须展示被推迟题目的提示")
+
+        asEmpty = true
+        viewModel.refresh()
+        val empty = viewModel.state as? PlanPreviewUiState.Empty
+            ?: error("预期空态，实际为 ${viewModel.state}")
+        assertEquals(listOf(deferred), empty.deferred, "空计划也要说明有哪些题被推迟")
     }
 }

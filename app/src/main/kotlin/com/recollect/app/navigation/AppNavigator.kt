@@ -20,6 +20,7 @@ sealed interface AppRoute {
     data class Confirm(val sessionId: String) : AppRoute
     data object Settings : AppRoute
     data object Backup : AppRoute
+    data object About : AppRoute
 }
 
 /**

@@ -3,6 +3,7 @@ package com.recollect.data.room.dao
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
@@ -67,6 +68,10 @@ interface BackupRestoreDao {
     @Query("DELETE FROM cooling_override_event")
     suspend fun clearCoolingEvents()
 
+    /** 导入会覆盖应用设置；恢复时始终写回至少一行默认值。 */
+    @Query("DELETE FROM app_settings")
+    suspend fun clearAppSettings()
+
     @Insert
     suspend fun insertKnowledgePoints(rows: List<KnowledgePoint>)
 
@@ -99,4 +104,7 @@ interface BackupRestoreDao {
 
     @Insert
     suspend fun insertSourceTags(rows: List<SourceTag>)
+
+    @Insert
+    suspend fun insertAppSettings(rows: List<AppSettings>)
 }

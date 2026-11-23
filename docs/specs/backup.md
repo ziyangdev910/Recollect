@@ -50,10 +50,14 @@
     "noteAttachments": [],
     "knowledgePointTombstones": [],
     "knowledgeNumberSequences": [],
-    "sourceTags": []
+    "sourceTags": [],
+    "appSettings": []
   }
 }
 ```
+
+> 2026-11-23 回写：v12 的应用设置单行表 `app_settings`（每日复习时长）纳入导出，
+> 对应 `appSettings`（固定 1 行；库中无行时导出默认 60 分钟）。
 
 > 2026-11-22 回写：v8 的计划头 `plan` 与 v9 的来源标签库 `source_tag` 纳入导出，
 > 分别对应 `plans` 与 `sourceTags`；旧数组键名与字段名不变。单一笔记条目表在实现中
@@ -140,6 +144,7 @@ data class ImportReport(
   - `KnowledgePointTombstone`
   - `KnowledgeNumberSequence`
   - `SourceTag`（v9 来源标签库）
+  - `AppSettings`（v12 应用设置，键 `appSettings`：每日复习时长）
 - **不导出** `PendingFeedback` 与 `CoolingOverrideEvent`：前者是人工确认前的临时状态，未确认决策不得通过备份绕过 R-04（C-031 明确排除）；后者是一次性冷却覆盖操作，导入后重新触发即可（C-008 方案二）。
 - 含归档与休眠状态。
 - 位置：通过 SAF 让用户选择；默认建议 `Downloads/Recollect/recollect-YYYYMMDD-HHmm.json`

@@ -16,6 +16,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v9 的 `source_tag.name` 唯一索引在迁移内先 `GROUP BY trim(sourcePage)` 去重种入，
  * 再建索引，不会触发唯一冲突。
  * v10 删除三张表的 `isSupplemental` 列，并把历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`。
+ * v11 给 `plan` 增加被推迟题目的快照 `deferred`，旧计划为空数组。
+ * v12 新增 `app_settings` 单行表（每日复习时长），并写入默认 60 分钟。
  */
 object RecollectMigrations {
 
@@ -276,6 +278,36 @@ object RecollectMigrations {
         }
     }
 
+    /**
+     * v10 → v11：`plan` 增加被推迟题目的快照（题号 + 原因）。
+     *
+     * 预览页重新打开已生成的计划时据此说明哪些题没有排入；旧计划为空数组。
+     */
+    val MIGRATION_10_11: Migration = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `plan` ADD COLUMN `deferred` TEXT NOT NULL DEFAULT '[]'")
+        }
+    }
+
+    /**
+     * v11 → v12：新增应用设置单行表 `app_settings`（每日复习时长）。
+     *
+     * 表内固定写入 id=1、默认 60 分钟的一行，保证升级后导出文件立即包含该字段。
+     */
+    val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `app_settings` (" +
+                    "`id` INTEGER NOT NULL, " +
+                    "`dailyReviewMinutes` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "INSERT OR REPLACE INTO `app_settings` (`id`, `dailyReviewMinutes`) VALUES (1, 60)",
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -286,5 +318,7 @@ object RecollectMigrations {
         MIGRATION_7_8,
         MIGRATION_8_9,
         MIGRATION_9_10,
+        MIGRATION_10_11,
+        MIGRATION_11_12,
     )
 }

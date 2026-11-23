@@ -22,12 +22,14 @@ sealed interface PlanPreviewUiState {
     data class Empty(
         val message: String,
         val warnings: List<PlanPreviewWarning>,
+        val deferred: List<PlanPreviewDeferred> = emptyList(),
     ) : PlanPreviewUiState
 
     data class Content(
         val planId: String,
         val pages: List<PlanPreviewPage>,
         val warnings: List<PlanPreviewWarning>,
+        val deferred: List<PlanPreviewDeferred> = emptyList(),
     ) : PlanPreviewUiState
 
     data class Error(val error: UiError) : PlanPreviewUiState
@@ -105,11 +107,13 @@ class PlanPreviewViewModel(
                         planId = outcome.preview.planId,
                         pages = outcome.preview.pages,
                         warnings = outcome.preview.warnings,
+                        deferred = outcome.preview.deferred,
                     )
                 }
                 is PlanGenerationOutcome.Empty -> PlanPreviewUiState.Empty(
                     message = outcome.message,
                     warnings = outcome.warnings,
+                    deferred = outcome.deferred,
                 )
             }
         } catch (e: CancellationException) {

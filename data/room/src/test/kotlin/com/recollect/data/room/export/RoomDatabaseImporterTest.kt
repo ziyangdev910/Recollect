@@ -1,6 +1,7 @@
 package com.recollect.data.room.export
 
 import com.recollect.data.room.dao.BackupRestoreDao
+import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
@@ -89,6 +90,8 @@ class RoomDatabaseImporterTest {
         assertEquals(1, dao.crossRefs.size)
         assertEquals(1, dao.sourceTags.size)
         assertEquals(1, dao.numberSequences.size)
+        // 每日复习时长随备份恢复。
+        assertEquals(45, dao.appSettings.single().dailyReviewMinutes)
         // 编号序列按恢复后的知识点编号校正。
         assertEquals(4, dao.numberSequences.single().lastIssued)
     }
@@ -149,7 +152,7 @@ class RoomDatabaseImporterTest {
     )
 
     private fun backupJson(
-        schemaVersion: Int = 10,
+        schemaVersion: Int = 12,
         withHistory: Boolean = false,
     ): String {
         val reviewFeedback = if (withHistory) {
@@ -296,6 +299,9 @@ class RoomDatabaseImporterTest {
             "knowledgeNumberSequences": [ { "id": 1, "lastIssued": 4 } ],
             "sourceTags": [
               { "id": "tag-1", "name": "作业本", "createdAt": "2026-11-18T00:00:00Z" }
+            ],
+            "appSettings": [
+              { "id": 1, "dailyReviewMinutes": 45 }
             ]
           }
         }
@@ -317,6 +323,7 @@ private class FakeRestoreDao : BackupRestoreDao {
     var tombstones: List<KnowledgePointTombstone> = emptyList()
     var numberSequences: List<KnowledgeNumberSequence> = emptyList()
     var sourceTags: List<SourceTag> = emptyList()
+    var appSettings: List<AppSettings> = emptyList()
 
     override suspend fun clearKnowledgePoints() { cleared = true }
     override suspend fun clearQuestions() = Unit
@@ -332,6 +339,7 @@ private class FakeRestoreDao : BackupRestoreDao {
     override suspend fun clearPendingFeedbacks() = Unit
     override suspend fun clearScanSessions() = Unit
     override suspend fun clearCoolingEvents() = Unit
+    override suspend fun clearAppSettings() = Unit
 
     override suspend fun insertKnowledgePoints(rows: List<KnowledgePoint>) { knowledgePoints = rows }
     override suspend fun insertQuestions(rows: List<Question>) { questions = rows }
@@ -344,4 +352,5 @@ private class FakeRestoreDao : BackupRestoreDao {
     override suspend fun insertTombstones(rows: List<KnowledgePointTombstone>) { tombstones = rows }
     override suspend fun insertNumberSequences(rows: List<KnowledgeNumberSequence>) { numberSequences = rows }
     override suspend fun insertSourceTags(rows: List<SourceTag>) { sourceTags = rows }
+    override suspend fun insertAppSettings(rows: List<AppSettings>) { appSettings = rows }
 }

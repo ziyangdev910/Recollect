@@ -2,6 +2,7 @@ package com.recollect.data.room.export
 
 import com.recollect.data.room.RecollectDatabase
 import com.recollect.data.room.dao.BackupRestoreDao
+import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
@@ -121,6 +122,7 @@ class RoomDatabaseImporter(
         restoreDao.clearTombstones()
         restoreDao.clearNumberSequences()
         restoreDao.clearSourceTags()
+        restoreDao.clearAppSettings()
 
         restoreDao.insertKnowledgePoints(parsed.knowledgePoints)
         restoreDao.insertQuestions(parsed.questions)
@@ -133,6 +135,7 @@ class RoomDatabaseImporter(
         restoreDao.insertTombstones(parsed.tombstones)
         restoreDao.insertNumberSequences(parsed.numberSequences)
         restoreDao.insertSourceTags(parsed.sourceTags)
+        restoreDao.insertAppSettings(parsed.appSettings)
     }
 
     private fun parse(json: String): ParsedBackup {
@@ -179,6 +182,13 @@ class RoomDatabaseImporter(
         val sourceTags = data.array("sourceTags").mapIndexed { index, row ->
             parseSourceTag(row.asObject("sourceTags[$index]"))
         }
+        // 每日复习时长属于用户偏好而非调度历史，跨 schema 也保留；
+        // 缺失（v11 及更早备份）或为空时回退到默认行，保证恢复后 DB 含该字段。
+        val appSettings = data.array("appSettings")
+            .mapIndexed { index, row -> parseAppSettings(row.asObject("appSettings[$index]")) }
+            .firstOrNull()
+            ?.copy(id = AppSettings.SINGLE_ROW_ID)
+            ?: AppSettings()
 
         validateNumbers(knowledgePoints, tombstones)
 
@@ -245,6 +255,7 @@ class RoomDatabaseImporter(
             RoomDatabaseExporter.KEY_TOMBSTONES to tombstones.size,
             RoomDatabaseExporter.KEY_NUMBER_SEQUENCES to sequences.size,
             RoomDatabaseExporter.KEY_SOURCE_TAGS to sourceTags.size,
+            RoomDatabaseExporter.KEY_APP_SETTINGS to 1,
         )
 
         return ParsedBackup(
@@ -259,6 +270,7 @@ class RoomDatabaseImporter(
             tombstones = tombstones,
             numberSequences = sequences,
             sourceTags = sourceTags,
+            appSettings = listOf(appSettings),
             summary = ImportSummary(
                 sourceBackupFormatVersion = formatVersion,
                 sourceSchemaVersion = schemaVersion,
@@ -398,6 +410,7 @@ class RoomDatabaseImporter(
             printedAt = row.optionalInstant("printedAt", context),
             supersededBy = row.optionalString("supersededBy", context),
             renderMeta = row.optionalString("renderMeta", context) ?: "[]",
+            deferred = row.optionalString("deferred", context) ?: "[]",
         )
     }
 
@@ -454,6 +467,19 @@ class RoomDatabaseImporter(
         )
     }
 
+    private fun parseAppSettings(row: Map<String, JsonValue>): AppSettings {
+        val context = "应用设置"
+        val minutes = row.optionalInt("dailyReviewMinutes", context)
+            ?: AppSettings.DEFAULT_DAILY_REVIEW_MINUTES
+        return AppSettings(
+            id = row.optionalInt("id", context) ?: AppSettings.SINGLE_ROW_ID,
+            dailyReviewMinutes = minutes.coerceIn(
+                AppSettings.MIN_DAILY_REVIEW_MINUTES,
+                AppSettings.MAX_DAILY_REVIEW_MINUTES,
+            ),
+        )
+    }
+
     private data class ParsedBackup(
         val knowledgePoints: List<KnowledgePoint>,
         val questions: List<Question>,
@@ -466,6 +492,7 @@ class RoomDatabaseImporter(
         val tombstones: List<KnowledgePointTombstone>,
         val numberSequences: List<KnowledgeNumberSequence>,
         val sourceTags: List<SourceTag>,
+        val appSettings: List<AppSettings>,
         val summary: ImportSummary,
     )
 }

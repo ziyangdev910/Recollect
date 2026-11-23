@@ -18,6 +18,11 @@ data class AppSettings(
 
 - 存储：`SettingsRepository` 使用 SharedPreferences（不引入 DataStore/Hilt 等新依赖）；对外暴露 `Flow<AppSettings>`。
 - 默认每日 60 分钟；用户可按星期调整，范围 0～240 分钟。
+
+> 2026-11-23 落地说明：本轮先实现单值「每日复习时长」（1～240 分钟，默认 60），
+> 持久化在 Room 单行表 `app_settings`（schema v12），随数据库备份导入/导出；
+> 首页底部「每日复习时长」悬浮窗修改，铺满下一份计划的每一天。
+> 按星期细分、计划起始日、扫描窗口等设置项仍未实现，待后续小阶段落地。
 - `planStartDay` 默认周一；允许改为任意星期，计划周仍为连续 7 天。
 - 扫描窗口默认 `planEnd+1..planEnd+7`；超出窗口标 `LATE_BATCH`。
 - `keepPlanPagesWeeks` 默认 26 周；旧 `PlanPage` 可按此清理，`ReviewFeedback`/`ConfirmationDecisionLog` 不自动删除。

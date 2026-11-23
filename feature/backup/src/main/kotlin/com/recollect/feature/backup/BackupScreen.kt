@@ -75,7 +75,7 @@ private fun IntroCard() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "把本机题库、知识点、复习反馈与打印页快照导出为一个 JSON 文件，" +
+                text = "把本机题库、知识点、题目来源、复习反馈、每日复习时长与打印页快照导出为一个 JSON 文件，" +
                     "生成后自动打开系统分享面板，可发送给微信、文件管理器或其他应用。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

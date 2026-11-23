@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.recollect.data.room.dao.AppSettingsDao
 import com.recollect.data.room.dao.BackupDao
 import com.recollect.data.room.dao.BackupRestoreDao
 import com.recollect.data.room.dao.ConfirmationDecisionLogDao
@@ -21,6 +22,7 @@ import com.recollect.data.room.dao.QuestionKnowledgeCrossRefDao
 import com.recollect.data.room.dao.ReviewFeedbackDao
 import com.recollect.data.room.dao.ScanSessionDao
 import com.recollect.data.room.dao.SourceTagDao
+import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.CoolingOverrideEvent
 import com.recollect.data.room.entity.KnowledgeNumberSequence
@@ -45,7 +47,9 @@ import com.recollect.data.room.migration.RecollectMigrations
  * v6 为题目来源页码增加编号 `sourcePageCode`；v7 取消其唯一索引，允许同一页的多道题共用编号；
  * v8 增加 `plan` 计划头（本周计划单例与打印状态），避免再次生成时静默替换当前计划；
  * v9 增加 `source_tag` 来源标签库，并把已有题目的来源说明去重后作为初始标签；
- * v10 删除 `isSupplemental`，取消「修正」与「补填」的区分。
+ * v10 删除 `isSupplemental`，取消「修正」与「补填」的区分；
+ * v11 给 `plan` 增加被推迟题目的快照（题号 + 原因）；
+ * v12 增加 `app_settings` 单行表，持久化「每日复习时长」并纳入备份。
  * 不允许 destructive migration。
  */
 @Database(
@@ -64,6 +68,7 @@ import com.recollect.data.room.migration.RecollectMigrations
         KnowledgeNumberSequence::class,
         Plan::class,
         SourceTag::class,
+        AppSettings::class,
     ],
     version = RecollectDatabase.SCHEMA_VERSION,
     exportSchema = true,
@@ -105,9 +110,12 @@ abstract class RecollectDatabase : RoomDatabase() {
 
     abstract fun noteAttachmentItemDao(): NoteAttachmentItemDao
 
+    /** 应用设置单行表（每日复习时长，schema v12）。 */
+    abstract fun appSettingsDao(): AppSettingsDao
+
     companion object {
         /** Room schema 版本；备份 JSON 的 `roomSchemaVersion` 直接取此值（backup.md）。 */
-        const val SCHEMA_VERSION = 10
+        const val SCHEMA_VERSION = 12
 
         const val DATABASE_NAME = "recollect.db"
 

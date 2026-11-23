@@ -191,6 +191,30 @@ class PlanRepositoryTransactionTest {
         assertEquals("payload", stores.questions.getValue("q1").qrPayload)
     }
 
+    @Test
+    fun `save plan freezes deferred question hints and reloads them`() = runBlocking {
+        stores.knowledgePoints["k1"] = knowledgePoint()
+        stores.questions["q1"] = question("q1")
+        val records = listOf(
+            PlanDeferredRecord("q2", "2", sourcePage = "1-同步练习", reason = DeferReason.TIME_OVERFLOW),
+            PlanDeferredRecord("q3", "3", sourcePage = "", reason = DeferReason.COOLING),
+        )
+
+        repository.savePlan(
+            PlanDraft(
+                planId = planId,
+                pages = listOf(plannedPage(pageNumber = 1, date = plannedDay, questionId = "q1")),
+                knowledgeRowsByQuestionId = mapOf("q1" to rows("q1", "k1")),
+                scheduledDates = mapOf("q1" to plannedDay),
+                coolingEventIdsToConsume = emptyList(),
+                deferred = emptyList(),
+                deferredRecords = records,
+            ),
+        )
+
+        assertEquals(records, repository.findPlan(planId)?.deferredRecords)
+    }
+
     private fun rows(questionId: String, knowledgePointId: String) = PlanPageRows(
         questionId = questionId,
         rows = listOf(KnowledgeRow(knowledgePointId = knowledgePointId, number = 1)),

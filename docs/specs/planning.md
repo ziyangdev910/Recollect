@@ -33,10 +33,11 @@ sealed interface PlanGenerationOutcome {
         val preview: PlanPreviewContent  // 预览页唯一输入
     ) : PlanGenerationOutcome
 
-    // C-060：整份计划没有可打印题目；仍需把 overflow 原因与建议交给预览页。
+    // C-060：整份计划没有可打印题目；仍需把 overflow 原因、建议与被推迟题目交给预览页。
     data class Empty(
         val message: String,
-        val warnings: List<PlanPreviewWarning>
+        val warnings: List<PlanPreviewWarning>,
+        val deferred: List<PlanPreviewDeferred> = emptyList()
     ) : PlanGenerationOutcome
 }
 
@@ -44,13 +45,16 @@ sealed interface PlanGenerationOutcome {
 data class PlanPreviewContent(
     val planId: String,
     val pages: List<PlanPreviewPage>,
-    val warnings: List<PlanPreviewWarning>
+    val warnings: List<PlanPreviewWarning>,
+    val deferred: List<PlanPreviewDeferred> = emptyList()
 )
 
+// 计划预览的题目标识：`页码-第X题`（X 为题号）；没有来源页码时只显示 `第X题`。
+// 同一题号可能出现在不同来源页上，单看题号无法区分。
 data class PlanPreviewPage(
     val pageNumber: Int,
     val date: LocalDate,
-    val questionNumbers: List<String>
+    val questionLabels: List<String>
 )
 
 // C-065 方案 B：界面只展示中文 label 与 message，不展示分页内部代码。
@@ -58,6 +62,14 @@ data class PlanPreviewWarning(
     val questionId: String,      // 仅供定位/日志，不直接展示
     val questionNumber: String,  // 界面展示的题号
     val label: String,
+    val message: String
+)
+
+// 被推迟题目的预览投影（冷却期 / 当天时间不足 / 关联知识点失效）；不会出现在打印稿里。
+data class PlanPreviewDeferred(
+    val questionId: String,      // 仅供定位/日志，不直接展示
+    val questionLabel: String,   // 与 PlanPreviewPage 相同：`页码-第X题`（无来源时 `第X题`）
+    val label: String,           // 中文原因标签，不展示调度器枚举名
     val message: String
 )
 
@@ -105,7 +117,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 ### 固定流程
 
 1. 读取 `PlanningSettings`；`planStartDate` 默认为今天所在自然周的周一（`today.with(previousOrSame(MONDAY))`，C-098），`planEndDate = planStartDate + 6`；`dailyAvailableMinutes` 缺失按 60 分钟/天。首页另有紧随其后的下一自然周窗口（`nextWeekSettings`），只提供本周与下周两个入口，不允许生成更远的周。
-2. 读取 `KnowledgePointRepository.states()`、`QuestionRepository.schedulerQuestions()`、`PlanRepository.pendingCoolingOverrides()`。
+2. 读取 `KnowledgePointRepository.states()`、`QuestionRepository.schedulerQuestions()/questionNumbers()/sourcePages()`、`PlanRepository.pendingCoolingOverrides()`（题号与来源页码用于预览标识与打印元数据）。
 3. 调用 `Scheduler.plan(..., dateRange = planStartDate..planEndDate, coolingOverrides = 未消费事件 questionId 集合)`。
 4. 对每个 `PlannedQuestion`：
    - 按 `KnowledgePoint.number` 升序生成 `knowledgeRows` 行快照（含 `triggeredKnowledgePointIds`）；
@@ -115,8 +127,10 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
      - `Failure(code, message)`：抛 `PlanGenerationException(code, message)`，**不进入事务**，由 App 映射为可重试 UI 错误；
      - `Success` 且 `pages` 为空：返回 `PlanGenerationOutcome.Empty(message, warnings 的预览投影)`，**不建页、不进入事务**（C-060）；`message` 必须区分“没有到期题目”与“有题目但全部无法打印”，且 overflow 的原因与题目不得丢弃（C-061/C-062）。
    - 为每道已排入题目生成行快照 `PlanPageRows`，与页一起放入 `PlanDraft.knowledgeRowsByQuestionId`；行组按打印时的 `KnowledgePoint.number` 升序生成后冻结，后续不接受重算（C-071/C-072）。`PlanPage` 的 `pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers` 由 `PlanRepository.savePlan` 按草稿落库；`continuationMarkers` 仅作内部移页元数据，不在纸上绘制“续下页”（C-063）。
-   - 有可打印页时组装预览投影：`PlanPreviewContent(planId, pages, warnings)`；警告已按 C-064 合并去重排序，并按 C-065 方案 B 映射为中文标签与 `message`，不把分页内部代码交给界面。
-5. 仅当存在可打印页时，在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`（`PlanDraft` 含上述行快照，C-074 方案 A）：
+   - 有可打印页时组装预览投影：`PlanPreviewContent(planId, pages, warnings, deferred)`；警告已按 C-064 合并去重排序，并按 C-065 方案 B 映射为中文标签与 `message`，不把分页内部代码交给界面。
+   - 预览页的页面卡片与推迟卡片统一用题目标识 `页码-第X题`（来源页码取 `QuestionRepository.sourcePages()`，无来源时回落 `第X题`）；`deferred` 取 `PlanResult.deferred`，按中文原因标签与说明投影，不展示调度器枚举名。
+5. 仅当存在可打印页时，在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`（`PlanDraft` 含上述行快照与 `deferredRecords`，C-074 方案 A）：
+   - 写 `plan` 头；`deferred` 保存 `questionId/题号/来源页码/原因` 的冻结快照，重开计划时不再依赖当前题库（旧快照缺来源页码时，仅展示层可按当前题库兜底补齐）；
    - 写全部 `PlanPage`；
    - 对每个已排入题目写 `Question.lastScheduledDate = targetDate`；
    - 对本次命中的 `CoolingOverrideEvent` 写 `consumedAt = now`；
@@ -129,7 +143,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 - `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED/COMPLETED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。计划窗口由首页入口（本周/下周）决定，预览页不自行顺延到更远的周（C-098）。
 - `PlanSession.regenerate(settings)`：仅由用户在预览页显式确认后调用；把当前计划号传给 `PlanGenerator.regenerate(settings, previousPlanId)`，新计划保存事务内把旧计划标记为 SUPERSEDED。
-- `LoadPlanUseCase` 只读取 `plan` 头、`plan_page` 与 `plan.renderMeta`/题块几何重建 `PlannedPage`、`RenderableQuestion` 与附件文本；不重新调度、不重新分页。缺元数据/几何时直接失败，不按当前题库猜测。
+- `LoadPlanUseCase` 只读取 `plan` 头、`plan_page` 与 `plan.renderMeta`/题块几何重建 `PlannedPage`、`RenderableQuestion` 与附件文本；不重新调度、不重新分页。缺元数据/几何时直接失败，不按当前题库猜测。预览的题目标识从 `renderMeta.sourcePage + questionNumber` 重建；推迟卡片从 `plan.deferred` 重建，旧快照缺 `sourcePage` 时仅用 `QuestionRepository.sourcePages()` 做展示兜底（不改写快照、不影响打印）。
 - `GeneratePlanUseCase` 在保存前冻结 `PlanRenderMeta`（题号、来源页、知识点名称、行数、附件数与附件文本）并传入 `PlanDraft`；`weekStartDate/weekEndDate` 取 `PlanningSettings` 的计划窗口。
 - `PlanPreviewViewModel` 首次进入调用 `refreshIfNeeded`（open），从打印页返回复用当前状态；`regenerate()` 才生成新计划号并清空旧打印任务。
 
@@ -138,7 +152,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 - `PlanStatus.COMPLETED` 由确认提交驱动，不按日期自动判定：当一份计划的所有 `plan_page` 页都已在 `confirmation_decision_log` 中出现，且本次提交没有整题跳过时，`RoomFeedbackRepository.saveDecisions` 在**同一事务**内把计划状态从 GENERATED/PRINTED 迁移为 COMPLETED。
 - 判定比较的是页集合（`plan_page.pageId` ⊆ `confirmation_decision_log.pageId`），不是行数；其他计划或残留日志不会让计划提前完成。
 - 已被显式替代（SUPERSEDED）或已经 COMPLETED 的计划不会被改写；有整题跳过时本次不判定，留待修复后的重试。
-- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：首页仍能查看/重印已完成计划，并引导生成下周计划（本周完成时“生成下周计划”提升为主按钮）。
+- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：首页仍能查看/重印已完成计划；本周完成时首页把下周计划升为卡片主区块、本周降为次要行（C-100），下周未生成时主按钮为“生成下周计划”。
 - 已完成计划允许重印：`savePrintSnapshots` 可为 COMPLETED 写题目快照，但 `markPrinted` 只把 GENERATED/PRINTED 置为 PRINTED，不得把 COMPLETED 降级。
 
 ## ID、时区与默认设置
@@ -167,7 +181,8 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## 验收
 
-- C-090 方案 A：`GeneratePlanUseCase.execute()` 返回 `PlanGenerationOutcome`；`Planned` 同时携带 `PrintJob`（打印层唯一输入）与 `PlanPreviewContent`（预览页唯一输入）；`Empty` 携带可读文案与 `PlanPreviewWarning`，不得只返回页列表或丢弃提示。`PaginationResult.Failure` 不进入结果包装，仍按 C-047 抛 `PlanGenerationException`。
+- C-090 方案 A：`GeneratePlanUseCase.execute()` 返回 `PlanGenerationOutcome`；`Planned` 同时携带 `PrintJob`（打印层唯一输入）与 `PlanPreviewContent`（预览页唯一输入）；`Empty` 携带可读文案、`PlanPreviewWarning` 与 `PlanPreviewDeferred`，不得只返回页列表或丢弃提示。`PaginationResult.Failure` 不进入结果包装，仍按 C-047 抛 `PlanGenerationException`。
+- 计划预览的页面卡片与“未排入计划”卡片使用同一题目标识 `页码-第X题`（无来源页码时 `第X题`）；重开计划时从冻结的 `renderMeta`/`plan.deferred` 重建，旧推迟快照缺来源页码可按当前题库兜底展示，但不得改写快照或依赖题库重算分页。
 - 计划生成后：`PlanPage`、`Question.lastScheduledDate`、冷却事件消费、顺延在同一事务内；任一步失败全部回滚。
 - C-099：所有页确认提交后计划迁移为 COMPLETED；只确认部分页、或有整题跳过时保持原状态；SUPERSEDED 计划不得改回 COMPLETED。
 - `PagePlanner` 返回 `Failure` 时抛 `PlanGenerationException`，不进入事务、不写任何 `PlanPage`。

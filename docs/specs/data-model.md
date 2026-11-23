@@ -219,13 +219,16 @@ data class Plan(
     val status: String,          // GENERATED / PRINTED / COMPLETED / SUPERSEDED
     val printedAt: Instant?,
     val supersededBy: String?,
-    val renderMeta: String       // 生成时冻结的打印元数据 JSON，见 repository.md
+    val renderMeta: String,      // 生成时冻结的打印元数据 JSON，见 repository.md
+    @ColumnInfo(defaultValue = "[]")
+    val deferred: String = "[]"  // 生成时被推迟题目的快照 JSON（schema v11），见 repository.md
 )
 ```
 
 - 同一 `weekStart/weekEnd` 最多一份 GENERATED/PRINTED 计划；`activePlan` 只返回这类计划，显式重新生成后旧计划标记为 SUPERSEDED（C-097）。
 - `renderMeta` 保存题号、来源页、知识点名称与行数、附件数与附件文本，使进程重建后能按原布局重新打印同一计划；不依赖当前题库或当前附件。
-- 迁移 v7→v8 只建表，不回填历史 `plan_page`；旧页仍可按 `pageId` 回读，但不再参与“当前计划”复用。
+- `deferred` 保存被推迟题目的 `questionId/题号/来源页码/原因` 快照，使重开计划仍能说明哪些题没有排入；旧计划为空数组。快照缺来源页码时，预览层可按当前题库兜底展示，但不得改写快照。
+- 迁移 v7→v8 只建表，不回填历史 `plan_page`；旧页仍可按 `pageId` 回读，但不再参与“当前计划”复用。v10→v11 为 `plan` 增加 `deferred TEXT NOT NULL DEFAULT '[]'`，旧计划迁移后为空数组、不显示推迟提示。
 - `plan_page` 保持页面快照与题块几何；计划头与页面在 `savePlan` 同一事务写入。
 
 ### SourceTag（来源标签库，schema v9）
@@ -246,6 +249,22 @@ data class SourceTag(
 - 重命名在同一事务内更新 `question.sourcePage`（含归档题目），避免引用悬空。
 - 删除前校验未被未归档题目引用；归档题目的来源不阻止删除，历史文本保留。
 - 迁移 v8→v9 建表并与唯一索引，同时把已有 `question.sourcePage` 去重后种入标签库（空白不种入）。
+
+### AppSettings（应用设置，schema v12）
+
+```kotlin
+@Entity(tableName = "app_settings")
+data class AppSettings(
+    @PrimaryKey val id: Int = 1,               // 单行表
+    val dailyReviewMinutes: Int = 60           // 每日复习时长，1～240 分钟
+)
+```
+
+- 单行表，固定 `id = 1`，写入使用覆盖；当前只持久化「每日复习时长」。
+- 该值用于生成计划时每天可用的复习分钟数（铺满计划范围内的每一天）；默认 60 分钟。
+- 修改只对下一份生成的计划生效，不回溯已生成或已打印的计划。
+- 随备份导出/导入；导入缺失该字段的旧备份时写回默认行，保证恢复后的数据库始终含该字段。
+- 迁移 v11→v12 建表并写入 `(1, 60)`。
 
 ### PlanPage
 
@@ -351,6 +370,8 @@ data class KnowledgeNumberSequence(
 - 新增唯一索引 `knowledge_point.number` 与 `plan_page.pageId` 前必须先清理重复值；迁移脚本遇到重复应失败并提示，不得静默重编号。
 - 新增表：`plan`（schema v8）、`source_tag`（schema v9）。v8→v9 的 `source_tag.name` 唯一索引在迁移内先按 `trim(sourcePage)` 去重种入再创建，不会因历史重复触发冲突。
 - schema v10：删除 `review_feedback`、`confirmation_decision_log`、`pending_feedback` 的 `isSupplemental` 列；历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`。SQLite 在 minSdk 26 不支持 `DROP COLUMN`，迁移建新表 → 回填 → 删旧表 → 重命名。
+- schema v11：`plan` 增加 `deferred TEXT NOT NULL DEFAULT '[]'`；旧计划迁移后为空数组、不显示推迟提示，重新生成计划后才有快照。
+- schema v12：新增 `app_settings` 单行表（`id INTEGER PRIMARY KEY`、`dailyReviewMinutes INTEGER NOT NULL`），迁移时写入 `(1, 60)`。
 - `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时不得按当前关联 + `number` 升序重算，应视为「无快照」并在回读/确认时阻断，提示重新生成计划并按新稿打印，同时记录警告（C-072 方案 A）。
 - 导出 JSON 的范围以 `backup.md` 的白名单为准，不再表述为「全部实体」；`PendingFeedback`、`ScanSession` 与 `CoolingOverrideEvent` 不导出（C-031/C-040/C-008）。
 

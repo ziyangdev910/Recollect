@@ -59,6 +59,8 @@ data class StoredPlan(
     val status: PlanStatus,
     val printedAt: Instant?,
     val renderMeta: List<PlanRenderMeta>,
+    /** 生成时被推迟的题目；旧计划为空列表。 */
+    val deferredRecords: List<PlanDeferredRecord> = emptyList(),
 )
 
 data class StoredPlanPage(
@@ -132,6 +134,7 @@ class RoomPlanRepository(
                             it.questionId in draft.scheduledDates.keys
                         },
                     ),
+                    deferred = PlanDeferredJson.encode(draft.deferredRecords),
                 ),
             )
             draft.supersedesPlanId?.let { oldPlanId ->
@@ -214,6 +217,7 @@ class RoomPlanRepository(
         status = PlanStatus.valueOf(status),
         printedAt = printedAt,
         renderMeta = PlanRenderMetaJson.decode(renderMeta),
+        deferredRecords = PlanDeferredJson.decode(deferred),
     )
 
     /**

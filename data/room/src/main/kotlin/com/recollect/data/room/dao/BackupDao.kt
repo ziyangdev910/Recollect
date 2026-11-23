@@ -2,6 +2,7 @@ package com.recollect.data.room.dao
 
 import androidx.room.Dao
 import androidx.room.Query
+import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.entity.ConfirmationDecisionLog
 import com.recollect.data.room.entity.KnowledgeNumberSequence
 import com.recollect.data.room.entity.KnowledgePoint
@@ -57,4 +58,8 @@ interface BackupDao {
 
     @Query("SELECT * FROM source_tag ORDER BY name COLLATE NOCASE ASC")
     suspend fun sourceTags(): List<SourceTag>
+
+    /** 应用设置（每日复习时长）；v12 起纳入备份。 */
+    @Query("SELECT * FROM app_settings ORDER BY id ASC")
+    suspend fun appSettings(): List<AppSettings>
 }

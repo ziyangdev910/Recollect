@@ -56,6 +56,10 @@ class RoomDatabaseExporter(
         val tombstones = backupDao.tombstones()
         val numberSequences = backupDao.numberSequences()
         val sourceTags = backupDao.sourceTags()
+        // v12：即使旧库没有设置行，也导出默认行，保证备份始终含「每日复习时长」。
+        val appSettings = backupDao.appSettings().ifEmpty {
+            listOf(com.recollect.data.room.entity.AppSettings())
+        }
 
         val counts = linkedMapOf(
             KEY_KNOWLEDGE_POINTS to knowledgePoints.size,
@@ -69,6 +73,7 @@ class RoomDatabaseExporter(
             KEY_TOMBSTONES to tombstones.size,
             KEY_NUMBER_SEQUENCES to numberSequences.size,
             KEY_SOURCE_TAGS to sourceTags.size,
+            KEY_APP_SETTINGS to appSettings.size,
         )
 
         val data = jsonObject(
@@ -83,6 +88,7 @@ class RoomDatabaseExporter(
             KEY_TOMBSTONES to tombstones.map { it.toJson() }.asJsonArray(),
             KEY_NUMBER_SEQUENCES to numberSequences.map { it.toJson() }.asJsonArray(),
             KEY_SOURCE_TAGS to sourceTags.map { it.toJson() }.asJsonArray(),
+            KEY_APP_SETTINGS to appSettings.map { it.toJson() }.asJsonArray(),
         )
 
         val envelope = jsonObject(
@@ -180,6 +186,7 @@ class RoomDatabaseExporter(
         "printedAt" to printedAt.asJsonInstant(),
         "supersededBy" to supersededBy.asJsonString(),
         "renderMeta" to renderMeta.asJsonString(),
+        "deferred" to deferred.asJsonString(),
     )
 
     private fun com.recollect.data.room.entity.PlanPage.toJson() = jsonObject(
@@ -222,6 +229,11 @@ class RoomDatabaseExporter(
         "createdAt" to createdAt.asJsonInstant(),
     )
 
+    private fun com.recollect.data.room.entity.AppSettings.toJson() = jsonObject(
+        "id" to id.asJsonNumber(),
+        "dailyReviewMinutes" to dailyReviewMinutes.asJsonNumber(),
+    )
+
     private fun java.time.LocalDate?.asJsonDate(): JsonValue = this?.toString().asJsonString()
 
     private fun Instant?.asJsonInstant(): JsonValue =
@@ -241,6 +253,7 @@ class RoomDatabaseExporter(
         const val KEY_TOMBSTONES = "knowledgePointTombstones"
         const val KEY_NUMBER_SEQUENCES = "knowledgeNumberSequences"
         const val KEY_SOURCE_TAGS = "sourceTags"
+        const val KEY_APP_SETTINGS = "appSettings"
 
         private val FILE_NAME_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
     }

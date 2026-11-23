@@ -17,6 +17,12 @@ import java.time.Instant
  */
 class LoadPlanUseCase(
     private val planRepository: PlanRepository,
+    /**
+     * 来源页码投影，仅用于兼容旧推迟快照：
+     * 改动前生成的 `plan.deferred` 没有 `sourcePage`，重开计划时从当前题库尽力补齐展示；
+     * 不影响打印、不重新调度，也不改写已落库的快照。
+     */
+    private val sourcePages: suspend () -> Map<String, String> = { emptyMap() },
 ) {
 
     suspend fun load(planId: String, template: TemplateGeometry): PlanGenerationOutcome.Planned {
@@ -80,6 +86,13 @@ class LoadPlanUseCase(
             )
         }
 
+        // 旧快照没有来源页码时才查题库，避免每次重开计划都多一次读取。
+        val fallbackSourcePages = if (plan.deferredRecords.any { it.sourcePage.isBlank() }) {
+            sourcePages()
+        } else {
+            emptyMap()
+        }
+
         return PlanGenerationOutcome.Planned(
             printJob = PrintJob(
                 planId = plan.planId,
@@ -94,12 +107,15 @@ class LoadPlanUseCase(
                     PlanPreviewPage(
                         pageNumber = page.pageNumber,
                         date = page.date,
-                        questionNumbers = page.questionIds.map { questionId ->
-                            questions.getValue(questionId).questionNumber
+                        questionLabels = page.questionIds.map { questionId ->
+                            val meta = metaById.getValue(questionId)
+                            formatQuestionLabel(meta.sourcePage, meta.questionNumber)
                         },
                     )
                 },
                 warnings = emptyList(),
+                // 生成时冻结的推迟快照：重开计划仍能说明哪些题没有排入。
+                deferred = plan.deferredRecords.map { it.toPreviewDeferred(fallbackSourcePages) },
             ),
         )
     }

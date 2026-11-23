@@ -1319,8 +1319,18 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 **2026-11-23 追加（C-099）**：补齐 `PlanStatus.COMPLETED` 的写入路径与“本周已完成 → 引导下周”。
 - 判定：计划的所有 `plan_page` 页都出现在 `confirmation_decision_log`，且本次提交无整题跳过时，`RoomFeedbackRepository.saveDecisions` 在同一事务内把计划从 GENERATED/PRINTED 迁移为 COMPLETED；SUPERSEDED/已 COMPLETED 不生效。
 - `PlanDao.activeForWeek` 与 `savePrintSnapshots` 把 COMPLETED 视为可用；`markPrinted` 带状态条件，重印只更新快照、不降级。
-- 首页：`planStatusMessage(COMPLETED)` 提示可生成下周；本周完成时下周按钮提升为填充主按钮。
+- 首页：`planStatusMessage(COMPLETED)` 提示可生成下周；主次强调规则已由下方 C-100 追加取代（本周 COMPLETED 时交换主次区块）。
 - 测试：JVM `c099_*` 两个用例；设备真实 Room `PlanCompletionAndroidTest` 2 个用例通过。
+
+**2026-11-23 追加（C-100）**：首页计划卡从“本周固定主卡 + 下周小按钮”改为**主次区块交换**。
+- 唯一触发条件：本周计划状态为 `COMPLETED`；其余状态保持本周为主，不按日期/周末判断（周末但本周未读完时仍提醒补回读）。
+- 本周完成后，下周计划升为主区块（大标题、状态说明、通栏“生成/预览并打印下周计划”），本周降为次要行（“已完成”胶囊 + “预览本周计划”，仍可预览/重印）。
+- `PlanWeek` 的标题、主/次按钮文案与按周区分的状态说明抽到 `HomePlanPresentation.kt`；`PlanHeroCard` 拆为 `PlanPrimaryBlock`/`PlanSecondaryRow`，`CompactPlanAction` 去掉 `primary` 分支。
+- 新增 `HomePlanPresentationTest`；实体机验证三态并截图；`app.md`/`planning.md` 已按用户授权回写。
+
+**2026-11-23 追加（计划推迟提示）**：计划预览页在页面列表下方显示“有 N 道题未排入本次计划”，逐条列出题号、原因（复习时间不足 / 冷却期 / 知识点缺失）与处理建议；推迟快照随计划写入 `plan.deferred`（schema v11），重新打开计划与强停重开后仍可见；旧计划迁移后为空数组、不显示提示。`app.md`/`planning.md`/`repository.md`/`data-model.md` 已按用户授权回写（2026-11-23）。
+
+**2026-11-23 追加（题目标识改为「页码-第X题」）**：计划预览页的页面卡片与“未排入计划”卡片不再只显示题号，统一改用「页码-第X题」（X 为题号；没有来源页码时只显示「第X题」），解决不同来源页上题号重复、无法分辨的问题。实现上 `PlanPreviewPage.questionNumbers` 改为 `questionLabels`，`PlanPreviewDeferred` 改为携带 `questionLabel`；推迟快照 `PlanDeferredRecord` 增加 `sourcePage`，随 `plan.deferred` 冻结并在重开计划时回读，旧快照缺少该字段时按空串兼容；为了旧计划也立即显示页码，`LoadPlanUseCase` 在快照缺来源页码时从当前题库兜底补齐（不影响打印、不改写快照）。`app.md`/`planning.md`/`repository.md`/`data-model.md` 已按用户授权回写（2026-11-23）。
 
 ---
 
@@ -1527,6 +1537,21 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 - 同步 `confirm-flow.md`、`CLAUDE.md`、`overview.md`、changelog、agent-log；实体机验证。
 
 【落地说明（2026-11-22）】已完成。`./gradlew :feature:confirm:compileDebugKotlin :app:assembleDebug` 通过；真机 VKJ-AN00 点击「本次未复习」后该行显示「复习效果：本次未复习」，未操作行仍显示原识别结果。证据：`evidence/ui/confirmdone-04-notreviewed-label.xml`。
+
+---
+
+## 追加：首页底部设置入口与每日复习时长持久化（2026-11-23）【done】
+
+【本轮背景】用户要求：删除首页「快捷操作」标签；在下方卡片栏底部新增两枚入口——左侧时钟图标 + 左对齐「每日复习时长」（点击弹悬浮窗修改，输入框下附简要说明），右侧信息图标「关于」（进入新页面展示应用图标、名称、版本号、作者 `@ziyangdev910`、开源仓库与功能说明）；并保证导入、导出的数据库中含「每日复习时长」字段。
+
+【本轮任务】
+- `data:room` 新增 `app_settings` 单行表（`dailyReviewMinutes`，默认 60、1～240）与 `SettingsRepository`，schema v12 + `MIGRATION_11_12`；
+- 备份导出/导入加入 `appSettings` 键，导入缺失时写回默认行；
+- 首页底部加入「每日复习时长」「关于」两枚卡片，新增 `DailyReviewMinutesDialog` 与 `AppRoute.About`/`AboutScreen`；
+- 每日时长通过 `PlanningSettings.withDailyMinutes` 作用于下一份计划；
+- 同步 `settings.md`、`data-model.md`、`backup.md`、`app.md`、`CLAUDE.md`、changelog、agent-log。
+
+【落地说明（2026-11-23）】已完成。`./gradlew :data:room:testDebugUnitTest :feature:planning:testDebugUnitTest :app:assembleDebug` 通过；KSP 生成 `schemas/.../12.json`；导入导出测试覆盖默认 60 分钟导出与 45 分钟恢复。实体机 UI 截图验证未做。
 
 ---
 

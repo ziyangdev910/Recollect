@@ -587,8 +587,25 @@
   - 设备（真实 Room，`android.test.InstrumentationTestRunner`）：新增 `PlanCompletionAndroidTest`，2 个用例在 VKJ-AN00 通过——两页计划确认第一页仍为 PRINTED、确认第二页变为 COMPLETED；SUPERSEDED 计划确认后保持 SUPERSEDED。
   - 首页呈现：把种子库本周计划置为 COMPLETED 后启动，首页显示“已完成”与引导文案，“生成下周计划”为主按钮，证据 `evidence/screens/plancomplete-03-home-completed.png`。
 - **规格同步**：已按 2026-11-23 用户授权回写 `planning.md`（完成判定小节与验收）、`repository.md`（PlanRepository 状态契约）、`app.md`（Home/PlanPreview 状态）。
-- **用户可见变化**：本周最后一页确认提交后，首页计划状态变为“已完成”；“生成下周计划”从次要文本按钮变成主按钮，用户可直接准备下周，同时仍可查看或重印本周计划。
+- **用户可见变化**：本周最后一页确认提交后，首页计划状态变为“已完成”；“生成下周计划”从次要文本按钮变成主按钮，用户可直接准备下周，同时仍可查看或重印本周计划。（2026-11-23 C-100 已将此处扩展为“下周计划升为主区块、本周降为次要行”。）
 - **遗留**：`COMPLETED` 只在确认提交时判定，不按计划窗口结束自动完成；未做的页会让计划一直停在“已打印/待打印”。重复扫描已完成计划的旧稿仍可能重复累计反馈（C-097 遗留），本轮未改。
+
+### C-100 本周计划完成后的下周强调不足（已裁决：本周 COMPLETED 即交换主次区块，2026-11-23）
+
+- **关联决策/规格**：C-098、C-099；`docs/specs/app.md`、`planning.md`。
+- **现象**：C-099 只在首页把“生成/查看下周计划”的 30dp 小胶囊从透明改成填充主色；卡片大标题、状态说明与通栏主按钮仍固定属于本周。周末回读完成本周后，本周仍是视觉主角，下周只是卡片下半部分的次要行，用户感知不到“接下来该准备下周”。
+- **裁决（2026-11-23，对话中用户选定并授权规格回写）**：以“本周计划状态 = COMPLETED”为唯一切换条件，首页计划卡整体交换主次——下周计划升为主区块（大标题、状态说明、通栏主按钮），本周计划降为次要行（仍可预览/重印）。不按日期/周末判断；周一自然翻周后 focus 随新窗口重新计算。
+- **落地**：
+  - 新增 `app/.../HomePlanPresentation.kt`：`homePlanFocus`、`PlanWeek.title`、主/次按钮文案与按周区分的状态说明。
+  - `AppRoot.PlanHeroCard` 拆为 `PlanPrimaryBlock` / `PlanSecondaryRow`，按 focus 选择 primary/secondary；`CompactPlanAction` 删除 `primary` 参数，次区块固定为 30dp 文本胶囊。
+  - 本周 COMPLETED 且下周未生成时，主区块说明为“本周计划已完成，提前生成并打印下周计划。”。
+- **测试/证据**：
+  - JVM：新增 `HomePlanPresentationTest`（focus、标题、按钮文案、状态说明）；`./gradlew test verifyCorePurity :app:assembleDebug` 通过。
+  - 实体机 VKJ-AN00（release 包覆盖安装保留数据）：本周 GENERATED / 下周 GENERATED → 本周为主（`evidence/screens/homefocus-01-current-primary.png`）；本周 COMPLETED / 下周 GENERATED → 下周为主、本周“已完成”+“预览本周计划”（`homefocus-03-next-primary.png`）；本周 COMPLETED / 下周无 → 下周“未生成”+“生成下周计划”通栏，说明承接“本周已完成”（`homefocus-04-next-empty.png`）。
+  - 测试后已恢复设备原数据并装回 release 包（`homefocus-05-restored.png`）。
+- **规格同步**：已按 2026-11-23 用户授权回写 `app.md`（Home 行）与 `planning.md`（C-099 小节的首页呈现）。
+- **用户可见变化**：本周最后一页确认提交后，首页主卡直接变成“下周计划”，通栏按钮是“生成/预览并打印下周计划”；本周计划退到卡片下半部分，带“已完成”胶囊，仍可点“预览本周计划”。工作日提前完成同样会切换；周末但本周未读完时不会切换，首页仍提醒本周补回读。
+- **遗留**：只有本周 COMPLETED 才切换；若本周未回读完成，即使日期已到周末也不切换，这是刻意保留“提醒补回读”的行为。
 
 ## 已裁决但待验证（非新冲突）
 

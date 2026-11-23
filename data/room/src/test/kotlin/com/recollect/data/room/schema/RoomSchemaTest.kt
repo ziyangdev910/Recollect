@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/10.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/12.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,7 +39,7 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(10, database.required("version").asInt(), "schema 版本")
+        assertEquals(12, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
@@ -57,9 +57,10 @@ class RoomSchemaTest {
                 "knowledge_number_sequence",
                 "plan",
                 "source_tag",
+                "app_settings",
             ),
             entities.keys,
-            "v10 应落 data-model.md 已定义的 14 个实体（含来源标签库）",
+            "v12 应落 data-model.md 已定义的 15 个实体（含来源标签库与每日复习时长设置）",
         )
 
         assertTable(
@@ -276,6 +277,7 @@ class RoomSchemaTest {
                 "printedAt" to Column("INTEGER", false),
                 "supersededBy" to Column("TEXT", false),
                 "renderMeta" to Column("TEXT", true),
+                "deferred" to Column("TEXT", true),
             ),
             primaryKey = listOf("planId"),
             autoGenerate = false,
@@ -293,6 +295,16 @@ class RoomSchemaTest {
             indices = mapOf(
                 "index_source_tag_name" to IndexSpec(listOf("name"), unique = true),
             ),
+        )
+
+        assertTable(
+            table = "app_settings",
+            columns = mapOf(
+                "id" to Column("INTEGER", true),
+                "dailyReviewMinutes" to Column("INTEGER", true),
+            ),
+            primaryKey = listOf("id"),
+            autoGenerate = false,
         )
 
         // C-050：两个状态字段必须落库为 Float（schema 中为 REAL），不得退化为 REAL 以外类型。

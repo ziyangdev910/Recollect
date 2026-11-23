@@ -160,6 +160,9 @@ class GeneratePlanUseCase(
         }
         val warnings = mergePlanWarnings(pagination.warnings, textWarnings)
         val previewWarnings = warnings.toPreviewWarnings(questionNumbers)
+        // 推迟项与计划头一起冻结：下次“查看并打印本周计划”仍能说明哪些题没排入。
+        val deferredPreview = planResult.deferred.map { it.toPreviewDeferred(questionNumbers, sourcePages) }
+        val deferredRecords = planResult.deferred.map { it.toDeferredRecord(questionNumbers, sourcePages) }
 
         if (pagination.pages.isEmpty()) {
             // C-060：整份计划没有可打印题目 → 空态或提示，不生成空白页、不写库。
@@ -170,6 +173,7 @@ class GeneratePlanUseCase(
                     NO_PRINTABLE_ITEM_MESSAGE
                 },
                 warnings = previewWarnings,
+                deferred = deferredPreview,
             )
         }
 
@@ -196,6 +200,7 @@ class GeneratePlanUseCase(
             scheduledDates = scheduledDates,
             coolingEventIdsToConsume = consumedOverrideIds,
             deferred = planResult.deferred,
+            deferredRecords = deferredRecords,
             geometryByPage = geometryByPage,
             weekStartDate = settings.planStartDate,
             weekEndDate = settings.planEndDate,
@@ -218,12 +223,17 @@ class GeneratePlanUseCase(
                     PlanPreviewPage(
                         pageNumber = page.pageNumber,
                         date = page.date,
-                        questionNumbers = page.items.map {
-                            questionNumbers[it.questionId] ?: UNKNOWN_QUESTION_NUMBER
+                        questionLabels = page.items.map { item ->
+                            formatQuestionLabel(
+                                sourcePage = sourcePages[item.questionId].orEmpty(),
+                                questionNumber = questionNumbers[item.questionId]
+                                    ?: UNKNOWN_QUESTION_NUMBER,
+                            )
                         },
                     )
                 },
                 warnings = previewWarnings,
+                deferred = deferredPreview,
             ),
         )
     }
@@ -253,7 +263,6 @@ class GeneratePlanUseCase(
         const val MAX_KNOWLEDGE_LINES = 4
         const val MAX_ATTACHMENTS = 3
         const val KNOWLEDGE_NAME_FONT_MM = 3.2
-        const val UNKNOWN_QUESTION_NUMBER = "未知题号"
         const val EMPTY_PLAN_MESSAGE = "当前没有需要复习的题目；先录入题目和知识点，再来生成计划。"
         const val NO_PRINTABLE_ITEM_MESSAGE = "本计划没有可打印的题目；请按下方提示调整后重试。"
         const val KNOWLEDGE_TEXT_OVERFLOW_MESSAGE =
