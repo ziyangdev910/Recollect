@@ -1,5 +1,9 @@
 package com.recollect.app
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -8,12 +12,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +28,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -100,7 +111,7 @@ import kotlinx.coroutines.launch
  * 本阶段提供 Home → Entry → PlanPreview 的首个可跑纵切；其余路由保持占位。
  * [container] 由 `MainActivity` 注入，屏幕级 ViewModel 从这里取 Repository/UseCase。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AppRoot(
     container: AppContainer,
@@ -114,6 +125,26 @@ fun AppRoot(
     // 页面 push 后 BackHandler 才会被启用，pop 回根路由后再交还系统。
     val current = navigator.current
     val canPop = navigator.canPop
+
+    // 录入/编辑题目页的表单用 `imePadding` 自己避让键盘（保留顶栏）；系统默认会把整个
+    // 窗口平移（本机解析为 adjustPan），与表单的 imePadding 叠加后会在输入框下方留下
+    // 一大块空白。因此只在该页显式要求 adjustResize（不让系统平移）；其余页面没有做
+    // IME 避让，保持系统默认的 adjustPan，由系统把获得焦点的输入框平移进可见区域。
+    // 只改 adjust 位，保留系统设置的其他状态位。
+    val hostView = LocalView.current
+    LaunchedEffect(current) {
+        val window = hostView.context.findHostActivity()?.window ?: return@LaunchedEffect
+        val adjustMask = WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
+        val currentMode = window.attributes.softInputMode
+        val desiredAdjust = if (current is AppRoute.QuestionEdit) {
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        } else {
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+        }
+        if (currentMode and adjustMask != desiredAdjust) {
+            window.setSoftInputMode((currentMode and adjustMask.inv()) or desiredAdjust)
+        }
+    }
 
     // 根路由时不拦截系统返回，交给 Activity 默认结束进程级页面。
     BackHandler(enabled = canPop) {
@@ -293,240 +324,259 @@ fun AppRoot(
     }
 
     MaterialTheme {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(routeTitle(current)) },
-                    navigationIcon = {
-                        if (canPop) {
-                            IconButton(onClick = { navigator.pop() }) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_arrow_back),
-                                    contentDescription = "返回",
-                                )
-                            }
-                        }
-                    },
-                    // 2026-11-22 用户要求：主界面导航栏右侧提供「导入数据库」「导出数据库」
-                    // 入口，标签文字在左、对应语义图标固定在标签最右侧。
-                    actions = {
-                        if (current == AppRoute.Home) {
-                            // 2026-11-22 用户要求：导入与导出的图标互换
-                            // （导入用原导出图形、导出用原导入图形）。
-                            TextButton(
-                                onClick = { importPicker.launch(IMPORT_MIME_TYPES) },
-                            ) {
-                                Text("导入数据库")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_export),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                            TextButton(onClick = { navigator.push(AppRoute.Backup) }) {
-                                Text("导出数据库")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_import),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                    },
+        // 所有手动输入文本框统一处理：Compose 的光标/选区手柄是独立窗口里的 Popup，
+        // 只在创建时按输入框当时的位置锚定一次；键盘弹出后输入框被系统整窗平移或由
+        // imePadding 滚动带起，手柄不会跟着移动，会孤零零地停在旧位置。键盘可见期间
+        // 把手柄设为透明（光标、选区高亮、输入与拖动仍正常），键盘收起后恢复显示。
+        val imeVisible = WindowInsets.isImeVisible
+        val baseSelectionColors = LocalTextSelectionColors.current
+        val selectionColors = remember(baseSelectionColors, imeVisible) {
+            if (!imeVisible) {
+                baseSelectionColors
+            } else {
+                TextSelectionColors(
+                    handleColor = Color.Transparent,
+                    backgroundColor = baseSelectionColors.backgroundColor,
                 )
-            },
-        ) { padding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                when (val route = current) {
-                    AppRoute.Home -> HomeScreen(
-                        thisWeekPlanStatus = thisWeekPlanStatus,
-                        thisWeekStart = thisWeekStart,
-                        thisWeekEnd = thisWeekEnd,
-                        nextWeekPlanStatus = nextWeekPlanStatus,
-                        nextWeekStart = nextWeekStart,
-                        nextWeekEnd = nextWeekEnd,
-                        questionCount = questionCount,
-                        knowledgeCount = knowledgeCount,
-                        overdueCount = overdueCount,
-                        dueWithinWeekCount = dueWithinWeekCount,
-                        dailyReviewMinutes = dailyReviewMinutes,
-                        versionName = container.appVersionName,
-                        onSaveDailyReviewMinutes = saveDailyReviewMinutes,
-                        onEntry = { navigator.push(AppRoute.Entry) },
-                        onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
-                        onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
-                        onManageSources = { navigator.push(AppRoute.SourceTags) },
-                        onProgress = { navigator.push(AppRoute.Progress) },
-                        onPlanPreview = openPlanPreview,
-                        onScan = { navigator.push(AppRoute.Scan) },
-                        onAbout = { navigator.push(AppRoute.About) },
+            }
+        }
+        CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text(routeTitle(current)) },
+                        navigationIcon = {
+                            if (canPop) {
+                                IconButton(onClick = { navigator.pop() }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_arrow_back),
+                                        contentDescription = "返回",
+                                    )
+                                }
+                            }
+                        },
+                        // 2026-11-22 用户要求：主界面导航栏右侧提供「导入数据库」「导出数据库」
+                        // 入口，标签文字在左、对应语义图标固定在标签最右侧。
+                        actions = {
+                            if (current == AppRoute.Home) {
+                                // 2026-11-22 用户要求：导入与导出的图标互换
+                                // （导入用原导出图形、导出用原导入图形）。
+                                TextButton(
+                                    onClick = { importPicker.launch(IMPORT_MIME_TYPES) },
+                                ) {
+                                    Text("导入数据库")
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_export),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                TextButton(onClick = { navigator.push(AppRoute.Backup) }) {
+                                    Text("导出数据库")
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_import),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                        },
                     )
-
-                    AppRoute.Entry -> {
-                        // 导入成功时 markNeedsRefresh 已置位；当前正停留题库页时也立即重读。
-                        LaunchedEffect(dataRevision) { entryViewModel.refreshIfNeeded() }
-                        EntryScreen(
-                            viewModel = entryViewModel,
-                            listState = entryListState,
-                            onCreatePlan = { openPlanPreview(PlanWeek.CURRENT) },
+                },
+            ) { padding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
+                    when (val route = current) {
+                        AppRoute.Home -> HomeScreen(
+                            thisWeekPlanStatus = thisWeekPlanStatus,
+                            thisWeekStart = thisWeekStart,
+                            thisWeekEnd = thisWeekEnd,
+                            nextWeekPlanStatus = nextWeekPlanStatus,
+                            nextWeekStart = nextWeekStart,
+                            nextWeekEnd = nextWeekEnd,
+                            questionCount = questionCount,
+                            knowledgeCount = knowledgeCount,
+                            overdueCount = overdueCount,
+                            dueWithinWeekCount = dueWithinWeekCount,
+                            dailyReviewMinutes = dailyReviewMinutes,
+                            versionName = container.appVersionName,
+                            onSaveDailyReviewMinutes = saveDailyReviewMinutes,
+                            onEntry = { navigator.push(AppRoute.Entry) },
                             onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
-                            onEditQuestion = { questionId ->
-                                navigator.push(AppRoute.QuestionEdit(questionId))
-                            },
+                            onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
+                            onManageSources = { navigator.push(AppRoute.SourceTags) },
+                            onProgress = { navigator.push(AppRoute.Progress) },
+                            onPlanPreview = openPlanPreview,
+                            onScan = { navigator.push(AppRoute.Scan) },
+                            onAbout = { navigator.push(AppRoute.About) },
                         )
-                    }
 
-                    is AppRoute.QuestionEdit -> {
-                        val viewModel = remember(container, route.questionId) {
-                            QuestionEditViewModel(
-                                repository = container.entryRepository,
-                                libraryRepository = container.knowledgePointLibraryRepository,
-                                categoryRepository = container.knowledgeCategoryRepository,
-                                sourceTagRepository = container.sourceTagLibraryRepository,
-                            )
-                        }
-                        // 来源标签库与知识点标签库都在录入页内以全屏窗口打开：
-                        // 不离开当前页面，未保存的表单内容不会丢失。
-                        val sourceTagViewModel = remember(container) {
-                            SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
-                        }
-                        val knowledgePointViewModel = remember(container) {
-                            KnowledgePointLibraryViewModel(
-                                repository = container.knowledgePointLibraryRepository,
-                                categoryRepository = container.knowledgeCategoryRepository,
-                            )
-                        }
-                        QuestionEditScreen(
-                            viewModel = viewModel,
-                            sourceTagViewModel = sourceTagViewModel,
-                            knowledgePointViewModel = knowledgePointViewModel,
-                            questionId = route.questionId,
-                            onSaved = {
-                                // 保存后返回题库：静默更新列表数据，但不重置滚动位置。
-                                entryViewModel.markNeedsRefresh()
-                                navigator.pop()
-                            },
-                        )
-                    }
-
-                    AppRoute.KnowledgePoints -> {
-                        // 导入成功后重建并重读标签库，打开该页即显示新数据。
-                        val viewModel = remember(container, dataRevision) {
-                            KnowledgePointLibraryViewModel(
-                                repository = container.knowledgePointLibraryRepository,
-                                categoryRepository = container.knowledgeCategoryRepository,
-                            )
-                        }
-                        KnowledgePointLibraryScreen(viewModel)
-                    }
-
-                    AppRoute.SourceTags -> {
-                        val viewModel = remember(container, dataRevision) {
-                            SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
-                        }
-                        SourceTagLibraryScreen(viewModel)
-                    }
-
-                    AppRoute.Progress -> {
-                        val viewModel = remember(container, dataRevision) {
-                            ReviewProgressViewModel(
-                                repository = container.reviewProgressRepository,
-                                clock = container.clock,
-                            )
-                        }
-                        ReviewProgressScreen(viewModel)
-                    }
-
-                    AppRoute.PlanPreview -> PlanPreviewScreen(
-                        viewModel = planPreviewViewModel,
-                        planWeek = planPreviewWeek,
-                        onPrint = { navigator.push(AppRoute.Print) },
-                    )
-
-                    AppRoute.Print -> {
-                        val input = container.printPlanSession.latest?.toPrintPlanInput()
-                        val viewModel = remember(container, input, printLauncher) {
-                            PrintPlanViewModel(
-                                input = input,
-                                launcher = printLauncher,
-                                snapshotWriter = container.printSnapshotWriter,
-                            )
-                        }
-                        PrintPlanScreen(viewModel)
-                    }
-
-                    AppRoute.Scan -> {
-                        val viewModel = remember(container) {
-                            ScanViewModel(
-                                runner = container.scanRunner,
-                                manualEntry = container.scanManualEntry,
-                                repository = container.scanSessionRepository,
-                                clock = container.clock,
-                            )
-                        }
-                        ScanScreen(
-                            viewModel = viewModel,
-                            onOpenConfirm = { sessionId ->
-                                navigator.push(AppRoute.Confirm(sessionId))
-                            },
-                        )
-                    }
-
-                    AppRoute.Backup -> {
-                        val viewModel = remember(container) {
-                            BackupViewModel(
-                                exporter = container.databaseExporter,
-                                sharer = container.backupSharer,
-                            )
-                        }
-                        BackupScreen(viewModel)
-                    }
-
-                    AppRoute.About -> AboutScreen(
-                        appName = "拾知",
-                        versionName = container.appVersionName,
-                    )
-
-                    is AppRoute.Confirm -> {
-                        val viewModel = remember(container, route.sessionId) {
-                            ConfirmViewModel(
-                                sessionId = route.sessionId,
-                                scanSessionRepository = container.scanSessionRepository,
-                                feedbackRepository = container.feedbackRepository,
-                                knowledgePointRepository = container.knowledgePointRepository,
-                                questionRepository = container.questionRepository,
-                                submitter = ConfirmSubmitter { sessionId, decisions ->
-                                    container.applyFeedbackUseCase.execute(sessionId, decisions)
+                        AppRoute.Entry -> {
+                            // 导入成功时 markNeedsRefresh 已置位；当前正停留题库页时也立即重读。
+                            LaunchedEffect(dataRevision) { entryViewModel.refreshIfNeeded() }
+                            EntryScreen(
+                                viewModel = entryViewModel,
+                                listState = entryListState,
+                                onCreatePlan = { openPlanPreview(PlanWeek.CURRENT) },
+                                onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
+                                onEditQuestion = { questionId ->
+                                    navigator.push(AppRoute.QuestionEdit(questionId))
                                 },
-                                clock = container.clock,
                             )
                         }
-                        ConfirmScreen(viewModel)
-                    }
 
-                    else -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(routeTitle(route))
+                        is AppRoute.QuestionEdit -> {
+                            val viewModel = remember(container, route.questionId) {
+                                QuestionEditViewModel(
+                                    repository = container.entryRepository,
+                                    libraryRepository = container.knowledgePointLibraryRepository,
+                                    categoryRepository = container.knowledgeCategoryRepository,
+                                    sourceTagRepository = container.sourceTagLibraryRepository,
+                                )
+                            }
+                            // 来源标签库与知识点标签库都在录入页内以全屏窗口打开：
+                            // 不离开当前页面，未保存的表单内容不会丢失。
+                            val sourceTagViewModel = remember(container) {
+                                SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
+                            }
+                            val knowledgePointViewModel = remember(container) {
+                                KnowledgePointLibraryViewModel(
+                                    repository = container.knowledgePointLibraryRepository,
+                                    categoryRepository = container.knowledgeCategoryRepository,
+                                )
+                            }
+                            QuestionEditScreen(
+                                viewModel = viewModel,
+                                sourceTagViewModel = sourceTagViewModel,
+                                knowledgePointViewModel = knowledgePointViewModel,
+                                questionId = route.questionId,
+                                onSaved = {
+                                    // 保存后返回题库：静默更新列表数据，但不重置滚动位置。
+                                    entryViewModel.markNeedsRefresh()
+                                    navigator.pop()
+                                },
+                            )
+                        }
+
+                        AppRoute.KnowledgePoints -> {
+                            // 导入成功后重建并重读标签库，打开该页即显示新数据。
+                            val viewModel = remember(container, dataRevision) {
+                                KnowledgePointLibraryViewModel(
+                                    repository = container.knowledgePointLibraryRepository,
+                                    categoryRepository = container.knowledgeCategoryRepository,
+                                )
+                            }
+                            KnowledgePointLibraryScreen(viewModel)
+                        }
+
+                        AppRoute.SourceTags -> {
+                            val viewModel = remember(container, dataRevision) {
+                                SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
+                            }
+                            SourceTagLibraryScreen(viewModel)
+                        }
+
+                        AppRoute.Progress -> {
+                            val viewModel = remember(container, dataRevision) {
+                                ReviewProgressViewModel(
+                                    repository = container.reviewProgressRepository,
+                                    clock = container.clock,
+                                )
+                            }
+                            ReviewProgressScreen(viewModel)
+                        }
+
+                        AppRoute.PlanPreview -> PlanPreviewScreen(
+                            viewModel = planPreviewViewModel,
+                            planWeek = planPreviewWeek,
+                            onPrint = { navigator.push(AppRoute.Print) },
+                        )
+
+                        AppRoute.Print -> {
+                            val input = container.printPlanSession.latest?.toPrintPlanInput()
+                            val viewModel = remember(container, input, printLauncher) {
+                                PrintPlanViewModel(
+                                    input = input,
+                                    launcher = printLauncher,
+                                    snapshotWriter = container.printSnapshotWriter,
+                                    pdfSharer = container.planPdfSharer,
+                                )
+                            }
+                            PrintPlanScreen(viewModel)
+                        }
+
+                        AppRoute.Scan -> {
+                            val viewModel = remember(container) {
+                                ScanViewModel(
+                                    runner = container.scanRunner,
+                                    manualEntry = container.scanManualEntry,
+                                    repository = container.scanSessionRepository,
+                                    clock = container.clock,
+                                )
+                            }
+                            ScanScreen(
+                                viewModel = viewModel,
+                                onOpenConfirm = { sessionId ->
+                                    navigator.push(AppRoute.Confirm(sessionId))
+                                },
+                            )
+                        }
+
+                        AppRoute.Backup -> {
+                            val viewModel = remember(container) {
+                                BackupViewModel(
+                                    exporter = container.databaseExporter,
+                                    sharer = container.backupSharer,
+                                )
+                            }
+                            BackupScreen(viewModel)
+                        }
+
+                        AppRoute.About -> AboutScreen(
+                            appName = "拾知",
+                            versionName = container.appVersionName,
+                        )
+
+                        is AppRoute.Confirm -> {
+                            val viewModel = remember(container, route.sessionId) {
+                                ConfirmViewModel(
+                                    sessionId = route.sessionId,
+                                    scanSessionRepository = container.scanSessionRepository,
+                                    feedbackRepository = container.feedbackRepository,
+                                    knowledgePointRepository = container.knowledgePointRepository,
+                                    questionRepository = container.questionRepository,
+                                    submitter = ConfirmSubmitter { sessionId, decisions ->
+                                        container.applyFeedbackUseCase.execute(sessionId, decisions)
+                                    },
+                                    clock = container.clock,
+                                )
+                            }
+                            ConfirmScreen(viewModel)
+                        }
+
+                        else -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(routeTitle(route))
+                        }
                     }
                 }
             }
-        }
 
-        // 覆盖确认与失败提示叠加在任意当前页之上；成功不弹窗，只显示带对勾的 Toast。
-        ImportDialogs(
-            state = importViewModel.state,
-            onConfirm = { importScope.launch { importViewModel.confirm() } },
-            onCancel = { importViewModel.cancel() },
-            onDismissError = { importViewModel.dismissError() },
-        )
+            // 覆盖确认与失败提示叠加在任意当前页之上；成功不弹窗，只显示带对勾的 Toast。
+            ImportDialogs(
+                state = importViewModel.state,
+                onConfirm = { importScope.launch { importViewModel.confirm() } },
+                onCancel = { importViewModel.cancel() },
+                onDismissError = { importViewModel.dismissError() },
+            )
+        }
     }
 }
 
@@ -1182,4 +1232,11 @@ private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Settings -> "设置"
     AppRoute.Backup -> "导出数据库"
     AppRoute.About -> "关于"
+}
+
+/** 取承载 Compose 的 Activity：`LocalView.context` 可能被主题等逐层包装，需要解包。 */
+private tailrec fun Context.findHostActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findHostActivity()
+    else -> null
 }

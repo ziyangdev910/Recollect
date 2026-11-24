@@ -72,6 +72,15 @@ fun PrintPlanScreen(viewModel: PrintPlanViewModel) {
                     Text("打开系统打印")
                 }
 
+                // 直接分享生成的 PDF（微信、QQ 等）；成功后与「已打印」一样记录打印快照。
+                OutlinedButton(
+                    onClick = { scope.launch { viewModel.sharePdf() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.pdfSharing,
+                ) {
+                    Text(if (state.pdfSharing) "正在生成 PDF…" else "分享 PDF")
+                }
+
                 state.message?.let { message ->
                     Text(
                         text = message,

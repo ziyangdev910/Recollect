@@ -64,7 +64,7 @@ data class PrintJob(
 - **条目整条移至下页时**，不绘制“续下页”文本，也不画框；分页结果中的 `continuationMarkers` 仅作内部元数据（C-063）。
 - 渲染器不得在 `onLayout`/`onWrite` 中临时压缩行高来"塞下"条目；放不下就是放不下，由 `PagePlanner` 决定移页或溢出。
 - 打印前由计划层把本页的 `PlanPage.questionIds` 与 `PlanPage.knowledgeRows`（行快照 + trigger 标记）写入数据库，并把每道题的 `Question.lastScheduledDate` 写为该题的目标日；没有快照的旧稿不得按当前关联重算，回读/确认时阻断并提示重新生成计划、按新稿打印（C-009/C-015/C-033 方案一、C-072 方案 A）。
-- 打印文档写出成功后，App 内必须显示「已打印 / 未打印」确认（C-094 方案 B）；只有用户点「已打印」才写 `Question.pageId` 与 `Question.qrPayload`（最近一次打印快照），点「未打印」或直接离开则不写。快照写入还必须校验计划仍为当前计划（GENERATED/PRINTED）：已被“重新生成本周计划”替代的 SUPERSEDED 计划不得覆盖最新快照，并提示未更新（C-097）。系统 `onWrite` 只代表文档生成，不代表纸张打印完成；打印失败不写（C-033 方案一）。
+- 打印文档写出成功后，App 内必须显示「已打印 / 未打印」确认（C-094 方案 B）；只有用户点「已打印」才写 `Question.pageId` 与 `Question.qrPayload`（最近一次打印快照），点「未打印」或直接离开则不写。快照写入还必须校验计划仍为当前计划（GENERATED/PRINTED）：已被“重新生成本周计划”替代的 SUPERSEDED 计划不得覆盖最新快照，并提示未更新（C-097）。系统 `onWrite` 只代表文档生成，不代表纸张打印完成；打印失败不写（C-033 方案一）。「分享 PDF」使用同一份 `PrintLayout` 与 `PrintPdfWriter` 生成缓存文件并经 `FileProvider` 打开系统分享面板；分享成功后同样写入 `Question.pageId/qrPayload` 并标记计划 PRINTED（与「已打印」同一回写入口），计划已被替代时不更新并提示（2026-11-24 用户要求）。
 - `PlanPage` 已在 `feature/planning` 持久化；打印层不重复写。
 
 ## 验收（C-029 方案一：真机/模拟器上的引擎回读）

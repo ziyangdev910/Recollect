@@ -26,7 +26,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import org.ziyangdev910.recollect.R
 
@@ -34,10 +40,15 @@ import org.ziyangdev910.recollect.R
 private const val AUTHOR = "@ziyangdev910"
 private const val REPOSITORY_URL = "https://github.com/ziyangdev910/recollect"
 
+/** 致谢中论文引用的 DOI 解析地址；DOI 文本可点击在系统浏览器打开。 */
+private const val DOI_URL = "https://doi.org/10.1109/TKDE.2023.3251721"
+private const val DOI_LABEL = "doi: 10.1109/TKDE.2023.3251721"
+
 /**
  * 「关于」页（首页底部信息图标入口）。
  *
- * 展示应用图标、名称、版本号、作者、开源仓库与简要功能说明。
+ * 展示应用图标、名称、版本号、作者、开源仓库、简要功能说明与致谢（记忆调度算法
+ * 的学术来源）。
  * 不申请任何新权限，仓库链接通过系统浏览器打开。
  */
 @Composable
@@ -108,6 +119,59 @@ fun AboutScreen(
                     text = "计划按知识点调度，支持掌握度追踪、每日复习时长设置、" +
                         "知识点与题目来源标签管理，以及数据库的导入与导出。全程离线运行，" +
                         "识别与计划生成都在设备本地完成。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "致谢",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "本项目的记忆调度算法在思想上受到了 Jingyong Su 等人提出的 " +
+                        "SSP-MMC-Plus 工作的启发。该算法的具体逻辑与评估方法，请参阅其论文：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+                // 引用中的 DOI 做成可点击链接：点按后用系统浏览器打开 doi.org 解析地址。
+                val citation = buildAnnotatedString {
+                    append(
+                        "J. Su, J. Ye, L. Nie, Y. Cao and Y. Chen, \"Optimizing Spaced Repetition " +
+                            "Schedule by Capturing the Dynamics of Memory,\" in IEEE Transactions on " +
+                            "Knowledge and Data Engineering, vol. 35, no. 10, pp. 10085-10097, " +
+                            "1 Oct. 2023, ",
+                    )
+                    withLink(
+                        LinkAnnotation.Url(
+                            url = DOI_URL,
+                            styles = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = colors.primary,
+                                    textDecoration = TextDecoration.Underline,
+                                ),
+                            ),
+                            linkInteractionListener = { uriHandler.openUri(DOI_URL) },
+                        ),
+                    ) {
+                        append(DOI_LABEL)
+                    }
+                    append(".")
+                }
+                Text(
+                    text = citation,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+                Text(
+                    text = "本项目的实现为基于论文描述的独立编写，未复制或改编原项目的源代码。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurfaceVariant,
                 )

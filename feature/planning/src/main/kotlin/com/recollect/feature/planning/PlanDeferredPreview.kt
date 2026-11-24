@@ -17,9 +17,9 @@ internal fun DeferReason.previewLabel(): String = when (this) {
 
 internal fun DeferReason.previewMessage(): String = when (this) {
     DeferReason.COOLING ->
-        "上次复习后仍在 7 天冷却期内，该知识点到期日已顺延 1 天。"
+        "该知识点上次复习后仍在7天冷却期内，到期日已顺延1天。"
     DeferReason.TIME_OVERFLOW ->
-        "请缩短预估复习时长或重新生成计划。"
+        "请缩短本题预估复习时长或延长每日复习时长，重新生成计划。"
     DeferReason.UNRESOLVED_KNOWLEDGE ->
         "请检查并重新关联知识点。"
 }

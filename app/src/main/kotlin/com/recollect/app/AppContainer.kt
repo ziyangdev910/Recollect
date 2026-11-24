@@ -47,6 +47,7 @@ import com.recollect.feature.planning.GeneratePlanUseCase
 import com.recollect.feature.planning.LoadPlanUseCase
 import com.recollect.feature.planning.PlanSession
 import com.recollect.feature.print.AndroidKnowledgeTextMeasurer
+import com.recollect.feature.print.PlanPdfSharer
 import com.recollect.feature.print.PrintSnapshotWriteResult
 import com.recollect.feature.print.PrintSnapshotWriter
 import com.recollect.feature.print.PrintedQuestionSnapshot
@@ -115,6 +116,9 @@ class AppContainer(context: Context) {
 
     /** 导出后的系统分享；`FileProvider` 与 `Intent` 只停留在 app 层（R-03）。 */
     val backupSharer: BackupSharer by lazy { AndroidBackupSharer(applicationContext) }
+
+    /** 周计划 PDF 的系统分享（微信、QQ 等）；与备份分享同一套 `FileProvider`（R-03）。 */
+    val planPdfSharer: PlanPdfSharer by lazy { AndroidPlanPdfSharer(applicationContext) }
 
     /** 覆盖式导入：解析、校验与单事务恢复都在 data:room，app 层只负责装配。 */
     val databaseImporter: DatabaseImporter by lazy {

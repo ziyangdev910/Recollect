@@ -227,7 +227,9 @@ class GeneratePlanUseCaseTest {
         assertEquals("q-2", deferred.questionId)
         assertEquals("P10-第T-2题", deferred.questionLabel, "推迟题与页面卡片用同一题目标识")
         assertEquals("复习时间不足", deferred.label, "界面只用中文标签")
-        assertTrue(deferred.message.contains("缩短预估复习时长"), "界面给出可执行的调整建议")
+        assertTrue(deferred.message.contains("缩短本题预估复习时长"), "界面给出缩短单题时长的建议")
+        assertTrue(deferred.message.contains("延长每日复习时长"), "界面给出延长每日时长的建议")
+        assertTrue(deferred.message.contains("重新生成计划"), "界面提示重新生成计划")
         assertEquals(
             listOf(
                 com.recollect.data.room.repository.PlanDeferredRecord(

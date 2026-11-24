@@ -99,12 +99,12 @@ sealed interface UiState<out T> {
 > 警告代码（`PaginationWarningCode`）只给程序/日志使用；PlanPreview 必须把代码映射为中文标签，并展示给用户看的 `message`，不得直接显示枚举名（C-065 方案 B）。`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并与分页警告合并（C-064 方案 A）。
 >
 > 题目标识统一为「页码-第X题」（X 为题号；无来源页码时只显示「第X题」），同时用于计划页面卡片与“未排入计划”卡片，避免不同来源页上的相同题号无法区分。推迟卡片读 `PlanPreviewDeferred`：生成时随 `plan.deferred` 冻结 `questionId/题号/来源页码/原因`，重开计划从快照重建；旧快照缺来源页码时从当前题库兜底补齐展示（不改写快照）。
-| Print | 由 PlanPreview 进入；系统打印适配器、文档生成后的结果确认 | 打印中、失败、等待「已打印/未打印」确认；确认「已打印」后只为当前计划写 pageId/QR，SUPERSEDED 计划不写（C-094 方案 B、C-097） |
+| Print | 由 PlanPreview 进入；系统打印适配器、文档生成后的结果确认；「分享 PDF」把同一份 A4 布局写成缓存 PDF 并打开系统分享面板（微信、QQ 等），分享成功后与「已打印」一样写入 pageId/QR 并把 GENERATED 计划标记为 PRINTED（2026-11-24 用户要求） | 打印中、失败、等待「已打印/未打印」确认、PDF 生成中、分享失败；确认「已打印」或分享成功后只为当前计划写 pageId/QR，SUPERSEDED 计划不写（C-094 方案 B、C-097） |
 | Scan | 相机/相册、当前 `ScanSession`、已扫页 | 一页一拍、`PAGE_*` 错误、重复页提示 |
 | Confirm | plan 级多页确认、批次实际复习日期、逐行决策 | `UNMARKED`、`LATE_BATCH`、未来日期行只能 NOT_REVIEWED |
 | Settings | 每日分钟、计划周、扫描窗口、保留策略 | 见 `settings.md` |
 | Backup | 由 Home 顶部导航栏右侧「导出数据库」进入（标签右侧图标与导入互换后显示上传图形，2026-11-22 用户要求）；页面展示导出说明，主按钮「导出并分享」生成 JSON 后打开系统分享面板，导出完成后展示文件名、大小、备份格式版本与分享结果（不展示导出范围与各实体行数，2026-11-22 用户要求）；分享失败可只重试分享。导入入口为同一导航栏「导出数据库」左侧的「导入数据库」（图标互换后显示下载图形）：SAF 选文件或系统「用其他方式打开」json 文件，校验合法后弹「将覆盖当前数据，是否继续？」，确认后覆盖并以带对勾 Toast 提示「导入成功」，同时刷新首页/题库/知识点/来源/复习进度/计划预览的数据缓存 | 见 `backup.md` 的导出/导入状态机（`IDLE → EXPORTING → EXPORTED/ERROR`；`IDLE → READING → CONFIRMING → IMPORTING → SUCCESS/ERROR`） |
-| About | 由 Home 底部信息图标「关于」进入（`AppRoute.About`，顶部标题「关于」）：展示应用图标、名称「拾知」、版本号、作者 `@ziyangdev910`、开源仓库 `https://github.com/ziyangdev910/recollect`（可点击在系统浏览器打开）与简要功能说明；只读，不申请新权限（2026-11-23 用户要求） | 版本号读取失败（显示 `unknown`） |
+| About | 由 Home 底部信息图标「关于」进入（`AppRoute.About`，顶部标题「关于」）：展示应用图标、名称「拾知」、版本号、作者 `@ziyangdev910`、开源仓库 `https://github.com/ziyangdev910/recollect`（可点击在系统浏览器打开）与简要功能说明；底部「致谢」卡片说明记忆调度算法在思想上受 Jingyong Su 等人提出的 SSP-MMC-Plus 工作启发，附论文完整引用（J. Su, J. Ye, L. Nie, Y. Cao and Y. Chen, "Optimizing Spaced Repetition Schedule by Capturing the Dynamics of Memory," IEEE Transactions on Knowledge and Data Engineering, vol. 35, no. 10, pp. 10085-10097, 1 Oct. 2023, doi: 10.1109/TKDE.2023.3251721（DOI 可点击在系统浏览器打开）），并声明实现为基于论文描述的独立编写、未复制或改编原项目源代码；只读，不申请新权限（2026-11-23 用户要求；致谢栏目 2026-11-24 用户要求） | 版本号读取失败（显示 `unknown`） |
 
 ## 权限与文件
 
@@ -134,6 +134,7 @@ sealed interface UiState<out T> {
 - Home → SourceTags：首页快捷操作 2×2 右下方的「管理题目来源」卡片进入独立的来源标签页（`AppRoute.SourceTags`，顶部标题「来源标签」），返回首页由全局返回栈处理；从该页返回后再进入 Entry/QuestionEdit 时会重新读取来源候选。
 - Home → PlanPreview：本周或下周已有 GENERATED/PRINTED/COMPLETED 计划时进入预览复用同一计划号；不会再次点击首页按钮就生成新计划。只有预览页的“重新生成本周计划/重新生成下周计划”经确认后才生成新计划号并替代该窗口的旧计划（C-097/C-098）。
 - 打印确认：App 内“已记录本次打印”只在计划仍为当前计划时出现；若计划已被重新生成替代，显示“本次计划已被新的计划替代，未更新打印快照。”
+- 分享 PDF：系统分享面板打开即视为文档已导出，按与「已打印」相同的入口写入 pageId/QR 并标记 PRINTED；计划已被替代时仍生成文件，但提示“未更新打印快照”，首页状态不变（2026-11-24 用户要求）。
 - PlanPreview → Print → 返回 PlanPreview 复用同一份计划，不重新生成、计划号不变；只有再次从 Home/Entry 点击某个窗口的生成入口才生成新计划。
 - 不在 ViewModel 持有 `Context`；文件/相机/打印操作通过 UseCase/Repository 注入。
 

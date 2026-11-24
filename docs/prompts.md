@@ -1571,6 +1571,72 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 
 ---
 
+## 追加：打印页分享 PDF（2026-11-24）【done】
+
+【本轮背景】用户要求：打印页当前只能打印或保存 PDF，需要像「导出数据库」一样提供系统分享，允许通过 QQ、微信等渠道发送生成的 PDF。
+
+【本轮任务】
+- `:feature:print` 新增 `PlanPdfSharer` 端口与 `PdfShareOutcome`；`PrintPlanViewModel` 注入分享端口并提供 `sharePdf()`，`PrintPlanScreen` 增加「分享 PDF」按钮；
+- app 层新增 `AndroidPlanPdfSharer`：用 `PrintLayoutBuilder` + `PrintPdfWriter` 写缓存 PDF，经 `FileProvider` 以 `application/pdf` 打开系统分享面板；
+- `file_paths.xml` 增加 `plan-pdf-exports/` 缓存路径；`AppContainer` 装配 `planPdfSharer`，`AppRoot` 传入打印页 ViewModel；
+- 分享成功后按与「已打印」相同的 `PrintSnapshotWriter` 入口写入 `pageId/qrPayload` 并把 GENERATED 计划标记为 PRINTED，首页状态标签随之更新；SUPERSEDED 计划不写，提示“未更新打印快照”；
+- 同步 `CLAUDE.md`、`docs/architecture/overview.md`、changelog、agent-log；`docs/specs/app.md`、`print-template.md` 已按 2026-11-24 用户授权回写。
+
+【落地说明（2026-11-24）】已完成。`./gradlew test verifyCorePurity :app:assembleRelease` 通过；实体机 VKJ-AN00（release 覆盖安装）验证：打印页出现「分享 PDF」，点击后系统分享面板展示 `拾知周计划-*.pdf`，可见 QQ、微信、钉钉与 PDF 查看入口；分享成功后页面提示「本次打印已记录」，返回首页该窗口状态胶囊由「待打印」变为「已打印」。证据见 `evidence/screens/print-share-*`、`evidence/ui/print-share-*.xml`。规格已按 2026-11-24 用户授权回写 `app.md` 与 `print-template.md`。
+
+---
+
+## 追加：录入页键盘弹出后的光标手柄位置（2026-11-24）【done】
+
+【本轮背景】用户反馈：部分页面文本框获得焦点、键盘弹出后，文本框被顶到键盘上方，但指示光标位置的小手柄（小水滴）停在文本框原来的位置，观感不佳。
+
+【本轮任务】
+- 修复 `QuestionEditScreen`：`imePadding` 让表单内部滚动后，Compose 的手柄 Popup 不会重新锚定（只在创建时按输入框当时位置定位一次）；键盘可见期间把 `LocalTextSelectionColors.handleColor` 置为透明，键盘收起后恢复；
+- 不改动数据层、调度与规格；对话框内的输入框（可从本页打开标签管理窗口）保持原样。
+
+【落地说明（2026-11-24）】已完成。`:feature:entry:test` 与 `verifyCorePurity`、`:app:assembleRelease` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：修复前键盘弹出后手柄脱节停在键盘上方，修复后键盘展开期间不显示手柄、收起键盘后手柄回到光标下方，从录入页打开的编辑标签对话框手柄照常显示。证据见 `evidence/screens/ime-check-04-edit-focused.png`、`ime-fix-01-focused.png`、`ime-fix-02-kb-hidden.png`、`ime-fix-09-manager-edit-focused.png`。规格无需变更（仅 UI 层补偿 Compose 手柄 Popup 的定位限制）。
+
+---
+
+## 追加：录入页键盘避让空白与计划文案断言（2026-11-24）【done】
+
+【本轮背景】用户要求：同步 `GeneratePlanUseCaseTest` 中与现行推迟建议文案不一致的断言；并删去「录入题目」页点击「预估复习时长」输入框后、输入框下方出现的大块白色占位区域。
+
+【本轮任务】
+- `GeneratePlanUseCaseTest`：把「容量不足」用例的断言改为校验「缩短本题预估复习时长」「延长每日复习时长」「重新生成计划」三段可执行建议；
+- 白色占位：系统把未显式声明的软输入模式解析为 `adjustPan`（整窗上移），与表单 `imePadding` 叠加造成双重避让；在 `AppRoot` 按路由切换窗口 `adjust` 位——录入/编辑页为 `adjustResize`（不让系统平移，顶栏保留），其余页面恢复 `adjustPan`；
+- 不改动数据层、调度与规格。
+
+【落地说明（2026-11-24）】已完成。`./gradlew test verifyCorePurity` 与 `:app:assembleRelease` 通过（计划模块的既有失败随断言同步修复）；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：录入页聚焦底部输入框后顶栏保留、输入框紧贴键盘、无白色空白；首页「每日复习时长」对话框与手柄显示不受影响。证据见 `evidence/screens/ime-blank-01.png`（修复前）、`ime-blank-07-final.png`（修复后）、`ime-blank-08-dialog.png`。
+
+---
+
+## 追加：所有手动输入文本框统一处理手柄（2026-11-24）【done】
+
+【本轮背景】用户要求：所有手动输入文本的文本框处一并处理光标手柄在键盘弹出后停留在旧位置的问题（此前只处理了录入页表单）。
+
+【本轮任务】
+- 把「键盘可见期间隐藏 Compose 光标/选区手柄」从 `QuestionEditScreen` 提升到 `AppRoot`：在 `MaterialTheme` 内用 `WindowInsets.isImeVisible` 控制 `LocalTextSelectionColors.handleColor`（透明），统一覆盖录入页表单、各页搜索框与所有弹窗输入框；
+- `QuestionEditScreen.kt` 回退局部实现，只保留原有 `imePadding`；
+- 不改动数据层、调度与规格。
+
+【落地说明（2026-11-24）】已完成。`:app:assembleRelease` 与 `./gradlew test verifyCorePurity` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：录入页、首页「每日复习时长」弹窗、知识点编辑弹窗在键盘展开期间均不显示手柄，收起键盘后手柄回到光标下方。证据见 `evidence/screens/ime-all-0{1..6}-*.png`。
+
+---
+
+## 追加：关于页「致谢」栏目（2026-11-24）【done】
+
+【本轮背景】用户要求在「关于」页增加「致谢」栏目：说明记忆调度算法在思想上受 Jingyong Su 等人 SSP-MMC-Plus 工作的启发，附论文完整引用，并声明实现为基于论文描述的独立编写、未复制或改编原项目源代码。
+
+【本轮任务】
+- `AboutScreen` 在「关于拾知」卡片下方新增「致谢」卡片，沿用同款卡片与排版；引用以较小字号单独成段，引用中的 DOI 为可点击链接（`LinkAnnotation.Url`，`https://doi.org/10.1109/TKDE.2023.3251721`）；
+- 不新增链接与权限，不改动其它页面；
+- 同步 CLAUDE.md、changelog、agent-log；`docs/specs/app.md` 的 About 行已按 2026-11-24 用户授权回写。
+
+【落地说明（2026-11-24）】已完成。`:app:assembleRelease` 与 `./gradlew test verifyCorePurity` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：关于页底部出现「致谢」卡片，正文、论文引用与独立实现声明完整显示。证据见 `evidence/screens/about-0{1,2}-thanks*.png`；点按 DOI 后系统浏览器打开 `ieeexplore.ieee.org`（`about-03-doi-link.png`、`about-04-doi-opened.png`）。
+
+---
+
 ## 附录：固定循环速查
 
 ```text
