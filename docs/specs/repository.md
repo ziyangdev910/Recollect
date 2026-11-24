@@ -32,7 +32,7 @@ interface KnowledgeCategoryRepository {
 }
 
 interface KnowledgePointLibraryRepository {
-    suspend fun tags(): List<KnowledgePointTag>             // 含 categoryId 与未归档题目引用数
+    suspend fun tags(): List<KnowledgePointTag>             // 含 categoryId 与未归档题目引用数；按 updatedAt 倒序
     suspend fun create(name: String, categoryId: String): KnowledgePointTag
     suspend fun update(knowledgePointId: String, name: String, categoryId: String)
     suspend fun deleteWithTombstone(knowledgePointId: String, reason: String = "deleted")
@@ -260,3 +260,4 @@ fun PlanPage.toPlanPageRows(): List<PlanPageRows>
 - `data/room` 映射测试覆盖：Entity ↔ Scheduler/Pagination DTO 字段一一对应，无丢失/重命名漂移；`PlanPage.knowledgeRows` 解码后每题一条、条数与顺序不变，且不按 `number` 重排（C-071）。
 - `core:model` 纯度测试：`src/main` 与 `src/test` 均不得出现 `android.*` / `androidx.*` import；`KnowledgeRowsCodec` 可独立测试。
 - 知识点分类（schema v13）：分类名重复被拒绝、有知识点的分类不可删、空分类可删；新增/编辑知识点携带不存在或已删除的分类被拒绝；`KnowledgeCategoryRepositoryTest` 与 `KnowledgePointLibraryRepositoryTest` 覆盖。
+- 列表顺序（schema v14）：`RoomEntryRepository.create/update` 写入 `Question.updatedAt`，`KnowledgePointLibraryRepository.create/update` 写入 `KnowledgePoint.updatedAt`；`summaries()` 与 `tags()` 按 `updatedAt` 倒序返回，编辑后的条目排在最前。调度状态、打印快照、归档与关联计数不刷新 `updatedAt`；`QuestionRepository.schedulerQuestions()` 与打印仍按 `KnowledgePoint.number` 升序，不受列表排序影响。`EntryRepositoryTest` 与 `KnowledgePointLibraryRepositoryTest` 覆盖。

@@ -130,6 +130,9 @@ class RoomDatabaseImporterTest {
         assertEquals("", dao.questions.single().qrPayload)
         assertEquals(null, dao.questions.single().lastScheduledDate)
         assertEquals(null, dao.noteAttachments.single().sourceFeedbackId)
+        // v14 之前的备份没有 updatedAt，回退为 createdAt。
+        assertEquals(point.createdAt, point.updatedAt)
+        assertEquals(dao.questions.single().createdAt, dao.questions.single().updatedAt)
     }
 
     @Test
@@ -176,7 +179,7 @@ class RoomDatabaseImporterTest {
     )
 
     private fun backupJson(
-        schemaVersion: Int = 13,
+        schemaVersion: Int = 14,
         withHistory: Boolean = false,
         withCategories: Boolean = true,
     ): String {

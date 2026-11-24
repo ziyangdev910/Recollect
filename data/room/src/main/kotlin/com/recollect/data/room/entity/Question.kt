@@ -37,4 +37,10 @@ data class Question(
      */
     @ColumnInfo(defaultValue = "0")
     val sourcePageCode: Int = 0,
+    /**
+     * 最近一次由用户新建或编辑的时间；题库按此倒序展示（2026-11-24 用户要求）。
+     * 打印快照、复习日与归档等系统写回不改变该值。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val updatedAt: Instant = createdAt,
 )

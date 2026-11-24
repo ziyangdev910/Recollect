@@ -159,6 +159,8 @@ fun AppRoot(
             scope = container.applicationScope,
         )
     }
+    // 开源许可证全文打包在 assets；只在首次组合时读取一次。
+    val licenseTexts = remember(printContext) { readLicenseTexts(printContext) }
 
     // 导入会整体替换数据：homeRefreshKey 触发首页统计重读，dataRevision 让题库之外
     // 的页面级 ViewModel（知识点、来源、进度）在下次打开（或当前停留）时重建并重读。
@@ -407,9 +409,10 @@ fun AppRoot(
                             versionName = container.appVersionName,
                             onSaveDailyReviewMinutes = saveDailyReviewMinutes,
                             onEntry = { navigator.push(AppRoute.Entry) },
-                            onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
-                            onManageKnowledgePoints = { navigator.push(AppRoute.KnowledgePoints) },
-                            onManageSources = { navigator.push(AppRoute.SourceTags) },
+                            onCreateQuestion = {
+                                // 从首页进入：保存成功后强制进入题库页（见 QuestionEdit 分支）。
+                                navigator.push(AppRoute.QuestionEdit(null, fromHome = true))
+                            },
                             onProgress = { navigator.push(AppRoute.Progress) },
                             onPlanPreview = openPlanPreview,
                             onScan = { navigator.push(AppRoute.Scan) },
@@ -456,9 +459,18 @@ fun AppRoot(
                                 knowledgePointViewModel = knowledgePointViewModel,
                                 questionId = route.questionId,
                                 onSaved = {
-                                    // 保存后返回题库：静默更新列表数据，但不重置滚动位置。
+                                    // 两种入口都先提示保存成功（绿色对勾 +「保存成功」）。
+                                    showSaveSuccessToast(printContext)
+                                    // 静默更新题库列表数据，但不重置滚动位置。
                                     entryViewModel.markNeedsRefresh()
-                                    navigator.pop()
+                                    if (route.fromHome) {
+                                        // 从首页进入：强制跳转题库页（替换当前页，
+                                        // 返回键回到首页），而不是关闭当前页。
+                                        navigator.replace(AppRoute.Entry)
+                                    } else {
+                                        // 从题库页进入：保留原有逻辑，关闭当前页即可。
+                                        navigator.pop()
+                                    }
                                 },
                             )
                         }
@@ -540,7 +552,10 @@ fun AppRoot(
                         AppRoute.About -> AboutScreen(
                             appName = "拾知",
                             versionName = container.appVersionName,
+                            onOpenLicense = { navigator.push(AppRoute.License) },
                         )
+
+                        AppRoute.License -> LicenseScreen(texts = licenseTexts)
 
                         is AppRoute.Confirm -> {
                             val viewModel = remember(container, route.sessionId) {
@@ -590,7 +605,7 @@ private val IMPORT_MIME_TYPES = arrayOf(
 /**
  * 首页仪表盘：本周计划主卡（含下周入口） + 数据概览 + 操作入口 + 底部设置入口。
  *
- * 操作入口顶部是「录入题目」「管理题库」两个主入口，其下为 2×2 小标签；
+ * 操作入口为两行 2×2 小标签（录入题目 / 管理题库、扫描回读 / 查看复习进度）；
  * 最底部的卡片栏左侧修改每日复习时长，右侧进入关于页面。
  * 计划是主流程，放在最上方并用主色容器突出；题目/知识点/到期统计用于扫一眼掌握情况；
  * 统计读取失败时显示“—”，不影响任何入口。
@@ -612,8 +627,6 @@ private fun HomeScreen(
     onSaveDailyReviewMinutes: (Int) -> Unit,
     onEntry: () -> Unit,
     onCreateQuestion: () -> Unit,
-    onManageKnowledgePoints: () -> Unit,
-    onManageSources: () -> Unit,
     onProgress: () -> Unit,
     onPlanPreview: (PlanWeek) -> Unit,
     onScan: () -> Unit,
@@ -632,7 +645,7 @@ private fun HomeScreen(
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        // 主卡 + 概览 + 六个快捷入口 + 底部设置入口；内容超出屏幕时可滚动。
+        // 主卡 + 概览 + 四个快捷入口 + 底部设置入口；内容超出屏幕时可滚动。
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -656,7 +669,7 @@ private fun HomeScreen(
             )
         }
         item {
-            // 顶部两个主入口：录入题目直达新建题目页，管理题库进入题库列表页。
+            // 第一行主入口：录入题目直达新建题目页，管理题库进入题库列表页。
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuickActionCard(
                     modifier = Modifier.weight(1f),
@@ -677,7 +690,7 @@ private fun HomeScreen(
             }
         }
         item {
-            // 上排：操作类入口。
+            // 第二行操作类入口：扫描回读与复习进度。
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuickActionCard(
                     modifier = Modifier.weight(1f),
@@ -694,27 +707,6 @@ private fun HomeScreen(
                     iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                     iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                     onClick = onProgress,
-                )
-            }
-        }
-        item {
-            // 下排：管理类入口（共用 surfaceVariant，形成成组语义）。
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_knowledge,
-                    title = "管理知识点",
-                    iconContainer = MaterialTheme.colorScheme.surfaceVariant,
-                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = onManageKnowledgePoints,
-                )
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_source,
-                    title = "管理题目来源",
-                    iconContainer = MaterialTheme.colorScheme.surfaceVariant,
-                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = onManageSources,
                 )
             }
         }
@@ -1135,14 +1127,14 @@ private fun HomeStat(
     }
 }
 
-/** 首页快捷入口统一高度：通栏「录入题目」与 2×2 小标签保持同一高度。 */
-private val HOME_ACTION_CARD_HEIGHT = 56.dp
+/** 首页快捷入口统一高度：2×2 卡片去掉一行后适当加高，便于点按。 */
+private val HOME_ACTION_CARD_HEIGHT = 72.dp
 
 /** 底部设置入口高度：左侧带副标题，略高于快捷操作卡片。 */
 private val HOME_SETTINGS_CARD_HEIGHT = 64.dp
 
 /**
- * 2×2 小标签入口：图标在左、标题居中，与通栏「录入题目」等高。
+ * 2×2 小标签入口：图标在左、标题居中，四个入口保持同一高度。
  *
  * 半屏宽度不再放副标题与箭头，标题单行显示，保证一屏内完整呈现四个入口。
  */
@@ -1232,6 +1224,7 @@ private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Settings -> "设置"
     AppRoute.Backup -> "导出数据库"
     AppRoute.About -> "关于"
+    AppRoute.License -> "开源许可"
 }
 
 /** 取承载 Compose 的 Activity：`LocalView.context` 可能被主题等逐层包装，需要解包。 */

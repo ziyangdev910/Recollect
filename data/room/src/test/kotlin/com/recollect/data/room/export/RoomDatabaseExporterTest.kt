@@ -46,7 +46,7 @@ class RoomDatabaseExporterTest {
 
         assertEquals("recollect-20261122-1605.json", document.fileName)
         assertContains(document.json, "\"backupFormatVersion\": 1")
-        assertContains(document.json, "\"roomSchemaVersion\": 13")
+        assertContains(document.json, "\"roomSchemaVersion\": 14")
         assertContains(document.json, "\"appVersionName\": \"0.1.0\"")
         assertContains(document.json, "\"exportedAt\": \"2026-11-22T08:05:00Z\"")
         listOf(
@@ -234,6 +234,9 @@ class RoomDatabaseExporterTest {
         assertContains(document.json, "\"status\": \"PRINTED\"")
         assertContains(document.json, "\"categoryId\": \"cat-chinese\"")
         assertContains(document.json, "\"name\": \"语文\"")
+        // v14：题目与知识点都导出用户修改时间。
+        assertContains(document.json, "\"updatedAt\": \"2026-11-20T10:00:00Z\"")
+        assertContains(document.json, "\"updatedAt\": \"2026-11-20T10:00:01Z\"")
     }
 
     @Test

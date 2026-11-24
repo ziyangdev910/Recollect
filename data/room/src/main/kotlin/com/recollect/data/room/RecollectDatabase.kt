@@ -55,7 +55,9 @@ import com.recollect.data.room.migration.RecollectMigrations
  * v11 给 `plan` 增加被推迟题目的快照（题号 + 原因）；
  * v12 增加 `app_settings` 单行表，持久化「每日复习时长」并纳入备份；
  * v13 增加知识点分类 `knowledge_category`，并给知识点增加 `categoryId`，
- * 旧知识点统一归入「语文」，空库创建时种入 11 个默认分类（2026-11-23 用户要求）。
+ * 旧知识点统一归入「语文」，空库创建时种入 11 个默认分类（2026-11-23 用户要求）；
+ * v14 给题目与知识点增加 `updatedAt`（用户修改时间），题库与知识点列表据此倒序展示
+ * （2026-11-24 用户要求）。旧数据的 `updatedAt` 回填为 `createdAt`。
  * 不允许 destructive migration。
  */
 @Database(
@@ -125,7 +127,7 @@ abstract class RecollectDatabase : RoomDatabase() {
 
     companion object {
         /** Room schema 版本；备份 JSON 的 `roomSchemaVersion` 直接取此值（backup.md）。 */
-        const val SCHEMA_VERSION = 13
+        const val SCHEMA_VERSION = 14
 
         const val DATABASE_NAME = "recollect.db"
 

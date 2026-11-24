@@ -358,6 +358,9 @@ class RoomDatabaseImporter(
             // v13 之前的备份没有分类，统一归入「语文」。
             categoryId = row.optionalString("categoryId", context)
                 ?: KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID,
+            // v14 之前的备份没有修改时间，回退为创建时间。
+            updatedAt = row.optionalInstant("updatedAt", context)
+                ?: row.instant("createdAt", context),
         )
     }
 
@@ -413,6 +416,9 @@ class RoomDatabaseImporter(
             archivedAt = row.optionalInstant("archivedAt", context),
             sourcePage = row.optionalString("sourcePage", context) ?: "",
             sourcePageCode = row.optionalInt("sourcePageCode", context) ?: 0,
+            // v14 之前的备份没有修改时间，回退为创建时间。
+            updatedAt = row.optionalInstant("updatedAt", context)
+                ?: row.instant("createdAt", context),
         )
     }
 

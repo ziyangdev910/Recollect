@@ -44,6 +44,7 @@ class RoomEntryRepository(
                     lastReviewedDate = null,
                     estimatedReviewMinutes = validated.estimatedReviewMinutes,
                     createdAt = now,
+                    updatedAt = now,
                     archivedAt = null,
                     sourcePage = validated.sourcePageLabel,
                     sourcePageCode = validated.sourcePageCode,
@@ -72,6 +73,8 @@ class RoomEntryRepository(
                     estimatedReviewMinutes = validated.estimatedReviewMinutes,
                     sourcePage = validated.sourcePageLabel,
                     sourcePageCode = validated.sourcePageCode,
+                    // 用户编辑后刷新修改时间，题库列表据此把该题排到最前。
+                    updatedAt = clock.instant(),
                 ),
             )
             crossRefDao.deleteForQuestion(questionId)
@@ -95,7 +98,7 @@ class RoomEntryRepository(
     override suspend fun summaries(): List<EntrySummary> {
         val knowledgePoints = knowledgePointDao.allOrderedByNumber().associateBy { it.id }
         val refsByQuestion = crossRefDao.all().groupBy { it.questionId }
-        return questionDao.active().map { question ->
+        return questionDao.activeOrderedByUpdatedAt().map { question ->
             val resolved = refsByQuestion[question.id].orEmpty()
                 .mapNotNull { ref ->
                     knowledgePoints[ref.knowledgePointId]?.let { knowledgePoint -> knowledgePoint }

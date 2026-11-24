@@ -1022,7 +1022,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 - 不要 git commit，除非我明确要求。
 ```
 
-> 落地说明（2026-11-18）：已在实体机 `AXRBUT6518000086`（VKJ-AN00，1264×2728）完成安装与纵切验收。`adb install -r` 成功，冷启动 `MainActivity` 成功；Home → Entry 空态 → 输入 `T－1` / `M` → 保存（`已有 1 道题`）→ 生成计划 → PlanPreview 显示 `计划号 HSBJ4T · 共 1 页`、`第 1 页 · 2026-11-23 · 1 条`、`题号 T－1`。截图在 `evidence/screens/step01_home.png`～`step08_plan_empty.png`，UI 树在 `evidence/ui/`。清空数据后从 Home 直接生成计划，已验证 C-060 空计划文案 `当前没有需要复习的题目；先录入题目和知识点，再来生成计划。`（`step08_plan_empty.png`）。中文 IME 把知识点名称截成 `M`、题号连字符为全角；不影响“1 题 1 知识点”验收。键盘遮挡按钮，用 ESC（keyevent 111）收起；中途一次返回键结束了 Activity，已重启并如实保留 `step03_accidental_exit.png`；一次截图为黑屏（设备休眠），唤醒后重跑。C-061/C-062 的全 overflow 界面路径未在设备上构造（由 JUnit 用例覆盖），打印/扫描仍未开始。2026-11-18 追加：录入表单新增来源页码 `sourcePage`（必填，定位题目在试卷/作业本的第几面，不是打印稿 pageId）；`Question`、`EntryDraft`、`EntrySummary`、状态层与 Repository 双重校验同步；schema v4（`ALTER TABLE question ADD COLUMN sourcePage TEXT NOT NULL DEFAULT ''`），旧题在列表显示「未填写」。同日打印稿右上第一行改为「页码 01　题号 T-1　来源页 P12」，页码只显示页序、不显示计划号；`RenderableQuestion` 增加 `sourcePage`，计划层从 `QuestionRepository.sourcePages()` 填充；确认页逐行显示「来源页」（空值「未填写」）。
+> 落地说明（2026-11-18）：已在实体机 `AXRBUT6518000086`（VKJ-AN00，1264×2728）完成安装与纵切验收。`adb install -r` 成功，冷启动 `MainActivity` 成功；Home → Entry 空态 → 输入 `T－1` / `M` → 保存（`已有 1 道题`）→ 生成计划 → PlanPreview 显示 `计划号 HSBJ4T · 共 1 页`、`第 1 页 · 2026-11-23 · 1 条`、`题号 T－1`。截图在 `evidence/screens/step01_home.png`～`step08_plan_empty.png`，UI 树在 `evidence/ui/`。清空数据后从 Home 直接生成计划，已验证 C-060 空计划文案 `当前没有需要复习的题目；先录入题目和知识点，再来生成计划。`（`step08_plan_empty.png`）。中文 IME 把知识点名称截成 `M`、题号连字符为全角；不影响“1 题 1 知识点”验收。键盘遮挡按钮，用 ESC（keyevent 111）收起；中途一次返回键结束了 Activity，已重启并如实保留 `step03_accidental_exit.png`；一次截图为黑屏（设备休眠），唤醒后重跑。C-061/C-062 的全 overflow 界面路径未在设备上构造（由 JUnit 用例覆盖），打印/扫描仍未开始。2026-11-18 追加：录入表单新增来源页码 `sourcePage`（必填，定位题目在试卷/作业本的第几面，不是打印稿 pageId）；`Question`、`EntryDraft`、`EntrySummary`、状态层与 Repository 双重校验同步；schema v4（`ALTER TABLE question ADD COLUMN sourcePage TEXT NOT NULL DEFAULT ''`），旧题在列表显示「未填写」。同日打印稿右上第一行改为「页码 01　题号 T-1　来源页 P12」，页码只显示页序、不显示计划号；`RenderableQuestion` 增加 `sourcePage`，计划层从 `QuestionRepository.sourcePages()` 填充；确认页逐行显示「来源页」（空值「未填写」）。2026-11-24 用户要求：打印稿右上第一行删除「页码 XX」，只保留「题号 {questionNumber}　来源页 {sourcePage}」；QR 载荷与页脚小字 pageId 不变，`PrintLayoutTest` 断言同步。
 
 ### 5.4 知识点标签库与底部录入卡片【done】
 
@@ -1036,7 +1036,7 @@ core:model 只允许纯 DTO/枚举与 KnowledgeRowsCodec；不得出现 android.
 D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除写墓碑、编号序列只增不减。
 
 【本轮任务】
-- 标签库：新增/重命名/搜索/删除；删除前校验未被未归档题目引用，否则拒绝并提示；
+- 标签库：新增/重命名/删除；删除前校验未被未归档题目引用，否则拒绝并提示；
 - 编号：`KnowledgeNumberSequence` 事务内分配，跳过 `KnowledgePointTombstone`；空序列按现有最大编号种子（E-10）；
 - 录入：Entry 表单从标签库选择 1～4 个标签，UI 与 Repository 双重校验；不再输入知识点名称；
 - 布局：题目列表占满页面；新建/编辑使用独立页面（悬浮按钮或卡片铅笔进入），不再使用底部卡片；
@@ -1557,13 +1557,13 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 
 ### 8.1 知识点分类【done】
 
-【本轮背景】用户要求：为「知识点」增加一层上层分类，默认分别为「语文，数学，英语，物理，化学，生物，政治，历史，地理，信息技术，通用技术」，允许增删改；强制新增知识点时指定分类，编辑知识点时可修改分类；现有实机数据库中的知识点全部分到「语文」；分类筛选同时用于「知识点」页与「录入题目」的「知识点标签」区；「知识点」页缩小搜索框与导航栏间距，筛选选项卡（横向选择卡）放在搜索框下、「新增标签」按钮上；「录入题目」的知识点标签区也放置同样的筛选选项卡，并只显示当前分类下的知识点。
+【本轮背景】用户要求：为「知识点」增加一层上层分类，默认分别为「语文，数学，英语，物理，化学，生物，政治，历史，地理，信息技术，通用技术」，允许增删改；强制新增知识点时指定分类，编辑知识点时可修改分类；现有实机数据库中的知识点全部分到「语文」；分类筛选同时用于「知识点」页与「录入题目」的「知识点标签」区；「知识点」页缩小筛选选项卡（横向选择卡）与导航栏间距，筛选卡放在「共 N 个标签」与「新增标签」按钮之上（2026-11-24 用户要求删去「知识点」页与「来源标签」页的搜索框）；「录入题目」的知识点标签区也放置同样的筛选选项卡，并只显示当前分类下的知识点。
 
 【本轮任务】
 - `data:room` 新增 `KnowledgeCategory` 实体与 `KnowledgeCategoryDao`（schema v13；名称唯一），`KnowledgePoint` 增加 `categoryId`（默认 `cat-chinese`），`MIGRATION_12_13` 建表、种入 11 个默认分类并把旧知识点归入「语文」；空库创建时由 Room `onCreate` 回调种入默认分类；
 - 新增 `KnowledgeCategoryRepository`（增删改查；名称唯一；有知识点不可删），`KnowledgePointLibraryRepository` 的 `create`/`update` 改为必须携带有效 `categoryId`；
 - 备份导出/导入新增 `knowledgeCategories` 键与知识点 `categoryId`；旧备份缺分类时补默认分类并把知识点归入「语文」；
-- `KnowledgePointLibraryViewModel` 同时持有标签与分类；「知识点」页加入横向分类筛选卡（「全部」+ 各分类）、「管理分类」入口，新增/编辑知识点对话框增加必选分类；
+- `KnowledgePointLibraryViewModel` 同时持有标签与分类；「知识点」页顶部加入横向分类筛选卡（「全部」+ 各分类）、「管理分类」入口，新增/编辑知识点对话框增加必选分类；
 - `QuestionEditViewModel` 透传分类候选；「录入题目」的知识点标签区在标题下加入同样的筛选卡，并让标签列表服从筛选；
 - 同步 `CLAUDE.md`、`docs/architecture/overview.md`、changelog、agent-log；`docs/specs/{data-model,entry,app,backup,repository}.md` 按用户授权回写。
 
@@ -1634,6 +1634,85 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 - 同步 CLAUDE.md、changelog、agent-log；`docs/specs/app.md` 的 About 行已按 2026-11-24 用户授权回写。
 
 【落地说明（2026-11-24）】已完成。`:app:assembleRelease` 与 `./gradlew test verifyCorePurity` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：关于页底部出现「致谢」卡片，正文、论文引用与独立实现声明完整显示。证据见 `evidence/screens/about-0{1,2}-thanks*.png`；点按 DOI 后系统浏览器打开 `ieeexplore.ieee.org`（`about-03-doi-link.png`、`about-04-doi-opened.png`）。
+
+## 追加：开源许可证（2026-11-24）【done】
+
+【本轮背景】用户要求为 GitHub 仓库选择开源许可证，目标是不允许他人将衍生代码闭源上架应用商店。经核对依赖（AndroidX/Kotlin/OpenCV/ZXing 为 Apache-2.0，ML Kit 为专有 SDK，无 GPL/AGPL 依赖）后选定 GPL-3.0；并采纳 `GPL-3.0-only WITH Classpath-exception-2.0`，允许链接 ML Kit 等闭源独立模块。
+
+【本轮任务】
+- 新增 `LICENSE`（GPL-3.0 全文）、`LICENSE-EXCEPTION`（Classpath Exception 2.0）、`NOTICE`（版权、SPDX 标识与第三方组件清单）与 `README.md`；
+- 「关于」页作者/仓库卡片新增「开源许可证：GPL-3.0 with Classpath Exception」；
+- 同步 `docs/specs/app.md` 的 About 行、`CLAUDE.md` 与 `docs/architecture/overview.md` 的关于页描述。
+
+【落地说明（2026-11-24）】已完成。`./gradlew :app:compileDebugKotlin` 通过。
+
+【补充：算法归属（2026-11-24）】`MaimemoNextDueCalculator` 的 DHP 公式与 MIT 许可的 `maimemo/SSP-MMC`（`model/utils.py`）逐字一致，`SSP-MMC-Plus` 为论文与设计参考；`NOTICE` 增加归属与 MIT 全文，README 增加「算法来源」，关于页声明改为公式参考、实现独立编写。
+
+## 追加：许可证全文页（2026-11-24）【done】
+
+【本轮背景】用户要求把 GPL-3.0、Classpath 例外与 NOTICE 全文打包进 APK，并在关于页加入口，使分发二进制时许可证副本随 App 提供。
+
+【本轮任务】
+- 新增 `app/src/main/assets/licenses/{LICENSE,LICENSE-EXCEPTION,NOTICE}.txt`（与根目录文件同步）；
+- 新增 `LicenseScreen`（三个选项卡、等宽小字号、可滚动）与 `AppRoute.License`；
+- About 页「开源许可证」行下增加「查看许可证全文」入口；`AppRoot` 负责读取 assets 并渲染页面。
+
+【落地说明（2026-11-24）】已完成。`:app:assembleRelease` 通过；实体机 VKJ-AN00 验证：关于页 →「查看许可证全文」→ 开源许可页，三个选项卡分别显示 GPL-3.0、Classpath 例外与 NOTICE 全文，返回正常。
+
+## 追加：首页删除管理类入口并加高快捷卡片（2026-11-24）【done】
+
+【本轮背景】用户要求删除主界面中的「管理知识点」与「管理题目来源」两个按钮，并把其余功能按钮高度适当增大，减少入口拥挤。
+
+【本轮任务】
+- `HomeScreen` 删除「管理知识点 / 管理题目来源」一行，快捷操作只保留两行 2×2（录入题目 / 管理题库、扫描回读 / 查看复习进度）；
+- 移除 `onManageKnowledgePoints`/`onManageSources` 参数与调用，`AppRoute.KnowledgePoints`/`AppRoute.SourceTags` 路由与页面保留（知识点仍在录入页内以全屏窗口管理）；
+- `HOME_ACTION_CARD_HEIGHT` 由 56dp 增至 72dp，底部设置卡片保持 64dp；
+- 同步 `CLAUDE.md`、`docs/architecture/overview.md`、changelog、agent-log；`docs/specs/app.md` 的 Home 行、SourceTags 行与 Home → SourceTags 流程已按 2026-11-24 用户授权回写。
+
+【落地说明（2026-11-24）】已完成。`:app:assembleDebug` 与 `:app:assembleRelease` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：首页只剩四个快捷卡片，两行 2×2 顺序为「录入题目 / 管理题库」「扫描回读 / 查看复习进度」，卡片高度 72dp，首次进入即完整显示；证据见 `evidence/screens/home-actions-2026-11-24.png`。
+
+---
+
+## 追加：编号字段标题随来源切换（2026-11-24）【done】
+
+【本轮背景】用户要求「录入题目」页中，未选择来源时编号字段显示为「试卷编号」，选择来源后显示为「页码编号」。
+
+【本轮任务】
+- `feature/entry/.../QuestionEditScreen.kt`：`OutlinedTextField` 的 `label` 改为随 `hasSource` 切换——`if (hasSource) "页码编号" else "试卷编号"`；
+- 保持不变：`sourcePageCode` 的存储、按有无来源分别记忆的默认值、无来源只读 + +/−、有来源数字键盘输入（过滤非数字、限 5 位）、空/0 时的校验提示与禁用保存；
+- 同步 `CLAUDE.md`、`docs/architecture/overview.md`、changelog、agent-log。
+
+【落地说明（2026-11-24）】已完成。`:feature:entry:compileDebugKotlin` 与 `:feature:entry:testDebugUnitTest` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证三种状态：未选来源 →「试卷编号」/1；选中「化学练透」→「页码编号」/50；取消选择 → 回到「试卷编号」/1。证据见 `evidence/screens/entry-label-0{1,2}-*.png` 与 `evidence/ui/entry-label-0{1,2}-*.xml`。`docs/specs/entry.md` 已按 2026-11-24 用户授权回写：新增「编号字段标题随来源切换」条款与用例 E-20。
+
+---
+
+## 追加：录入页保存成功提示与跳转分流（2026-11-24）【done】
+
+【本轮背景】用户要求「录入题目」页点击「保存」后，先以带对勾的 Toast 提示「保存成功」；随后按入口分流——从应用首页「录入题目」按钮进入的，强制跳转至题库页；从题库页进入的，保留原有逻辑，关闭当前页即可。
+
+【本轮任务】
+- `AppNavigator` 的 `QuestionEdit` 路由增加 `fromHome: Boolean = false`，记录是否从首页入口进入；
+- 首页「录入题目」以 `AppRoute.QuestionEdit(null, fromHome = true)` 入栈；题库页「+ 录入题目」与卡片铅笔编辑沿用默认 `false`；
+- `AppRoot` 的保存成功回调先 `showSaveSuccessToast`，再分流：`fromHome` 为真时 `replace(AppRoute.Entry)`（替换当前页，返回键回首页），否则保持 `entryViewModel.markNeedsRefresh()` + `pop()`；
+- `ImportToast.kt` 重命名为 `SuccessToast.kt`，抽出通用 `showSuccessToast(context, message)`，保留 `showImportSuccessToast` 并新增 `showSaveSuccessToast`（同一绿色对勾样式）；
+- 同步 `CLAUDE.md`、`docs/architecture/overview.md`、changelog、agent-log；`docs/specs/app.md`/`entry.md` 已按 2026-11-24 用户授权回写（路由签名 `fromHome`、保存后分流、用例 E-21）。
+
+【落地说明（2026-11-24）】已完成。`:app:compileDebugKotlin`、`:app:testDebugUnitTest` 与 `:app:assembleRelease` 通过；实体机 VKJ-AN00（release 覆盖安装、保留数据）验证两条路径：首页 →「录入题目」→ 保存，出现绿色对勾「保存成功」并跳转题库（题目数 6→7），返回键回首页；题库 →「+ 录入题目」→ 保存，出现同样 Toast 并关闭当前页返回题库（题目数 7→8）。证据见 `evidence/screens/entry-save-0{1,2}-*.png` 与 `evidence/ui/entry-save-0{2,3}-*.xml`。
+
+---
+
+## 追加：题库/知识点按修改时间倒序（2026-11-24）【done】
+
+【本轮背景】用户要求题库与知识点条目按修改时间倒序排列，保证添加或修改条目后能立即看到。
+
+【本轮任务】
+- `Question` 与 `KnowledgePoint` 增加 `updatedAt`（默认 `createdAt`），schema 升到 v14；`MIGRATION_13_14` 补列并回填为 `createdAt`；
+- Repository 在用户新建/编辑题目或知识点时写入 `updatedAt = clock.instant()`；复习调度、打印快照、归档与关联计数不刷新该值；
+- 新增 `QuestionDao.activeOrderedByUpdatedAt()` 与 `KnowledgePointDao.allOrderedByUpdatedAt()`，题库与标签库改用新查询；原有按 `number` 的查询保留给调度与打印；
+- 备份导出/导入 `updatedAt`，旧备份缺失时回退 `createdAt`；
+- 同步 `CLAUDE.md`、`docs/architecture/overview.md`、`docs/specs/{entry,data-model,backup,app}.md`、changelog 与 agent-log。
+
+【落地说明（2026-11-24）】已完成。`./gradlew test verifyCorePurity`、`:app:assembleDebug`、`:app:assembleRelease` 通过。实体机 VKJ-AN00（release 覆盖安装、保留数据）验证：题库编辑靠后题目后立即置顶；知识点编辑后立即置顶、新增标签后立即置顶；验证后已恢复名称并删除测试标签。证据见 `evidence/screens/order-verify-*.png` 与 `evidence/ui/order-verify-*.xml`。
 
 ---
 

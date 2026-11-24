@@ -131,6 +131,7 @@ class RoomDatabaseExporter(
         "halfLifeDays" to halfLifeDays.asJsonNumber(),
         "createdAt" to createdAt.asJsonInstant(),
         "categoryId" to categoryId.asJsonString(),
+        "updatedAt" to updatedAt.asJsonInstant(),
     )
 
     private fun com.recollect.data.room.entity.Question.toJson() = jsonObject(
@@ -146,6 +147,7 @@ class RoomDatabaseExporter(
         "archivedAt" to archivedAt.asJsonInstant(),
         "sourcePage" to sourcePage.asJsonString(),
         "sourcePageCode" to sourcePageCode.asJsonNumber(),
+        "updatedAt" to updatedAt.asJsonInstant(),
     )
 
     private fun com.recollect.data.room.entity.QuestionKnowledgeCrossRef.toJson() = jsonObject(

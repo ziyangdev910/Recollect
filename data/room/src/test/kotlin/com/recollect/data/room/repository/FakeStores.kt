@@ -313,6 +313,10 @@ internal class FakeQuestionDao(private val stores: InMemoryStores) : QuestionDao
     override suspend fun active(): List<Question> =
         stores.questions.values.filterNot { it.archived }
 
+    // linkedMap 按插入顺序保存；sortedByDescending 是稳定排序，时间相同时保持插入顺序。
+    override suspend fun activeOrderedByUpdatedAt(): List<Question> =
+        stores.questions.values.filterNot { it.archived }.sortedByDescending { it.updatedAt }
+
     override suspend fun byId(id: String): Question? = stores.questions[id]
 
     override suspend fun latestSourcePageCodeWithoutSource(): Int? =
@@ -476,6 +480,11 @@ internal class FakeKnowledgePointDao(private val stores: InMemoryStores) : Knowl
 
     override suspend fun allOrderedByNumber(): List<KnowledgePoint> =
         stores.knowledgePoints.values.sortedBy { it.number }
+
+    override suspend fun allOrderedByUpdatedAt(): List<KnowledgePoint> =
+        stores.knowledgePoints.values.sortedWith(
+            compareByDescending<KnowledgePoint> { it.updatedAt }.thenBy { it.number },
+        )
 
     override suspend fun byId(id: String): KnowledgePoint? = stores.knowledgePoints[id]
 

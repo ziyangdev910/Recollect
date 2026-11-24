@@ -11,11 +11,16 @@ import android.widget.Toast
 import org.ziyangdev910.recollect.R
 
 /**
- * 导入成功的自定义 Toast：绿色对勾 + 「导入成功」。
+ * 操作成功的自定义 Toast：绿色对勾 + 文案。
  *
- * 只在界面层调用；不参与导入状态机（R-03）。
+ * 「导入成功」与「保存成功」共用同一样式；只在界面层调用，不参与状态机（R-03）。
  */
-fun showImportSuccessToast(context: Context) {
+fun showImportSuccessToast(context: Context) = showSuccessToast(context, "导入成功")
+
+/** 录入/编辑题目保存成功：绿色对勾 +「保存成功」。 */
+fun showSaveSuccessToast(context: Context) = showSuccessToast(context, "保存成功")
+
+private fun showSuccessToast(context: Context, message: String) {
     val density = context.resources.displayMetrics.density
     fun dp(value: Int): Int = (value * density).toInt()
 
@@ -37,7 +42,7 @@ fun showImportSuccessToast(context: Context) {
     )
     container.addView(
         TextView(context).apply {
-            text = "导入成功"
+            text = message
             setTextColor(Color.WHITE)
             textSize = 14f
             setPadding(dp(10), 0, 0, 0)

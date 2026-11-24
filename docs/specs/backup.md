@@ -179,11 +179,13 @@ data class ImportReport(
 | KnowledgePoint | `activeQuestionCount` | 恢复 | 按恢复后的未归档题目重算 |
 | KnowledgePoint | `dormant` | 恢复 | 按 `activeQuestionCount == 0` 重算 |
 | KnowledgePoint | `categoryId` | 恢复 | 恢复；缺失或指向不存在分类时归入「语文」 |
+| KnowledgePoint | `updatedAt` | 恢复 | 恢复；缺失时回退为 `createdAt`（2026-11-24 用户要求） |
 | KnowledgeCategory | `id` / `name` / `createdAt` | 恢复 | 恢复；旧备份缺失时补默认 11 个分类 |
 | Question | `id` / `questionNumber` / `estimatedReviewMinutes` / `createdAt` | 恢复 | 恢复；缺失时 `estimatedReviewMinutes = 15` |
 | Question | `archived` / `archivedAt` | 恢复 | 恢复 |
 | Question | `pageId` / `qrPayload` | 恢复 | 清空为 `""`；旧打印稿失效 |
 | Question | `lastScheduledDate` / `lastReviewedDate` | 恢复 | 重置为 `null` |
+| Question | `updatedAt` | 恢复 | 恢复；缺失时回退为 `createdAt`（2026-11-24 用户要求） |
 | QuestionKnowledgeCrossRef | 全部 | 恢复 | 恢复；任一端缺失则跳过该行并警告 |
 | ReviewFeedback | 全部 | 恢复 | **不恢复**（历史反馈丢弃，提示用户） |
 | ConfirmationDecisionLog | 全部 | 恢复 | **不恢复** |

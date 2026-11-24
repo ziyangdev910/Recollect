@@ -85,7 +85,7 @@ data class RightTopLayout(
     val topMm: Double,
     val widthMm: Double,
     val heightMm: Double,
-    val pageLine: PrintText, // 页码 + 题号，加粗
+    val pageLine: PrintText, // 题号（可附来源页），加粗
     val knowledgeText: PrintText, // 知识点全称，允许换行
 )
 
@@ -240,7 +240,6 @@ object PrintLayoutBuilder {
                 itemLayout(
                     planId = planId,
                     pageId = page.pageId,
-                    pageNumber = page.pageNumber,
                     placedQuestionId = placed.questionId,
                     placedTop = placed.yOffsetMm,
                     placedHeight = placed.heightMm,
@@ -261,7 +260,6 @@ object PrintLayoutBuilder {
     private fun itemLayout(
         planId: String,
         pageId: String,
-        pageNumber: Int,
         placedQuestionId: String,
         placedTop: Double,
         placedHeight: Double,
@@ -318,7 +316,7 @@ object PrintLayoutBuilder {
             widthMm = rightAreaWidth,
             heightMm = rightTopHeight,
             pageLine = PrintText(
-                text = pageLineText(pageNumber, question),
+                text = pageLineText(question),
                 leftMm = textLeft,
                 topMm = placedTop,
                 widthMm = template.rightTextWidthMm,
@@ -547,12 +545,12 @@ object PrintLayoutBuilder {
     )
 
     /**
-     * 右上第一行：「页码」只显示页序，不显示计划号；QR 载荷仍使用完整 pageId。
+     * 右上第一行：题号；不再显示页序（2026-11-24 用户要求删除「页码 XX」；QR 载荷与页脚仍使用完整 pageId）。
      * 来源页码非空时追加，用于定位题目在试卷/作业本的哪一面。
      */
-    private fun pageLineText(pageNumber: Int, question: RenderableQuestion): String {
-        val page = "页码 ${pageNumber.toString().padStart(2, '0')}　题号 ${question.questionNumber}"
-        return if (question.sourcePage.isBlank()) page else "$page　来源页 ${question.sourcePage}"
+    private fun pageLineText(question: RenderableQuestion): String {
+        val line = "题号 ${question.questionNumber}"
+        return if (question.sourcePage.isBlank()) line else "$line　来源页 ${question.sourcePage}"
     }
 }
 

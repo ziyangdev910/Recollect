@@ -18,6 +18,13 @@ interface KnowledgePointDao {
     @Query("SELECT * FROM knowledge_point ORDER BY number ASC")
     suspend fun allOrderedByNumber(): List<KnowledgePoint>
 
+    /**
+     * 知识点列表：按最近一次用户修改时间倒序；时间相同时按编号升序，
+     * 保证新增或编辑后的知识点立即出现在列表顶部（2026-11-24 用户要求）。
+     */
+    @Query("SELECT * FROM knowledge_point ORDER BY updatedAt DESC, number ASC")
+    suspend fun allOrderedByUpdatedAt(): List<KnowledgePoint>
+
     @Query("SELECT * FROM knowledge_point WHERE id = :id")
     suspend fun byId(id: String): KnowledgePoint?
 

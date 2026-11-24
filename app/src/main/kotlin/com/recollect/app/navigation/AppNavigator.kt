@@ -10,7 +10,14 @@ import androidx.compose.runtime.mutableStateListOf
 sealed interface AppRoute {
     data object Home : AppRoute
     data object Entry : AppRoute
-    data class QuestionEdit(val questionId: String?) : AppRoute
+    /**
+     * 录入/编辑题目页。[fromHome] 表示从首页「录入题目」入口进入（只用于新建）：
+     * 保存成功后强制进入题库页，而不是关闭当前页返回上一页。
+     */
+    data class QuestionEdit(
+        val questionId: String?,
+        val fromHome: Boolean = false,
+    ) : AppRoute
     data object KnowledgePoints : AppRoute
     data object SourceTags : AppRoute
     data object Progress : AppRoute
@@ -21,6 +28,7 @@ sealed interface AppRoute {
     data object Settings : AppRoute
     data object Backup : AppRoute
     data object About : AppRoute
+    data object License : AppRoute
 }
 
 /**

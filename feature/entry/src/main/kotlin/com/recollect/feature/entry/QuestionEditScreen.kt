@@ -188,7 +188,7 @@ private fun QuestionForm(
             )
         }
 
-        // 题号与页码编号同行并排，各占一半宽度。
+        // 题号与编号字段（页码编号/试卷编号）同行并排，各占一半宽度。
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -202,7 +202,7 @@ private fun QuestionForm(
                 modifier = Modifier.weight(1f),
             )
 
-            // 页码编号：带来源时可直接用键盘输入；无来源时只读，靠右侧 +/− 调整。
+            // 带来源时叫「页码编号」：可直接用键盘输入；无来源时叫「试卷编号」：只读，靠右侧 +/− 调整。
             OutlinedTextField(
                 value = pageCodeText,
                 onValueChange = { input ->
@@ -211,7 +211,7 @@ private fun QuestionForm(
                         pageCodeTouched = true
                     }
                 },
-                label = { Text("页码编号") },
+                label = { Text(if (hasSource) "页码编号" else "试卷编号") },
                 singleLine = true,
                 readOnly = !hasSource,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

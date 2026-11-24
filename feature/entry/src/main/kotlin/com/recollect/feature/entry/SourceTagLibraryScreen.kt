@@ -39,7 +39,7 @@ import com.recollect.data.room.repository.SourceTagItem
 import kotlinx.coroutines.launch
 
 /**
- * 来源标签库（2026-11-22 用户要求）：名称列表、搜索、新增、重命名、删除。
+ * 来源标签库（2026-11-22 用户要求）：名称列表、新增、重命名、删除。
  *
  * 录入题目时来源以单选标签填写；删除前确认，仍被未归档题目引用的标签不可删除。
  * 重命名会同步更新已有题目的来源名称（Repository 事务内完成）。
@@ -53,18 +53,9 @@ fun SourceTagLibraryScreen(
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) { viewModel.refresh() }
 
-    var query by remember { mutableStateOf("") }
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
 
     val tags = (viewModel.state as? UiState.Content)?.data?.tags.orEmpty()
-    val filtered = remember(tags, query) {
-        val keyword = query.trim()
-        if (keyword.isEmpty()) {
-            tags
-        } else {
-            tags.filter { it.name.contains(keyword, ignoreCase = true) }
-        }
-    }
 
     Column(
         modifier = modifier
@@ -72,13 +63,6 @@ fun SourceTagLibraryScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text("搜索来源标签") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -114,28 +98,24 @@ fun SourceTagLibraryScreen(
                 }
             }
             is UiState.Content -> {
-                if (filtered.isEmpty()) {
-                    Text("没有匹配的来源标签。")
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(filtered, key = { it.id }) { tag ->
-                            SourceTagRow(
-                                tag = tag,
-                                onRename = {
-                                    viewModel.clearActionError()
-                                    dialog = SourceDialog.Rename(tag)
-                                },
-                                onDelete = {
-                                    viewModel.clearActionError()
-                                    dialog = SourceDialog.Delete(tag)
-                                },
-                            )
-                        }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(tags, key = { it.id }) { tag ->
+                        SourceTagRow(
+                            tag = tag,
+                            onRename = {
+                                viewModel.clearActionError()
+                                dialog = SourceDialog.Rename(tag)
+                            },
+                            onDelete = {
+                                viewModel.clearActionError()
+                                dialog = SourceDialog.Delete(tag)
+                            },
+                        )
                     }
                 }
             }

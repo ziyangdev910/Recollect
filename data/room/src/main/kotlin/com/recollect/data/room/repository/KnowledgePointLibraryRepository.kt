@@ -22,7 +22,7 @@ import java.util.UUID
  */
 interface KnowledgePointLibraryRepository {
 
-    /** 标签库列表（按编号升序），附带未归档题目的引用数。 */
+    /** 标签库列表（按最近一次用户修改时间倒序），附带未归档题目的引用数。 */
     suspend fun tags(): List<KnowledgePointTag>
 
     /**
@@ -73,7 +73,7 @@ class RoomKnowledgePointLibraryRepository(
             .filter { it.questionId in activeQuestionIds }
             .groupingBy { it.knowledgePointId }
             .eachCount()
-        return knowledgePointDao.allOrderedByNumber().map {
+        return knowledgePointDao.allOrderedByUpdatedAt().map {
             KnowledgePointTag(
                 id = it.id,
                 number = it.number,
@@ -91,6 +91,7 @@ class RoomKnowledgePointLibraryRepository(
         return transactionRunner.inTransaction {
             requireCategory(categoryId)
             val number = allocateNumber()
+            val now = clock.instant()
             val entity = KnowledgePoint(
                 id = UUID.randomUUID().toString(),
                 number = number,
@@ -103,8 +104,9 @@ class RoomKnowledgePointLibraryRepository(
                 dormant = false,
                 difficulty = null,
                 halfLifeDays = null,
-                createdAt = clock.instant(),
+                createdAt = now,
                 categoryId = categoryId,
+                updatedAt = now,
             )
             knowledgePointDao.insert(entity)
             KnowledgePointTag(
@@ -125,7 +127,14 @@ class RoomKnowledgePointLibraryRepository(
             val existing = knowledgePointDao.byId(knowledgePointId)
                 ?: throw KnowledgePointNotFoundException("知识点不存在或已被删除。")
             requireCategory(categoryId)
-            knowledgePointDao.update(existing.copy(name = trimmed, categoryId = categoryId))
+            knowledgePointDao.update(
+                existing.copy(
+                    name = trimmed,
+                    categoryId = categoryId,
+                    // 用户编辑后刷新修改时间，知识点列表据此把该标签排到最前。
+                    updatedAt = clock.instant(),
+                ),
+            )
         }
     }
 

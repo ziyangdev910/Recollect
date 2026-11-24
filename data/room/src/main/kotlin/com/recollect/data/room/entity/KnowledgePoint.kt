@@ -34,4 +34,10 @@ data class KnowledgePoint(
     val createdAt: Instant, // DHP 第一段间隔起点（C-037）
     @ColumnInfo(defaultValue = KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID_SQL)
     val categoryId: String = KnowledgeCategoryDefaults.DEFAULT_CATEGORY_ID,
+    /**
+     * 最近一次由用户新增或编辑的时间；知识点列表按此倒序展示（2026-11-24 用户要求）。
+     * 复习调度对档位、分数与到期日的更新不改变该值。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val updatedAt: Instant = createdAt,
 )

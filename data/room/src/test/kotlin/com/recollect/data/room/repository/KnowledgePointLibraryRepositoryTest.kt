@@ -268,7 +268,25 @@ class KnowledgePointLibraryRepositoryTest {
     }
 
     @Test
-    fun `tags orders by number and counts active references`() = runBlocking {
+    fun `tags order by updated time descending`() = runBlocking {
+        val fixture = Fixture()
+        val oldClock = Clock.fixed(Instant.parse("2026-11-20T08:00:00Z"), ZoneOffset.UTC)
+        val newClock = Clock.fixed(Instant.parse("2026-11-20T09:00:00Z"), ZoneOffset.UTC)
+        val oldRepository = repository(fixture, oldClock)
+
+        val first = oldRepository.create("分数", CATEGORY_ID)
+        oldRepository.create("几何", CATEGORY_ID)
+
+        // 编辑较早的知识点后，它的修改时间更新，应排到列表最前（2026-11-24 用户要求）。
+        repository(fixture, newClock).update(first.id, "分式", CATEGORY_ID)
+
+        val tags = repository(fixture, newClock).tags()
+        assertEquals(listOf(first.id, tags[1].id), tags.map { it.id })
+        assertEquals(listOf("分式", "几何"), tags.map { it.name })
+    }
+
+    @Test
+    fun `tags tie-break by number when updated time is equal`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)
         val first = repository.create("分数", CATEGORY_ID)

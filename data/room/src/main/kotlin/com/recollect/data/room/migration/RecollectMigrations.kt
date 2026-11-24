@@ -21,6 +21,8 @@ import com.recollect.data.room.entity.KnowledgeCategoryDefaults
  * v12 新增 `app_settings` 单行表（每日复习时长），并写入默认 60 分钟。
  * v13 新增知识点分类表 `knowledge_category` 与 `knowledge_point.categoryId`：
  * 种入 11 个默认分类，已有知识点统一回填到「语文」。
+ * v14 给 `question` 与 `knowledge_point` 增加 `updatedAt`（用户修改时间），
+ * 旧数据回填为各自的 `createdAt`；题库与知识点列表据此倒序展示。
  */
 object RecollectMigrations {
 
@@ -346,6 +348,25 @@ object RecollectMigrations {
         }
     }
 
+    /**
+     * v13 → v14：给题目与知识点增加用户修改时间 `updatedAt`（2026-11-24 用户要求）。
+     *
+     * 先以 `0` 作为列默认值补齐 NOT NULL 列，再把旧行回填为各自的 `createdAt`；
+     * 之后由 Repository 在用户新建/编辑时写入真实修改时间。
+     */
+    val MIGRATION_13_14: Migration = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `question` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0",
+            )
+            db.execSQL("UPDATE `question` SET `updatedAt` = `createdAt`")
+            db.execSQL(
+                "ALTER TABLE `knowledge_point` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0",
+            )
+            db.execSQL("UPDATE `knowledge_point` SET `updatedAt` = `createdAt`")
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -359,5 +380,6 @@ object RecollectMigrations {
         MIGRATION_10_11,
         MIGRATION_11_12,
         MIGRATION_12_13,
+        MIGRATION_13_14,
     )
 }

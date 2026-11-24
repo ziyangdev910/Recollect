@@ -20,6 +20,16 @@ interface QuestionDao {
     @Query("SELECT * FROM question WHERE archived = 0")
     suspend fun active(): List<Question>
 
+    /**
+     * 题库列表：按最近一次用户修改时间倒序；时间相同时保持创建（插入）顺序，
+     * 保证新增或编辑后的题目立即出现在列表顶部（2026-11-24 用户要求）。
+     */
+    @Query(
+        "SELECT * FROM question WHERE archived = 0 " +
+            "ORDER BY updatedAt DESC, rowid ASC",
+    )
+    suspend fun activeOrderedByUpdatedAt(): List<Question>
+
     @Query("SELECT * FROM question WHERE id = :id")
     suspend fun byId(id: String): Question?
 

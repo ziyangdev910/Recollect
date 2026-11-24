@@ -44,7 +44,7 @@ import com.recollect.data.room.repository.KnowledgePointTag
 import kotlinx.coroutines.launch
 
 /**
- * 知识点标签库（app.md「KnowledgePoints」）：分类筛选、编号/名称列表、搜索、新增、编辑、删除。
+ * 知识点标签库（app.md「KnowledgePoints」）：分类筛选、编号/名称列表、新增、编辑、删除。
  *
  * 每个知识点就是一个标签，必须归属一个分类；分类本身也可增删改（2026-11-23 用户要求）。
  * 删除前确认，仍被未归档题目引用的标签不可删除（D-12）。
@@ -58,7 +58,6 @@ fun KnowledgePointLibraryScreen(
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) { viewModel.refresh() }
 
-    var query by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<LibraryDialog?>(null) }
     var showCategoryManager by remember { mutableStateOf(false) }
@@ -73,33 +72,20 @@ fun KnowledgePointLibraryScreen(
         }
     }
 
-    val filtered = remember(tags, query, selectedCategoryId) {
-        val keyword = query.trim()
+    val filtered = remember(tags, selectedCategoryId) {
         tags.filter { tag ->
-            (selectedCategoryId == null || tag.categoryId == selectedCategoryId) &&
-                (
-                    keyword.isEmpty() ||
-                        tag.name.contains(keyword, ignoreCase = true) ||
-                        tag.number.toString() == keyword
-                    )
+            selectedCategoryId == null || tag.categoryId == selectedCategoryId
         }
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            // 2026-11-23 用户要求：缩小搜索框与顶部导航栏之间的间距。
+            // 2026-11-23 用户要求：缩小列表内容与顶部导航栏之间的间距。
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text("搜索标签（名称或编号）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // 分类筛选选项卡：位于搜索框之下、「新增标签」按钮之上。
+        // 分类筛选选项卡：位于「共 N 个标签」与「新增标签」按钮之上。
         KnowledgeCategoryFilterRow(
             categories = categories,
             selectedCategoryId = selectedCategoryId,

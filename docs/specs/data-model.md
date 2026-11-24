@@ -53,7 +53,9 @@ data class KnowledgePoint(
     val halfLifeDays: Float?,           // 墨墨 DHP 半衰期；冷启动阶段 null（C-018 已确认）
     val createdAt: Instant,             // 创建时间；DHP 第一段间隔的起点（C-037）
     @ColumnInfo(defaultValue = "'cat-chinese'")
-    val categoryId: String = "cat-chinese"  // 所属分类（schema v13）；旧数据默认「语文」
+    val categoryId: String = "cat-chinese",  // 所属分类（schema v13）；旧数据默认「语文」
+    @ColumnInfo(defaultValue = "0")
+    val updatedAt: Instant = createdAt  // 用户新建/编辑时间（schema v14）；知识点列表按此倒序，迁移/旧备份回填 createdAt
 )
 ```
 
@@ -61,7 +63,7 @@ data class KnowledgePoint(
 - `categoryId` 必须指向存在的 `KnowledgeCategory`：新增/编辑知识点时由录入层选择、Repository 在事务内复核；编辑可修改分类，不影响 `number` 与打印行序。旧库迁移与旧备份导入统一归入「语文」（2026-11-23 用户要求）。
 - `effectiveFeedbackCount` 为 `Float`，取值始终是 0.5 的倍数；切换阈值为 `>= 3.0f`，不做 epsilon 容差（C-006/C-050）。
 - `continuousScore` 落库为 `Float`；`ApplyFeedbackUseCase` 的加减与夹取在 `Double` 中完成，写入 Room 或构造 `KnowledgeState` 时转 `Float`（C-050）。
-- 新建知识点的初始值：`currentTier = UNKNOWN`、`continuousScore = 0.5`、`effectiveFeedbackCount = 0.0`、`nextDueDate = 创建日 + 1 天`、`activeQuestionCount = 0`、`dormant = false`、`difficulty = null`、`halfLifeDays = null`、`createdAt = now`、`categoryId = 用户选择的分类`；首次关联题目后由 Repository 重算 `activeQuestionCount`。
+- 新建知识点的初始值：`currentTier = UNKNOWN`、`continuousScore = 0.5`、`effectiveFeedbackCount = 0.0`、`nextDueDate = 创建日 + 1 天`、`activeQuestionCount = 0`、`dormant = false`、`difficulty = null`、`halfLifeDays = null`、`createdAt = now`、`categoryId = 用户选择的分类`、`updatedAt = now`；首次关联题目后由 Repository 重算 `activeQuestionCount`。之后仅用户编辑名称/分类时刷新 `updatedAt`，调度更新档位、分数与到期日不刷新。
 - 新建题目的 `lastScheduledDate = null`、`lastReviewedDate = null`；首次打印/确认后再写。
 - `difficulty`/`halfLifeDays` 在第 3 条 triggered 反馈后由 `ApplyFeedbackUseCase` 初始化，之后每次 triggered 反馈更新；有效反馈未达 3.0 时 `nextDueDate` 仍用冷启动 1/3/7，达到后从下一次反馈起用 DHP（C-018）。
 - **可打印知识点（printable）**：`!dormant && activeQuestionCount > 0`。左侧行、右上全称、OMR 行组、调度候选统一使用该谓词；`dormant=false` 但 `activeQuestionCount=0` 的初始态不打印。
@@ -82,7 +84,9 @@ data class Question(
     val createdAt: Instant,
     val archivedAt: Instant?,
     val sourcePage: String = "",               // 来源标签名称（可空，如「作业本」）；旧文本迁移到这里
-    val sourcePageCode: Int = 0                // 来源页码编号；带来源可键盘输入、无来源用 +/−；默认按有无来源分别记忆，同页可复用（2026-11-22 用户要求）
+    val sourcePageCode: Int = 0,               // 来源页码编号；带来源可键盘输入、无来源用 +/−；默认按有无来源分别记忆，同页可复用（2026-11-22 用户要求）
+    @ColumnInfo(defaultValue = "0")
+    val updatedAt: Instant = createdAt         // 用户新建/编辑时间（schema v14）；题库按此倒序，迁移/旧备份回填 createdAt
 )
 ```
 
@@ -396,6 +400,7 @@ data class KnowledgeNumberSequence(
 - schema v11：`plan` 增加 `deferred TEXT NOT NULL DEFAULT '[]'`；旧计划迁移后为空数组、不显示推迟提示，重新生成计划后才有快照。
 - schema v12：新增 `app_settings` 单行表（`id INTEGER PRIMARY KEY`、`dailyReviewMinutes INTEGER NOT NULL`），迁移时写入 `(1, 60)`。
 - schema v13：新增 `knowledge_category` 表（`id` 主键、`name` 唯一索引、`createdAt`），迁移时按给定顺序种入 11 个默认分类；`knowledge_point` 增加 `categoryId TEXT NOT NULL DEFAULT 'cat-chinese'`，现有知识点因此全部归入「语文」，无需逐行回填。分类下仍有知识点时不得删除分类。
+- schema v14：`question` 与 `knowledge_point` 增加 `updatedAt INTEGER NOT NULL DEFAULT 0`，迁移时回填为各自的 `createdAt`；仅用于题库与知识点列表的倒序展示，不参与调度、分页与打印布局（2026-11-24 用户要求）。
 - `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时不得按当前关联 + `number` 升序重算，应视为「无快照」并在回读/确认时阻断，提示重新生成计划并按新稿打印，同时记录警告（C-072 方案 A）。
 - 导出 JSON 的范围以 `backup.md` 的白名单为准，不再表述为「全部实体」；`PendingFeedback`、`ScanSession` 与 `CoolingOverrideEvent` 不导出（C-031/C-040/C-008）。
 

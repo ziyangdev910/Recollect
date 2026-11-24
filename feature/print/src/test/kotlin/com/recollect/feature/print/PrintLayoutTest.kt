@@ -205,8 +205,8 @@ class PrintLayoutTest {
         assertEquals(92.36, q1.rightTop.xMm, EPSILON)
         assertEquals(33.0, q1.rightTop.topMm, EPSILON)
         assertEquals(7.0 + 1 * 7.5, q1.rightTop.heightMm, EPSILON)
-        // 页码只显示页序（不显示计划号），并展示来源页码。
-        assertEquals("页码 01　题号 T-1　来源页 P12", q1.rightTop.pageLine.text)
+        // 2026-11-24 用户要求：题目开头不再显示「页码 XX」，保留题号与来源页。
+        assertEquals("题号 T-1　来源页 P12", q1.rightTop.pageLine.text)
         assertTrue(q1.rightTop.pageLine.bold)
         assertEquals("一元二次方程", q1.rightTop.knowledgeText.text)
         assertEquals(1, q1.rightTop.knowledgeText.maxLines)
@@ -284,7 +284,7 @@ class PrintLayoutTest {
         assertEquals("q4", q4.questionId)
         assertEquals(145.0, q4.blockTopMm, EPSILON)
         assertEquals(74.5, q4.blockHeightMm, EPSILON)
-        assertEquals("页码 02　题号 T-4　来源页 P7", q4.rightTop.pageLine.text)
+        assertEquals("题号 T-4　来源页 P7", q4.rightTop.pageLine.text)
         assertEquals(159.5, q4.note?.topMm!!, EPSILON)
         assertEquals(192.5, q4.qr.topMm, EPSILON)
 

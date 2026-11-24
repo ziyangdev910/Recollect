@@ -40,6 +40,9 @@ import org.ziyangdev910.recollect.R
 private const val AUTHOR = "@ziyangdev910"
 private const val REPOSITORY_URL = "https://github.com/ziyangdev910/recollect"
 
+/** 本项目采用的开源许可证；「关于」页展示，正文见仓库 LICENSE 与 LICENSE-EXCEPTION。 */
+private const val LICENSE_NAME = "GPL-3.0 with Classpath Exception"
+
 /** 致谢中论文引用的 DOI 解析地址；DOI 文本可点击在系统浏览器打开。 */
 private const val DOI_URL = "https://doi.org/10.1109/TKDE.2023.3251721"
 private const val DOI_LABEL = "doi: 10.1109/TKDE.2023.3251721"
@@ -47,14 +50,15 @@ private const val DOI_LABEL = "doi: 10.1109/TKDE.2023.3251721"
 /**
  * 「关于」页（首页底部信息图标入口）。
  *
- * 展示应用图标、名称、版本号、作者、开源仓库、简要功能说明与致谢（记忆调度算法
- * 的学术来源）。
+ * 展示应用图标、名称、版本号、作者、开源仓库、开源许可证（可进入全文页）、简要功能说明
+ * 与致谢（记忆调度算法的学术来源）。
  * 不申请任何新权限，仓库链接通过系统浏览器打开。
  */
 @Composable
 fun AboutScreen(
     appName: String,
     versionName: String,
+    onOpenLicense: () -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     val colors = MaterialTheme.colorScheme
@@ -93,6 +97,17 @@ fun AboutScreen(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { uriHandler.openUri(REPOSITORY_URL) }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                InfoRow(label = "开源许可证", value = LICENSE_NAME)
+                Text(
+                    text = "查看许可证全文",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onOpenLicense)
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
             }
@@ -171,7 +186,8 @@ fun AboutScreen(
                     color = colors.onSurfaceVariant,
                 )
                 Text(
-                    text = "本项目的实现为基于论文描述的独立编写，未复制或改编原项目的源代码。",
+                    text = "本项目的记忆模型公式参考了墨墨团队以 MIT 许可开源的 SSP-MMC 实现；" +
+                        "排程与工程代码为独立编写，未复制或改编其实现代码。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurfaceVariant,
                 )

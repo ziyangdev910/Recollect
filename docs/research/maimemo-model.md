@@ -5,7 +5,8 @@
 - 日期：2026-11-11（2026-11-13 确认）
 - 来源：
   - Ye, Su, Cao. *A Stochastic Shortest Path Algorithm for Optimizing Spaced Repetition Scheduling*. KDD 2022, 4381–4390. <https://www.maimemo.com/paper/>
-  - 官方开源实现：<https://github.com/maimemo/SSP-MMC>（`model/utils.py`、`simulator.py`、`cal_model_param.py`）
+  - 官方开源实现：<https://github.com/maimemo/SSP-MMC>（`model/utils.py`、`simulator.py`、`cal_model_param.py`；MIT License）
+  - 论文配套开源实现（SSP-MMC-Plus）：<https://github.com/maimemo/SSP-MMC-Plus>（MIT License）
   - 墨墨官方文档：<https://memodocs.maimemo.com/docs/algorithm-intro>、<https://memodocs.maimemo.com/docs/PulqwOB1xi5jV0kb8Y1cPE7ZnKc>
 
 ## 1. 墨墨模型是什么

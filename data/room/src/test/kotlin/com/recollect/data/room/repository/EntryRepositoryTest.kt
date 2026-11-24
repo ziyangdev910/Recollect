@@ -362,6 +362,43 @@ class EntryRepositoryTest {
     }
 
     @Test
+    fun `summaries order by updated time descending`() = runBlocking {
+        val fixture = Fixture()
+        fixture.addKnowledgePoint("kp-1", 1, "分数")
+        val oldClock = Clock.fixed(Instant.parse("2026-11-20T08:00:00Z"), ZoneOffset.UTC)
+        val newClock = Clock.fixed(Instant.parse("2026-11-20T09:00:00Z"), ZoneOffset.UTC)
+        val oldRepository = fixture.repository(oldClock)
+
+        val first = oldRepository.create(
+            EntryDraft(
+                questionNumber = "T-1",
+                sourcePageCode = 1,
+                knowledgePointIds = listOf("kp-1"),
+            ),
+        )
+        oldRepository.create(
+            EntryDraft(
+                questionNumber = "T-2",
+                sourcePageCode = 1,
+                knowledgePointIds = listOf("kp-1"),
+            ),
+        )
+
+        // 编辑较早的题目后，它的修改时间更新，应排到题库最前（2026-11-24 用户要求）。
+        fixture.repository(newClock).update(
+            questionId = first.questionId,
+            draft = EntryDraft(
+                questionNumber = "T-1b",
+                sourcePageCode = 1,
+                knowledgePointIds = listOf("kp-1"),
+            ),
+        )
+
+        val summaries = fixture.repository(newClock).summaries()
+        assertEquals(listOf("T-1b", "T-2"), summaries.map { it.questionNumber })
+    }
+
+    @Test
     fun `archive hides the question and releases tag activity`() = runBlocking {
         val fixture = Fixture()
         fixture.addKnowledgePoint("kp-1", 1, "分数")
