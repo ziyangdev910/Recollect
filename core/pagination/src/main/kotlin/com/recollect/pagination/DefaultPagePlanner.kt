@@ -241,20 +241,18 @@ class DefaultPagePlanner : PagePlanner {
     private fun attachmentAreaMm(question: RenderableQuestion, template: TemplateGeometry): Double =
         question.attachmentCount * template.attachmentHeightPerItemMm
 
-    /** pagination.md「单题高度公式」，必须原样实现。 */
-    private fun itemHeightMm(question: RenderableQuestion, template: TemplateGeometry): Double {
-        val leftHeight = question.knowledgeCount * template.rowHeightMm
-        val rightTop = template.questionFixedInfoHeightMm +
-            question.knowledgeLineCount * template.rowHeightMm
-        val rightBottom = if (question.hasNoteArea) {
-            template.noteAreaBaseHeightMm + attachmentAreaMm(question, template)
-        } else {
-            0.0
-        }
-        return maxOf(leftHeight, rightTop + rightBottom) +
-            template.qrFooterHeightMm +
-            template.itemSpacingMm
-    }
+    /**
+     * pagination.md「单题高度公式」，必须原样实现（2026-11-24 新排版）：
+     * 顶部填涂区/信息区取较高者，下方是通栏笔记显示区与书写区；
+     * QR 与 pageId 标签与书写区并排，不再额外占用题块高度。
+     */
+    private fun itemHeightMm(question: RenderableQuestion, template: TemplateGeometry): Double =
+        template.itemHeightMm(
+            knowledgeCount = question.knowledgeCount,
+            knowledgeLineCount = question.knowledgeLineCount,
+            attachmentCount = question.attachmentCount,
+            hasNoteArea = question.hasNoteArea,
+        )
 
     private companion object {
         /** 单份计划的最大页数；`pageNumber` 为 1..99（pagination.md 分页规则）。 */

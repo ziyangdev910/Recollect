@@ -50,9 +50,12 @@ data class TemplateGeometry(
     val questionFixedInfoHeightMm: Double = 7.0, // 右上第一行
     val noteAreaBaseHeightMm: Double = 30.0,
     val attachmentHeightPerItemMm: Double = 10.0,
-    val itemSpacingMm: Double = 3.0,
+    val noteWritingLineCount: Int = 3,           // 2026-11-25：复习笔记横线条数
+    val noteWritingBottomPaddingMm: Double = 1.0,// 最后一条横线距书写行底部的内边距
+    val itemSpacingMm: Double = 5.0,             // 题间距；与横线间距 8mm 的视觉节奏一致
     val qrSizeMm: Double = 18.0,
     val qrPaddingMm: Double = 3.0,
+    val noteQrColumnGapMm: Double = 3.0,         // 2026-11-24：笔记书写区与右侧 QR 列的间距
     val pageIdLabelHeightMm: Double = 4.0,       // QR 下方 pageId 标签高度
     val pageIdLabelGapMm: Double = 2.0,          // 标签与 QR 的间距（标签高度的一半）
     val maxAttachmentHeightRatio: Double = 0.30,  // C-027
@@ -60,8 +63,11 @@ data class TemplateGeometry(
     val dateHeadingHeightMm: Double = 7.0,        // 日期大标题行高（C-063；每日总题数已删除）
     val cornerReserveMm: Double = 0.0             // C-091 方案 A：四角标记预留；默认 0 保持纯几何语义
 ) {
+    /** 无笔记区时的 QR 预留带；有笔记区时 QR 与书写区并排，由 qrStackHeightMm 决定书写行下限。 */
     val qrFooterHeightMm: Double
         get() = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm
+    val qrStackHeightMm: Double
+        get() = qrSizeMm + pageIdLabelGapMm + pageIdLabelHeightMm
     val contentLeftMm: Double
         get() = horizontalMarginMm + cornerReserveMm
     val contentTopMm: Double
@@ -182,13 +188,17 @@ enum class PaginationWarningCode {
 ## 单题高度公式（必须原样实现并测试）
 
 ```text
-leftHeight    = knowledgeCount * rowHeightMm
-rightTop      = questionFixedInfoHeightMm + knowledgeLineCount * rowHeightMm
-attachmentArea = attachmentCount * attachmentHeightPerItemMm
-rightBottom   = if (hasNoteArea) noteAreaBaseHeightMm + attachmentArea else 0.0
-itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + itemSpacingMm
+# 2026-11-24 新排版：上方左填涂 / 右信息，下方通栏笔记，QR 与书写区并排
+topSection      = max(knowledgeCount * rowHeightMm,
+                      questionFixedInfoHeightMm + knowledgeLineCount * rowHeightMm)
+qrStack         = qrSizeMm + pageIdLabelGapMm + pageIdLabelHeightMm
+attachmentArea  = attachmentCount * attachmentHeightPerItemMm
+noteRow         = if (hasNoteArea) max(noteAreaBaseHeightMm, qrStack) else qrFooterHeightMm
+notesDisplay    = if (hasNoteArea) attachmentArea else 0.0
+itemHeight      = topSection + notesDisplay + noteRow + itemSpacingMm
 ```
 
+- 2026-11-25 用户要求题间距取「复习笔记两条横线之间的距离」：横线间距 `noteWritingLineStepMm = (noteAreaBaseHeightMm − noteTitleHeightMm − noteWritingBottomPaddingMm) / noteWritingLineCount = 8mm`；`itemSpacingMm` 取 5mm，使最后一条横线到下一题首行文字的可见空白约 8mm（含横线底部 1mm 与下一题文字行内居中约 2mm）。
 - `knowledgeLineCount` 由 `feature/print` 按 `print-template.md` 的右上换行规则计算；不在 `core/pagination` 里猜测文本换行。
 - 仅在 `hasNoteArea=true` 时判定附加上限：`attachmentArea > maxAttachmentHeightMm` → `OverflowItem(reason = ATTACHMENT_OVER_LIMIT)`，整条不打印，提示用户减少附加笔记（C-027、C-062；C-066 不再建议拆分题目）。`hasNoteArea=false` 时纸上没有笔记区与附加笔记，附加数量不参与上限判定，也不得被静默清零。
 - `itemHeight > contentHeightMm` → `OverflowItem(reason = ITEM_TOO_TALL)`，整条不打印，绝不在分页器内拆分或压缩（C-016/C-025）；提示引导用户减少本题关联的知识点或缩短知识点描述（减少右上名称行数，C-066）。
@@ -229,8 +239,8 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 | P-01 | 一日一条，高度正常 | 一页一条 |
 | P-02 | 一日多条，恰好填满 | 无 overflow，无跨页 |
 | P-03 | 一日多条，最后一条放不下 | 该条整条移下一页；当页恰有一个 `ContinuationMarker`，`order=0` |
-| P-04 | 单题知识点 1/2/3/4 | `leftHeight` 按公式递增；页级表头只扣一次 |
-| P-05 | 开启附加 1/2/3 条 | `rightBottom` 递增；附加区超过 `usableHeightMm * 0.30` 时整条进入 `overflowItems(ATTACHMENT_OVER_LIMIT)` |
+| P-04 | 单题知识点 1/2/3/4 | `topSection` 取左填涂行与右信息行较高者并按公式递增；页级表头只扣一次 |
+| P-05 | 开启附加 1/2/3 条 | 历史笔记显示区（附加区）按条递增；附加区超过 `usableHeightMm * 0.30` 时整条进入 `overflowItems(ATTACHMENT_OVER_LIMIT)` |
 | P-06 | 左侧比右侧高 | `itemHeight` 取左侧 |
 | P-07 | 右侧比左侧高 | `itemHeight` 取右侧和 |
 | P-08 | 跨多日 | 每日从新页开始；日期升序；同日多页连续 |
@@ -240,11 +250,11 @@ itemHeight    = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + ite
 | P-12 | 输入 Map 乱序 | 输出按日期升序，与输入顺序无关 |
 | P-13 | 已删除（2026-11-22） | 删除首页图例后不再存在「进不了首页、进得了后续页」的条目，空首页分支一并删除 |
 | P-14 | 条目高于 `contentHeightMm` | 进入 `ITEM_TOO_TALL`，不拆分、不压缩 |
-| P-15 | `hasNoteArea=false` | `rightBottom = 0`，附加区不计入 |
-| P-16 | `knowledgeLineCount` 1..4 | `rightTop` 按行数递增，不按 `knowledgeCount` 递增 |
+| P-15 | `hasNoteArea=false` | `notesDisplay = 0`、`noteRow = qrFooterHeightMm`，附加区不计入 |
+| P-16 | `knowledgeLineCount` 1..4 / `knowledgeCount` 2..4 | `topSection` 取两者较高者；右信息更高时按行数递增，左填涂更高时按知识点数递增 |
 | P-17 | 同一题重复分页 / 重启后重规划 | `knowledgeNames` 按 `number` 升序输入，行序与名称顺序稳定不变（C-015） |
 | P-18 | `itemHeight` 落在 `(contentHeightMm, usableHeightMm]` | 必须进入 `ITEM_TOO_TALL`；不得出现「既放不下又不在 overflow」的区间 |
-| P-19 | QR 预留区 | `itemHeight` 包含 `qrFooterHeightMm`；QR 不挤占笔记书写区；`template.qrFooterHeightMm = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm` |
+| P-19 | QR 与书写区并排 | 有笔记区时 `itemHeight` 不叠加 QR 页脚带，笔记行 = `max(noteAreaBaseHeightMm, qrStackHeightMm)`；QR 堆高于书写区时才撑高；无笔记区时仍按 `qrFooterHeightMm` 计入 |
 | P-20 | 非法计数字段 | `knowledgeCount`/`attachmentCount`/`knowledgeLineCount` 越界时抛 `IllegalArgumentException`，不静默截断或补 0 |
 | P-21 | C-091 方案 A：四角标记预留 | `a4Print()` 的 `contentLeftMm`/`contentTopMm` = 26mm，`contentWidthMm` = 158mm，`usableHeightMm` = 245mm，`contentHeightMm` = 238mm；`yOffset` 从 `contentTopMm` 起算；内容区越过标记白边外沿 |
 

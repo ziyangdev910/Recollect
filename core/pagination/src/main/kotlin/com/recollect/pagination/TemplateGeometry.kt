@@ -55,9 +55,32 @@ data class TemplateGeometry(
     val noteAreaBaseHeightMm: Double = 30.0,
     val noteTitleHeightMm: Double = 5.0, // 笔记区「复习笔记」标题高度；书写区在其下方
     val attachmentHeightPerItemMm: Double = 10.0,
-    val itemSpacingMm: Double = 3.0,
+    /**
+     * 书写区横线条数与最后一条横线距书写行底部的内边距。
+     *
+     * 2026-11-25 用户要求：题间距改为「两条复习笔记横线之间的距离」，
+     * QR 与 pageId 标签组合的底边与最后一条横线对齐；横线几何由模板统一给出，
+     * 打印与布局测试共用，避免题间距与横线间距各算一套。
+     */
+    val noteWritingLineCount: Int = 3,
+    val noteWritingBottomPaddingMm: Double = 1.0,
+    /**
+     * 两道题之间的垂直间距；2026-11-25 用户要求取「复习笔记横线间距」的视觉效果。
+     *
+     * 横线间距 [noteWritingLineStepMm] = 8mm；最后一条横线到下一题首行文字之间
+     * 还包含下一题文字的行内垂直居中（约 2mm），故题间距取 5mm，
+     * 使可见空白约等于一条横线间距。
+     */
+    val itemSpacingMm: Double = 5.0,
     val qrSizeMm: Double = 18.0,
     val qrPaddingMm: Double = 3.0,
+    /**
+     * 笔记书写区与右侧 QR 列之间的水平间距。
+     *
+     * 2026-11-24 用户要求把 QR 与 pageId 标签嵌入复习笔记区右侧（书写区与 QR 并排，
+     * 书写区不再占满整幅内容宽度），从而省去题块底部的 QR 页脚带。
+     */
+    val noteQrColumnGapMm: Double = 3.0,
     /** C-095 方案 B：QR 下方 pageId 标签的高度（2.2mm 字号，视觉行高 4mm）。 */
     val pageIdLabelHeightMm: Double = 4.0,
     /** pageId 标签与 QR 的垂直间距；2026-11-21 用户要求缩短为标签高度的一半。 */
@@ -67,9 +90,13 @@ data class TemplateGeometry(
     val dateHeadingHeightMm: Double = 7.0, // 日期大标题行高（C-063）
     val cornerReserveMm: Double = 0.0, // C-091 方案 A：四角标记预留
 ) {
-    /** 题块页脚：QR 上方留白 + QR + 标签间距 + 标签高度。 */
+    /** 无笔记区时的 QR 预留带：QR 上方留白 + QR + 标签间距 + 标签高度。 */
     val qrFooterHeightMm: Double
         get() = qrSizeMm + qrPaddingMm + pageIdLabelGapMm + pageIdLabelHeightMm
+
+    /** QR + pageId 标签的纵向总高（并排布局下在笔记行内垂直居中，不再额外占题块高度）。 */
+    val qrStackHeightMm: Double
+        get() = qrSizeMm + pageIdLabelGapMm + pageIdLabelHeightMm
 
     /** 内容区左边界；需越过四角标记白边（C-091 方案 A）。 */
     val contentLeftMm: Double
@@ -115,6 +142,79 @@ data class TemplateGeometry(
 
     val contentHeightMm: Double
         get() = usableHeightMm - headerRowHeightMm
+
+    /**
+     * 每题顶部的「填涂区 / 题目信息区」高度：左上填涂行与右上信息区取较高者。
+     *
+     * 2026-11-24 用户要求的新排版：上方左填涂、右题目信息；下方通栏复习笔记。
+     * 打印层、分页高度公式与回读几何投影必须共用本函数，避免三处各写一套。
+     */
+    fun topSectionHeightMm(knowledgeCount: Int, knowledgeLineCount: Int): Double =
+        maxOf(
+            knowledgeCount * rowHeightMm,
+            questionFixedInfoHeightMm + knowledgeLineCount * rowHeightMm,
+        )
+
+    /**
+     * 每题底部笔记行的高度：有笔记区时为「书写区」高度，并保证容纳 QR 与 pageId 标签；
+     * 无笔记区时退化为 QR 预留带（QR 仍须落在题块内供回读绑定）。
+     */
+    fun noteRowHeightMm(hasNoteArea: Boolean): Double =
+        if (hasNoteArea) maxOf(noteAreaBaseHeightMm, qrStackHeightMm) else qrFooterHeightMm
+
+    /** 每题附加历史笔记的显示区高度（位于笔记书写区上方，通栏）。 */
+    fun notesDisplayHeightMm(attachmentCount: Int): Double =
+        attachmentCount * attachmentHeightPerItemMm
+
+    /**
+     * 单题高度：顶部信息段 + 附加笔记显示区 + 笔记书写行（QR 并排，不额外占高）+ 题间距。
+     *
+     * `docs/specs/pagination.md` 的「单题高度公式」必须与实现保持一致。
+     */
+    fun itemHeightMm(
+        knowledgeCount: Int,
+        knowledgeLineCount: Int,
+        attachmentCount: Int,
+        hasNoteArea: Boolean,
+    ): Double =
+        topSectionHeightMm(knowledgeCount, knowledgeLineCount) +
+            (if (hasNoteArea) notesDisplayHeightMm(attachmentCount) else 0.0) +
+            noteRowHeightMm(hasNoteArea) +
+            itemSpacingMm
+
+    /** 填涂区第 [rowIndex] 行（0 起）的顶部 y；打印与 OMR 采样共用。 */
+    fun bubbleRowTopMm(blockTopMm: Double, rowIndex: Int): Double =
+        blockTopMm + rowIndex * rowHeightMm
+
+    /** 笔记书写区宽度：整幅内容宽度扣除右侧 QR 列与间距。 */
+    val noteWritingWidthMm: Double
+        get() = contentWidthMm - qrSizeMm - noteQrColumnGapMm
+
+    /** 右侧 QR 列左边界（与内容区右缘对齐）。 */
+    val qrColumnLeftMm: Double
+        get() = contentLeftMm + contentWidthMm - qrSizeMm
+
+    /**
+     * 复习笔记横线间距（首条到末条均分书写区），默认 (30 − 5 − 1) / 3 = 8mm。
+     * 题间距按该节奏设置，见 [itemSpacingMm]。
+     */
+    val noteWritingLineStepMm: Double
+        get() = ((noteAreaBaseHeightMm - noteTitleHeightMm - noteWritingBottomPaddingMm) /
+            noteWritingLineCount).coerceAtLeast(0.0)
+
+    /** 每条横线相对书写行顶部的偏移，按自上而下顺序；打印层直接用。 */
+    val noteWritingLineOffsetsMm: List<Double>
+        get() = List(noteWritingLineCount) { index ->
+            noteTitleHeightMm + (index + 1) * noteWritingLineStepMm
+        }
+
+    /** 最后一条横线相对书写行顶部的偏移；QR 组合底边与它对齐。 */
+    val lastNoteWritingLineOffsetMm: Double
+        get() = noteWritingLineOffsetsMm.lastOrNull() ?: noteTitleHeightMm
+
+    /** QR + pageId 标签组合相对书写行顶部的偏移：底边与最后一条横线对齐。 */
+    val noteQrTopOffsetMm: Double
+        get() = (lastNoteWritingLineOffsetMm - qrStackHeightMm).coerceAtLeast(0.0)
 
     val maxAttachmentHeightMm: Double
         get() = usableHeightMm * maxAttachmentHeightRatio

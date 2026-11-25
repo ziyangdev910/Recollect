@@ -58,7 +58,7 @@ class PagePlannerPropertyTest {
             groups[base.plusDays(20)] = listOf(maxParameterQuestion(id()))
         }
         if (repetition % 3 == 2) {
-            // 短页 + 每条附件 15mm：整题 105mm > 95mm 且附件 45mm > 30mm → C-061。
+            // 短页 + 每条附件 15mm：整题 121mm > 95mm 且附件 45mm > 30mm → C-061。
             groups[base.plusDays(21)] = listOf(bothConditionsQuestion(id()), compactQuestion(id()))
             // 无笔记区 + 附件 45mm > 30mm → C-062：上限不判定，条目照常打印。
             groups[base.plusDays(22)] = listOf(noNoteAreaOverLimitQuestion(id()), compactQuestion(id()))
@@ -307,7 +307,7 @@ class PagePlannerPropertyTest {
         topMarginMm = 10.0,
         bottomMarginMm = 10.0,
         headerRowHeightMm = 5.0,
-        rowHeightMm = 5.0,
+        rowHeightMm = 10.0,
         questionFixedInfoHeightMm = 10.0,
         noteAreaBaseHeightMm = 20.0,
         attachmentHeightPerItemMm = attachmentHeightPerItemMm,
@@ -329,7 +329,7 @@ class PagePlannerPropertyTest {
         )
     }
 
-    /** 短页下必然整题过高：rightTop 30 + 笔记区 50 = 80，+20（QR）+5（间距）= 105mm > 95mm。 */
+    /** 短页下必然整题过高：顶部 50 + 附加 30 + 笔记行 21 + 5（间距）= 106mm > 95mm。 */
     private fun maxParameterQuestion(id: String): RenderableQuestion = RenderableQuestion(
         questionId = id,
         questionNumber = id,
@@ -340,13 +340,13 @@ class PagePlannerPropertyTest {
         hasNoteArea = true,
     )
 
-    /** 短页 + 每条附件 15mm：高度 105mm > 95mm 且附件面积 45mm > 30mm，两条件同时成立。 */
+    /** 短页 + 每条附件 15mm：高度 121mm > 95mm 且附件面积 45mm > 30mm，两条件同时成立。 */
     private fun bothConditionsQuestion(id: String): RenderableQuestion = RenderableQuestion(
         questionId = id,
         questionNumber = id,
-        knowledgeCount = 1,
-        knowledgeNames = listOf("知识点"),
-        knowledgeLineCount = 1,
+        knowledgeCount = 4,
+        knowledgeNames = List(4) { "知识点${it + 1}" },
+        knowledgeLineCount = 4,
         attachmentCount = 3,
         hasNoteArea = true,
     )
@@ -374,15 +374,17 @@ class PagePlannerPropertyTest {
 
     /** 独立按 pagination.md 的「单题高度公式」求期望高度，作为属性测试的判定基准。 */
     private fun expectedHeightMm(question: RenderableQuestion, template: TemplateGeometry): Double {
-        val leftHeight = question.knowledgeCount * template.rowHeightMm
-        val rightTop = template.questionFixedInfoHeightMm + question.knowledgeLineCount * template.rowHeightMm
-        val attachmentArea = question.attachmentCount * template.attachmentHeightPerItemMm
-        val rightBottom = if (question.hasNoteArea) {
-            template.noteAreaBaseHeightMm + attachmentArea
+        val topSection = maxOf(
+            question.knowledgeCount * template.rowHeightMm,
+            template.questionFixedInfoHeightMm + question.knowledgeLineCount * template.rowHeightMm,
+        )
+        val bottom = if (question.hasNoteArea) {
+            question.attachmentCount * template.attachmentHeightPerItemMm +
+                maxOf(template.noteAreaBaseHeightMm, template.qrStackHeightMm)
         } else {
-            0.0
+            template.qrFooterHeightMm
         }
-        return maxOf(leftHeight, rightTop + rightBottom) + template.qrFooterHeightMm + template.itemSpacingMm
+        return topSection + bottom + template.itemSpacingMm
     }
 
     /** C-061 方案 B：整题过高优先；附加上限只在打印笔记区时判定（C-062 方案 B）。 */

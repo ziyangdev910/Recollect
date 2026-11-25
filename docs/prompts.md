@@ -484,7 +484,7 @@
 【本轮背景】阶段 2（core:pagination），规格 docs/specs/pagination.md；C-047、C-048 已裁决。本轮只做附加笔记区，用例 P-05、P-11。
 
 【本轮任务】
-- P-05：attachmentCount 1/2/3 时 rightBottom 递增；附件面积超过 usableHeightMm*0.30 时整条进入 ATTACHMENT_OVER_LIMIT。
+- P-05：attachmentCount 1/2/3 时历史笔记显示区（附件区）递增；附件面积超过 usableHeightMm*0.30 时整条进入 ATTACHMENT_OVER_LIMIT。
 - P-11：恰好 30% 通过；超过 1mm 进入 ATTACHMENT_OVER_LIMIT；不截断附件区。
 - 必须用自定义 template（pageHeight/margins/attachmentHeightPerItemMm），默认几何不可达。
 
@@ -517,9 +517,9 @@
 【本轮任务】
 - P-02：一日多条恰好填满内容区 → 无 overflow、无跨页、无续下页元数据（C-063 起标签不再渲染）。
 - P-12：输入 Map 乱序 → 输出按日期升序，与输入迭代顺序无关；P-08 已覆盖大半，仍须单独命名并锁定。
-- P-15：hasNoteArea=false → rightBottom=0，附加数量不计入高度；附加上限也不判定（C-062 方案 B），附加数量不得被静默清零。默认模板下同一题 68.5→38.5mm 已可区分，无需自定义 template；若要同时覆盖“无笔记区 + 附件超限不判”的边界，显式传自定义 template（参考 C-062 锁定测试）。
-- P-16：knowledgeLineCount 1..4 → rightTop 按行数递增，不按 knowledgeCount 递增。
-- P-19：itemHeight 包含 qrFooterHeightMm（= qrSizeMm + qrPaddingMm），QR 不挤占笔记书写区。
+- P-15：hasNoteArea=false → 不绘制历史笔记显示区与书写行，只保留 QR 预留带，附加数量不计入高度；附加上限也不判定（C-062 方案 B），附加数量不得被静默清零。默认模板下同一题 67.5→44.5mm 已可区分，无需自定义 template；若要同时覆盖“无笔记区 + 附件超限不判”的边界，显式传自定义 template（参考 C-062 锁定测试）。
+- P-16：顶部信息段取「左填涂行」与「右信息行」较高者；knowledgeLineCount 1..4 在右信息更高时按行数递增，knowledgeCount 2..4 在左填涂更高时按知识点数递增（2026-11-24 新排版）。
+- P-19：QR 与笔记书写区并排，不再占题块高度；笔记行 = max(noteAreaBaseHeightMm, qrStackHeightMm)，QR 堆高于书写区时才撑高；无笔记区时仍计入 qrFooterHeightMm（2026-11-24 新排版）。
 - P-09：@RepeatedTest(100) + Random(20261113)，断言无条目跨页/重叠、marker 与被移条目一一对应、overflow 不在 pages、pageNumber 连续、pageId 唯一；生成器同时覆盖 C-060（全溢出日期不建页）、C-061（两条件同时成立时只输出一条 ITEM_TOO_TALL）、C-062（无笔记区不判附加上限）。
 - 跑 ./gradlew :core:pagination:test 与 ./gradlew verifyCorePurity。
 
@@ -1076,10 +1076,10 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 【本轮背景】阶段 6（Print），规格 docs/specs/print-template.md；R-02 要求不在 onLayout 重新分页。C-047：分页失败不进入打印；C-060：全溢出日期没有页面，打印层不得补空白页；C-061：两种 overflow 同时成立时归为 `ITEM_TOO_TALL`；C-066：整题过高提示减少关联知识点或缩短描述，不再建议拆分题目；C-062：附加上限仅在 `hasNoteArea=true` 时生效，不得截断附件区。C-063：不绘制“续下页”；2026-11-22 起删除图例与“本日共需复习 X 题”，只保留日期大标题，表头每页直接显示「掌握 / 较熟悉 / 不会」。C-051 方案 A：打印验收以适配层回读为准。C-091 方案 A 已裁决：生产模板用 `TemplateGeometry.a4Print()`，内容区从 26mm 开始以避开四角标记（规格已授权回写）。本轮只做打印布局，不做回读。
 
 【本轮任务】
-- 按 print-template.md 实现 A4 几何、左侧填涂区、右上信息、右下笔记、QR 预留、四角 ArUco；
+- 按 print-template.md 实现 A4 几何、左上填涂区、右上题号/来源/知识点、下方通栏历史笔记显示区 + 复习笔记书写区、书写区右侧并排 QR 与 pageId 标签、四角 ArUco（2026-11-24 用户要求）；
 - 只消费 `PagePlanner` 的 `PlannedPage`/`PlacedItem` 映射，不在 `onLayout` 重算高度或重分页（R-02）；
 - 用 PrintedPdfDocument 生成 PDF，保存到 evidence/print/；
-- 断言几何参数与 TemplateGeometry 一致；`hasNoteArea=false` 的条目按 `rightBottom=0` 绘制，附件不截断、不补画（C-062）；
+- 断言几何参数与 TemplateGeometry 一致；`hasNoteArea=false` 的条目不绘制历史笔记与书写区，只保留题块底部 QR 预留带，附件不截断、不补画（C-062）；
 - overflow 条目只输出 warnings，不生成占位行或空白页（C-060/C-061）；
 - 不绘制“续下页”；每个日期的第一页绘制日期大标题（默认 `dateHeadingFontMm=5mm` / `dateHeadingHeightMm=7mm`），绘制在上边距内、不占用内容区；2026-11-22 起不再绘制“本日共需复习 X 题”与首页图例；填涂框上方每页直接标注「掌握 / 较熟悉 / 不会」并与三框中心对齐；不得在 onLayout 临时压缩行高；
 - 警告只渲染中文文案/映射标签，不展示内部代码（C-065）；`KNOWLEDGE_TEXT_OVERFLOW` 由计划层产出并合并（C-064）；overflow 提示文案按 C-066：整题过高提示减少关联知识点/缩短描述，附加超限提示减少附加笔记，不得建议拆分题目。
@@ -1110,6 +1110,8 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 - 6.2 必须用 `TemplateGeometry.a4Print()` 的几何；不得回退到 12mm 内容区，也不得把标记移到与扫描规格不一致的位置。
 
 **2026-11-18 追加：打印计划页已接入（6.1 后续）**：`:feature:print` 新增 `PrintPlanScreen`/`PrintPlanViewModel` 与 `AndroidPrintLauncher`；PlanPreview 成功生成计划后保留同一份 `PrintJob`，打印页只从 PlanPreview 进入（2026-11-21 起 Home 不再提供“打印计划”入口：生成与打印是同一条流程，避免 Home 无内存计划时进入打印页只见空态），点击“打开系统打印”调起系统打印对话框。打印文档写出后不再自动回写：App 内显示「已打印 / 未打印」确认，用户点「已打印」才通过 `PrintSnapshotWriter` 回写 `Question.pageId/qrPayload`（C-094 方案 B）；页脚完整 `pageId` 以 2.2mm 小字显示在 QR 下方、与 QR 右缘对齐，间距 2mm（标签高度的一半；C-095 方案 B；2026-11-21 用户要求，QR 模块铺满 18mm 框）。实体机 `AXRBUT6518000086` 已完成 PlanPreview → 打印页 → 系统打印（A4 2 页）→ 保存为 PDF，证据见 `evidence/screens/print-*`、`evidence/print/recollect-XW21BB.pdf` 与 `print-confirm-recorded.xml`。未完成：`PrintPlanSession` 仅内存保存、进程重建后需重新生成计划。2026-11-21 补充：PlanPreview 的 ViewModel 归 `AppRoot` 顶层持有（`planPreviewGeneration` 只在用户再次点击“生成本周计划”时递增），并在 `LaunchedEffect` 中调用 `refreshIfNeeded()`；从打印页返回预览页时复用原计划，计划号不再被刷新。测试见 `PlanPreviewViewModelTest.refreshIfNeeded keeps the same plan when returning from the print screen`。2026-11-22 追加 C-097【done】：schema v8 新增 `plan` 计划头；`PlanSession.open` 复用本周已有计划（`LoadPlanUseCase` 依据冻结 `renderMeta` 重建 `PrintJob`），只有预览页二次确认“重新生成本周计划”才走 `regenerate` 并用 `supersedesPlanId` 在同一事务内替代旧计划；`savePrintSnapshots` 只允许 GENERATED/PRINTED 计划写 `Question.pageId/qrPayload` 并标记 PRINTED；首页按钮按计划状态显示“生成本周计划/查看并打印本周计划”。
+
+**2026-11-24 追加：每题排版改为「左上填涂 / 右上信息 / 下方通栏笔记 + 并排 QR」【done】**：为解决知识点最多 4 条时空间利用率过低，`TemplateGeometry` 新增 `topSectionHeightMm`（左上填涂行与右上信息行取较高者）、`noteRowHeightMm`（有笔记区时 `max(noteAreaBaseHeightMm, qrStackHeightMm)`，无笔记区时 `qrFooterHeightMm`）、`itemHeightMm`、`bubbleRowTopMm`、`noteWritingWidthMm`、`qrColumnLeftMm`、`qrStackHeightMm`、`noteQrColumnGapMm`；`PrintLayout` 拆出 `NotesDisplayLayout`（通栏历史笔记）与 `NoteAreaLayout`（书写区，右侧让出 QR 列），QR 与 pageId 标签在书写行内垂直居中；`ScanGeometryProjection` 的书写区同步改为通栏左侧，`OpenCvScanEngine` 行起点改用 `bubbleRowTopMm`，列中心、2.5mm 采样窗、30%/10% 阈值与唯一命中优先规则不变。`./gradlew test verifyCorePurity` 与 `:app:assembleDebug`、`:feature:print:compileDebugAndroidTestKotlin`、`:feature:scan:compileDebugAndroidTestKotlin` 通过；`print-template.md`/`pagination.md`/`scan-pipeline.md` 已按用户授权回写。
 
 ### 6.2 OpenScanVision 回读 spike【done】
 

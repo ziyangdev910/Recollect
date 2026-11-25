@@ -56,10 +56,4 @@ GPL-3.0 全文见 [LICENSE](LICENSE)，Classpath 例外全文见
 Classpath 例外允许将本项目与独立模块（例如 ML Kit 等闭源依赖）链接并一同分发，
 不要求这些独立模块开源；它不改变本项目及衍生 App 自身代码的 GPL-3.0 开源义务。
 
-本项目自身代码以 GPL-3.0 + Classpath Exception 发布；使用的第三方组件遵循各自的
-许可证，详见 [NOTICE](NOTICE)。
-
-## 作者
-
-[@ziyangdev910](https://github.com/ziyangdev910) ·
-<https://github.com/ziyangdev910/recollect>
+本项目自身代码以 GPL-3.0 + Classpath Exception 发布；使用的第三方组件遵循各自的许可证，详见 [NOTICE](NOTICE)。

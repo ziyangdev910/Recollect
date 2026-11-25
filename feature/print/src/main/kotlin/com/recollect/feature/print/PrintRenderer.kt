@@ -53,9 +53,11 @@ class PrintRenderer {
         drawText(canvas, item.rightTop.pageLine, pxPerMm)
         drawText(canvas, item.rightTop.knowledgeText, pxPerMm)
 
+        // 2026-11-24：历史笔记显示区在书写区上方通栏绘制。
+        item.notesDisplay?.texts?.forEach { text -> drawText(canvas, text, pxPerMm) }
+
         item.note?.let { note ->
             drawText(canvas, note.title, pxPerMm)
-            note.attachments.forEach { attachment -> drawText(canvas, attachment, pxPerMm) }
             val linePaint = strokePaint(pxPerMm, widthMm = 0.2)
             note.writingLines.forEach { line ->
                 val y = (line.topMm * pxPerMm).toFloat()

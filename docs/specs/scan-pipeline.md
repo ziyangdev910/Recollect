@@ -13,9 +13,9 @@
 
 1. CameraX 取帧（或相册选图）
 2. 自研引擎（OpenCV）：ArUco 定位 → 透视矫正（C-092 方案 C）
-3. 逐题在其页脚区域解码 QR（每题一个）；解码后立即做版本/校验码/归属校验（见下）；失败不进入确认页
-4. 自研引擎 OMR：仅采样左侧填涂区，按行分组识别 A/B/C（几何与阈值见下）
-5. 对右下笔记区**手写书写区**裁剪 → ML Kit 中文离线 OCR（text-recognition-chinese:16.0.0）；不读取印刷的附加摘要区
+3. 逐题在其题块内解码 QR（每题一个；2026-11-24 起 QR 与笔记书写区并排，不再位于题块底部页脚）；解码后立即做版本/校验码/归属校验（见下）；失败不进入确认页
+4. 自研引擎 OMR：仅采样题块左上方的填涂区，按行分组识别 A/B/C（几何与阈值见下）
+5. 对每题下方通栏笔记区的**手写书写区**（左侧，右侧 QR 列除外）裁剪 → ML Kit 中文离线 OCR（text-recognition-chinese:16.0.0）；不读取印刷的历史笔记显示区
 6. 产出 `PendingFeedback`（含 `triggered`、`detectedTier`、`detectionStatus`、`conflict`、`detectedRawOcr`），初始 `userDecision = UNMARKED`
 7. 转交 feature/confirm；本模块不直接写 `ReviewFeedback`（R-04）
 
@@ -100,7 +100,7 @@ data class OmrRow(
 
 - 左区 x 起点 = `TemplateGeometry.contentLeftMm`（`a4Print()` 下 26mm），宽 = `leftAreaWidthMm`（`a4Print()` 下 66.36mm）；列宽：序号 6mm、知识点 34mm、列间距 1.5mm；填涂格为答题卡式 16:9 宽格，`bubbleWidthMm × bubbleHeightMm` = 5.7 × 3.2mm，框间距 **3.1mm**（2026-11-22 用户要求：为「掌握 / 较熟悉 / 不会」留出文字间距）。不得再用旧的 12mm/74.4mm（C-091 方案 A），也不得再使用旧的 8/34/3.5/2mm 列宽。
 - 框中心 x 直接取 `TemplateGeometry.bubbleCenterXMm(i)`（i=0/1/2 对应掌握/较熟悉/不会，`a4Print()` 下为 71.85/80.65/89.45mm）；框中心 y = 行 y 起点 + `rowHeightMm/2`。打印与扫描共用同一 `TemplateGeometry`，不得在任一模块另写常量；框间距变化时采样中心随公式自动平移，无需在扫描端另调参数。项目未发布，不保留旧模板兼容分支。
-- 单个题块内第 j 行 y 起点 = `yOffset + j*rowHeightMm`；`yOffset` 已包含页首表头与上方题块（2026-11-22 删除首页图例后不再有图例偏移）。不要用跨题块的全局行号公式。
+- 单个题块内第 j 行 y 起点 = `TemplateGeometry.bubbleRowTopMm(yOffset, j)` = `yOffset + j*rowHeightMm`；`yOffset` 已包含页首表头与上方题块（2026-11-22 删除首页图例后不再有图例偏移）。2026-11-24 新排版把填涂区留在题块左上方、题号/知识点移到右上方，下方改为通栏笔记区；填涂行起点与列中心均不变，**识别规则（2.5mm 采样窗、30%/10% 阈值、唯一命中优先）保持不变**。不要用跨题块的全局行号公式。
 - 题块内定位优先用 `PlacedItem.yOffsetMm`：题块左侧行从 `yOffset` 开始（已包含页首与上方题块），按 `knowledgeRows` 快照行序绑定。
 - 每个框采样中心 2.5mm×2.5mm（`bubbleSampleSizeMm`，必须小于框高 `bubbleHeightMm`）；灰度 < 128 记为暗像素。
 - 单个框：暗像素比例 > 30% → 命中；< 10% → 未命中；10%–30% → 模糊。
@@ -108,8 +108,8 @@ data class OmrRow(
 
 ## QR 与题块绑定
 
-- 每个题块是 `PlacedItem.yOffsetMm` 到 `yOffset+heightMm` 的水平带；QR 位于题块底部 `qrFooterHeightMm` 区域。
-- 扫描端按 QR 中心 y 坐标匹配最近的题块，容差 ±`qrFooterHeightMm/2`。
+- 每个题块是 `PlacedItem.yOffsetMm` 到 `yOffset+heightMm` 的水平带；2026-11-24 起 QR 位于题块内、笔记书写区右侧（无笔记区时仍是题块底部 `qrFooterHeightMm` 预留带），QR + pageId 标签完整落在题块内。
+- 扫描端按 QR 中心 y 坐标匹配最近的题块，容差 ±`qrFooterHeightMm/2`（并排布局下 QR 已在题块内，容差只扩大匹配，不引入歧义）。
 - 匹配后：QR 给出 `questionId`；题块内左侧行按 `PlanPage.knowledgeRows` 快照绑定；行数不一致 → `OWNERSHIP_MISMATCH`。
 - 一页多题时，每题块各自带 QR；不要求整页只有一个 QR。
 

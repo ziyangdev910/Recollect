@@ -30,11 +30,13 @@ class ScanGeometryProjectionTest {
         assertEquals(30.0, geometry.heightMm)
         assertEquals(1, geometry.rowCount)
         val note = requireNotNull(geometry.noteArea)
-        // 题块顶 41 + 固定信息 7 + 2 行 × 7.5 = 63；再加标题 5mm。
+        // 2026-11-24 新排版：题块顶 41 + 顶部信息段 max(1×7.5, 7+2×7.5)=22 = 63；再加标题 5mm。
         assertEquals(68.0, note.topMm)
         assertEquals(template.noteAreaBaseHeightMm - template.noteTitleHeightMm, note.heightMm)
-        assertEquals(template.contentLeftMm + template.leftAreaWidthMm + template.textPaddingMm, note.leftMm)
-        assertEquals(template.rightTextWidthMm, note.widthMm)
+        // 书写区通栏起于内容区左边，右侧让出 QR 列与间距。
+        assertEquals(template.contentLeftMm + template.textPaddingMm, note.leftMm)
+        assertEquals(template.noteWritingWidthMm, note.widthMm)
+        assertEquals(template.contentWidthMm - template.qrSizeMm - template.noteQrColumnGapMm, note.widthMm)
     }
 
     @Test
@@ -52,7 +54,7 @@ class ScanGeometryProjectionTest {
 
         val note = requireNotNull(ScanGeometryProjection.of(item, question, template).noteArea)
 
-        // 41 + 7 + 7.5 = 55.5；3 条附加摘要 ×10 = 30；再加标题 5。
+        // 41 + max(1×7.5, 7+1×7.5)=14.5 = 55.5；3 条附加摘要 ×10 = 30；再加标题 5。
         assertEquals(90.5, note.topMm)
     }
 

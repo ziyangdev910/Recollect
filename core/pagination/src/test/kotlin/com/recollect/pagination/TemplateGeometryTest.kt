@@ -150,4 +150,79 @@ class TemplateGeometryTest {
             "日期标题块（7mm）必须落在内容区上边界之前，不占用内容区高度",
         )
     }
+
+    /**
+     * 2026-11-24 新排版派生量：顶部信息段取左/右较高者；QR 与笔记书写区并排，
+     * 书写区宽度扣除 QR 列与间距；有笔记区时题块高度不再叠加 QR 页脚带。
+     */
+    @Test
+    fun `layout derives top section, side qr column and item height`() {
+        val geometry = TemplateGeometry.a4Print()
+        val tolerance = 1e-9
+
+        assertEquals(
+            24.0,
+            geometry.qrStackHeightMm,
+            tolerance,
+            "qrStackHeightMm = QR 18 + 标签间距 2 + 标签高度 4",
+        )
+        assertEquals(
+            137.0,
+            geometry.noteWritingWidthMm,
+            tolerance,
+            "noteWritingWidthMm = 内容宽 158 - QR 18 - 列间距 3",
+        )
+        assertEquals(
+            166.0,
+            geometry.qrColumnLeftMm,
+            tolerance,
+            "qrColumnLeftMm = 内容右缘 184 - QR 18",
+        )
+
+        // 左填涂 4×7.5 = 30，右信息 7 + 4×7.5 = 37 → 取 37。
+        assertEquals(37.0, geometry.topSectionHeightMm(4, 4), tolerance)
+        // 左填涂 4×7.5 = 30，右信息 7 + 1×7.5 = 14.5 → 取 30。
+        assertEquals(30.0, geometry.topSectionHeightMm(4, 1), tolerance)
+        // 有笔记区：QR 堆 24 ≤ 书写区 30，笔记行 30；无笔记区：QR 预留带 27。
+        assertEquals(30.0, geometry.noteRowHeightMm(hasNoteArea = true), tolerance)
+        assertEquals(27.0, geometry.noteRowHeightMm(hasNoteArea = false), tolerance)
+        assertEquals(
+            37.0 + 30.0 + 30.0 + 5.0,
+            geometry.itemHeightMm(
+                knowledgeCount = 4,
+                knowledgeLineCount = 4,
+                attachmentCount = 3,
+                hasNoteArea = true,
+            ),
+            tolerance,
+            "有笔记区：顶部 37 + 附加 30 + 笔记行 30 + 间距 5，QR 不再另占高度",
+        )
+        assertEquals(
+            14.5 + 27.0 + 5.0,
+            geometry.itemHeightMm(
+                knowledgeCount = 1,
+                knowledgeLineCount = 1,
+                attachmentCount = 3,
+                hasNoteArea = false,
+            ),
+            tolerance,
+            "无笔记区：顶部 14.5 + QR 预留带 27 + 间距 5，附加不参与",
+        )
+        // 2026-11-25：横线间距 (30 − 5 − 1) / 3 = 8mm；QR 组合底边贴最后一条横线。
+        assertEquals(8.0, geometry.noteWritingLineStepMm, tolerance, "横线间距 = 8mm")
+        assertEquals(listOf(13.0, 21.0, 29.0), geometry.noteWritingLineOffsetsMm, "横线自上而下偏移")
+        assertEquals(29.0, geometry.lastNoteWritingLineOffsetMm, tolerance)
+        assertEquals(
+            geometry.lastNoteWritingLineOffsetMm - geometry.qrStackHeightMm,
+            geometry.noteQrTopOffsetMm,
+            tolerance,
+            "QR 组合底边与最后一条横线对齐（偏移 = 29 − 24 = 5mm）",
+        )
+        assertEquals(
+            geometry.bubbleRowTopMm(33.0, 2),
+            33.0 + 2 * geometry.rowHeightMm,
+            tolerance,
+            "填涂行起点由 bubbleRowTopMm 统一给出，供打印与 OMR 共用",
+        )
+    }
 }

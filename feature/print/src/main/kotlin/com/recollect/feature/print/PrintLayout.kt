@@ -44,12 +44,24 @@ data class PrintPageLayout(
     val arucoMarkers: List<ArucoMarkerLayout>,
 )
 
+/**
+ * 单题排版（2026-11-24 用户要求）：
+ * 上方左侧为知识点填涂区、右侧为题号/来源/知识点；
+ * 下方先通栏显示「之前的复习笔记」，再是复习笔记书写区，
+ * QR 与 pageId 标签嵌在书写区右侧（书写区不占满整幅宽度）。
+ *
+ * 两道题之间的垂直空白来自 `PlacedItem.heightMm` 中包含的
+ * `TemplateGeometry.itemSpacingMm`（2026-11-25 起默认 1.5mm），本层不另设间距常量。
+ */
 data class PrintItemLayout(
     val questionId: String,
     val blockTopMm: Double,
     val blockHeightMm: Double,
     val left: LeftAreaLayout,
     val rightTop: RightTopLayout,
+    /** 附加历史笔记显示区（通栏）；无历史笔记或 `hasNoteArea=false` 时为 null。 */
+    val notesDisplay: NotesDisplayLayout?,
+    /** 复习笔记书写区（左侧）；`hasNoteArea=false` 时为 null。 */
     val note: NoteAreaLayout?,
     val qr: QrReservationLayout,
     val qrPayload: String, // 每题 QR 载荷（D-09、C-030）；渲染层据此生成位图
@@ -89,15 +101,22 @@ data class RightTopLayout(
     val knowledgeText: PrintText, // 知识点全称，允许换行
 )
 
+/** 附加历史笔记显示区（位于书写区上方，通栏显示）。 */
+data class NotesDisplayLayout(
+    val xMm: Double,
+    val topMm: Double,
+    val widthMm: Double,
+    val heightMm: Double,
+    val texts: List<PrintText>,
+)
+
+/** 复习笔记书写区；右侧与 QR 列并排，`widthMm` 不含 QR 列。 */
 data class NoteAreaLayout(
     val xMm: Double,
     val topMm: Double,
     val widthMm: Double,
     val heightMm: Double,
-    val attachmentHeightMm: Double,
-    val writingAreaHeightMm: Double,
     val title: PrintText,
-    val attachments: List<PrintText>,
     val writingLines: List<PrintLine>,
 )
 
@@ -105,8 +124,6 @@ data class QrReservationLayout(
     val leftMm: Double,
     val topMm: Double,
     val sizeMm: Double,
-    val footerTopMm: Double,
-    val footerHeightMm: Double,
     val quietZoneModules: Int,
     /** C-095 方案 B：QR 下方右对齐的小字号完整 pageId，供扫码失败时手动输入。 */
     val pageIdLabel: PrintText,
@@ -272,14 +289,12 @@ object PrintLayoutBuilder {
         rightAreaLeft: Double,
         rightAreaWidth: Double,
     ): PrintItemLayout {
-        val visibleBottom = placedTop + placedHeight - template.itemSpacingMm
-        val footerTop = visibleBottom - template.qrFooterHeightMm
-        val qrLeft = contentLeft + contentWidth - template.qrSizeMm
-        val qrTop = footerTop + template.qrPaddingMm
-
         val rowCount = question.knowledgeCount
+        val knowledgeLineCount = question.knowledgeLineCount.coerceAtLeast(1)
+        val topSectionHeight = template.topSectionHeightMm(rowCount, knowledgeLineCount)
+
         val leftRows = (0 until rowCount).map { index ->
-            val rowTop = placedTop + index * template.rowHeightMm
+            val rowTop = template.bubbleRowTopMm(placedTop, index)
             val displayName = truncateForLeftArea(question.knowledgeNames.getOrElse(index) { "" })
             LeftRowLayout(
                 index = index + 1,
@@ -306,15 +321,12 @@ object PrintLayoutBuilder {
             )
         }
 
-        val knowledgeLineCount = question.knowledgeLineCount.coerceAtLeast(1)
-        val rightTopHeight = template.questionFixedInfoHeightMm +
-            knowledgeLineCount * template.rowHeightMm
         val textLeft = rightAreaLeft + template.textPaddingMm
         val rightTop = RightTopLayout(
             xMm = rightAreaLeft,
             topMm = placedTop,
             widthMm = rightAreaWidth,
-            heightMm = rightTopHeight,
+            heightMm = topSectionHeight,
             pageLine = PrintText(
                 text = pageLineText(question),
                 leftMm = textLeft,
@@ -336,19 +348,45 @@ object PrintLayoutBuilder {
             ),
         )
 
-        val note = if (question.hasNoteArea) {
-            noteAreaLayout(
+        // 下方通栏：先显示历史笔记（可选），再是书写区；QR 与书写区并排。
+        val bottomTop = placedTop + topSectionHeight
+        val notesDisplayHeight = if (question.hasNoteArea) {
+            template.notesDisplayHeightMm(question.attachmentCount)
+        } else {
+            // C-062：纸上没有笔记区时不绘制历史笔记。
+            0.0
+        }
+        val notesDisplay = if (notesDisplayHeight > 0.0) {
+            notesDisplayLayout(
                 attachmentCount = question.attachmentCount,
                 noteTexts = noteTexts,
-                topMm = placedTop + rightTopHeight,
+                topMm = bottomTop,
+                contentLeft = contentLeft,
+                contentWidth = contentWidth,
                 template = template,
-                rightAreaLeft = rightAreaLeft,
-                rightAreaWidth = rightAreaWidth,
             )
         } else {
-            // C-062：纸上没有笔记区；附件数量不参与绘制，也不在这里静默清零上游数据。
             null
         }
+
+        val note = if (question.hasNoteArea) {
+            noteAreaLayout(
+                topMm = bottomTop + notesDisplayHeight,
+                template = template,
+                contentLeft = contentLeft,
+            )
+        } else {
+            null
+        }
+
+        val qrTop = if (question.hasNoteArea) {
+            // 2026-11-25 用户要求：QR + pageId 标签组合的底边与最后一条复习笔记横线对齐。
+            bottomTop + notesDisplayHeight + template.noteQrTopOffsetMm
+        } else {
+            // 无笔记区时退化为题块底部 QR 预留带（QR 仍须落在题块内供归属绑定）。
+            bottomTop + template.qrPaddingMm
+        }
+        val qrLeft = template.qrColumnLeftMm
 
         return PrintItemLayout(
             questionId = placedQuestionId,
@@ -360,13 +398,12 @@ object PrintLayoutBuilder {
                 rows = leftRows,
             ),
             rightTop = rightTop,
+            notesDisplay = notesDisplay,
             note = note,
             qr = QrReservationLayout(
                 leftMm = qrLeft,
                 topMm = qrTop,
                 sizeMm = template.qrSizeMm,
-                footerTopMm = footerTop,
-                footerHeightMm = template.qrFooterHeightMm,
                 quietZoneModules = QR_QUIET_ZONE_MODULES,
                 // 2026-11-21 用户要求：完整 pageId 移到 QR 下方，间距缩短为标签高度的一半（2mm），
                 // 并在 QR 宽度内右对齐（右缘与 QR 右缘一致）。
@@ -388,70 +425,80 @@ object PrintLayoutBuilder {
         )
     }
 
-    private fun noteAreaLayout(
+    /** 附加历史笔记显示区：通栏，最多 3 条 × 2 行摘要（C-026）。 */
+    private fun notesDisplayLayout(
         attachmentCount: Int,
         noteTexts: List<String>,
         topMm: Double,
+        contentLeft: Double,
+        contentWidth: Double,
         template: TemplateGeometry,
-        rightAreaLeft: Double,
-        rightAreaWidth: Double,
-    ): NoteAreaLayout {
-        val attachmentHeight = attachmentCountHeight(attachmentCount, template)
-        val noteHeight = template.noteAreaBaseHeightMm + attachmentHeight
-        val textLeft = rightAreaLeft + template.textPaddingMm
-        val attachments = noteTexts.mapIndexed { index, text ->
+    ): NotesDisplayLayout {
+        val textLeft = contentLeft + template.textPaddingMm
+        val textWidth = contentWidth - 2 * template.textPaddingMm
+        val texts = noteTexts.mapIndexed { index, text ->
             PrintText(
                 text = text,
                 leftMm = textLeft,
                 topMm = topMm + index * template.attachmentHeightPerItemMm,
-                widthMm = template.rightTextWidthMm,
+                widthMm = textWidth,
                 heightMm = template.attachmentHeightPerItemMm,
                 fontMm = 2.8,
                 maxLines = ATTACHMENT_LINES,
             )
         }
-        val writingTop = topMm + attachmentHeight
+        return NotesDisplayLayout(
+            xMm = contentLeft,
+            topMm = topMm,
+            widthMm = contentWidth,
+            heightMm = template.notesDisplayHeightMm(attachmentCount),
+            texts = texts,
+        )
+    }
+
+    private fun noteAreaLayout(
+        topMm: Double,
+        template: TemplateGeometry,
+        contentLeft: Double,
+    ): NoteAreaLayout {
+        val writingWidth = template.noteWritingWidthMm
+        val textLeft = contentLeft + template.textPaddingMm
         val title = PrintText(
             text = "复习笔记",
             leftMm = textLeft,
-            topMm = writingTop,
-            widthMm = template.rightTextWidthMm,
+            topMm = topMm,
+            widthMm = writingWidth - 2 * template.textPaddingMm,
             heightMm = template.noteTitleHeightMm,
             fontMm = 3.2,
             bold = true,
         )
         return NoteAreaLayout(
-            xMm = rightAreaLeft,
+            xMm = contentLeft,
             topMm = topMm,
-            widthMm = rightAreaWidth,
-            heightMm = noteHeight,
-            attachmentHeightMm = attachmentHeight,
-            writingAreaHeightMm = template.noteAreaBaseHeightMm,
+            widthMm = writingWidth,
+            heightMm = template.noteAreaBaseHeightMm,
             title = title,
-            attachments = attachments,
-            writingLines = writingLines(writingTop, template, rightAreaLeft, rightAreaWidth),
+            writingLines = writingLines(topMm, template, contentLeft, writingWidth),
         )
     }
 
-    private fun attachmentCountHeight(count: Int, template: TemplateGeometry): Double =
-        count * template.attachmentHeightPerItemMm
-
+    /**
+     * 书写横线：位置与题间距共用 [TemplateGeometry] 的横线几何。
+     *
+     * 2026-11-25 用户要求题间距等于两条复习笔记横线之间的距离，并让 QR 组合
+     * 与最后一条横线水平对齐；横线偏移与 QR 偏移都从模板派生，避免两处各算一套。
+     */
     private fun writingLines(
         writingTop: Double,
         template: TemplateGeometry,
-        rightAreaLeft: Double,
-        rightAreaWidth: Double,
-    ): List<PrintLine> {
-        val linesTop = writingTop + template.noteTitleHeightMm
-        val available = template.noteAreaBaseHeightMm - template.noteTitleHeightMm
-        val step = available / (WRITING_LINE_COUNT + 1)
-        return (1..WRITING_LINE_COUNT).map { index ->
-            PrintLine(
-                leftMm = rightAreaLeft + template.textPaddingMm,
-                topMm = linesTop + index * step,
-                rightMm = rightAreaLeft + rightAreaWidth - template.textPaddingMm,
-            )
-        }
+        writingLeft: Double,
+        writingWidth: Double,
+    ): List<PrintLine> = template.noteWritingLineOffsetsMm.map { offset ->
+        PrintLine(
+            leftMm = writingLeft + template.textPaddingMm,
+            topMm = writingTop + offset,
+            rightMm = writingLeft + writingWidth - template.textPaddingMm,
+        )
     }
 
     /**
@@ -570,7 +617,6 @@ private const val HEADER_INDEX_WIDTH_MM = 7.0 // 表头「序号」的显示余�
 private const val HEADER_TIER_LABEL_WIDTH_MM = 10.0 // 「较熟悉」约 9mm，留 1mm 余量
 private const val HEADER_TEXT_HEIGHT_MM = 3.5 // 3.0mm 表头字的视觉行高；底边贴住第一条知识点行
 
-private const val WRITING_LINE_COUNT = 3
 private const val ATTACHMENT_LINES = 2
 private const val QR_QUIET_ZONE_MODULES = 4
 private const val PAGE_ID_LABEL_FONT_MM = 2.2

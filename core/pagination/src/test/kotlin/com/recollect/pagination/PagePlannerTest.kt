@@ -12,8 +12,9 @@ class PagePlannerTest {
 
     /**
      * P-01：一日一条、高度正常 → 一页一条。
-     * 默认模板下：leftHeight = 2 × 7.5 = 15；rightTop = 7 + 3 × 7.5 = 29.5；
-     * rightBottom = 30 + 0；itemHeight = max(15, 59.5) + 27 + 3 = 89.5mm。
+     * 2026-11-24 新排版：顶部信息段 = max(leftHeight 15, rightTop 7 + 3×7.5 = 29.5) = 29.5；
+     * 下方笔记行 = max(noteBase 30, QR 标签堆 24) = 30；QR 与书写区并排，不再另占高度；
+     * itemHeight = 29.5 + 30 + 5 = 64.5mm。
      * 首条 yOffsetMm = topMargin 12 + headerRow 7 = 19mm（C-048；2026-11-22 删除首页图例）。
      */
     @Test
@@ -44,10 +45,10 @@ class PagePlannerTest {
         val item = page.items.single()
         assertEquals("q1", item.questionId)
         assertEquals(
-            89.5,
+            64.5,
             item.heightMm,
             1e-9,
-            "itemHeight = max(leftHeight, rightTop + rightBottom) + qrFooterHeightMm + itemSpacingMm",
+            "itemHeight = topSection 29.5 + 笔记行 30 + itemSpacingMm 5",
         )
         assertEquals(
             19.0,
@@ -62,13 +63,13 @@ class PagePlannerTest {
     }
 
     /**
-     * P-03：一日四条、每条 74.5mm，第 4 条放不下 → 整条移到下一页；
+     * P-03：一日四条、每条 72mm，第 4 条放不下 → 整条移到下一页；
      * 第 1 页恰好一个 `ContinuationMarker(order=0)`，`fromPageId`/`toPageId` 正确（C-048）。
      *
      * 默认模板：每页内容区都是 266mm（2026-11-22 删除首页图例）。
-     * 条目高度 = max(1×7.5, 7 + 1×7.5 + 30) + 27 + 3 = 74.5mm。
-     * 3 × 74.5 = 223.5 ≤ 266，第 4 条 223.5 + 74.5 = 298 > 266 → 整条移页；
-     * 单条 74.5 ≤ 266，因此落在第 2 页完整放置，而不是进入 overflowItems。
+     * 条目高度（4 个知识点 / 4 行名称）= max(30, 7+30) + 30 + 5 = 72mm。
+     * 3 × 72 = 216 ≤ 266，第 4 条 216 + 72 = 288 > 266 → 整条移页；
+     * 单条 72 ≤ 266，因此落在第 2 页完整放置，而不是进入 overflowItems。
      */
     @Test
     fun `P-03 fourth item that does not fit moves whole to next page with one marker`() {
@@ -77,9 +78,9 @@ class PagePlannerTest {
             RenderableQuestion(
                 questionId = "q$index",
                 questionNumber = "3-$index",
-                knowledgeCount = 1,
-                knowledgeNames = listOf("知识点$index"),
-                knowledgeLineCount = 1,
+                knowledgeCount = 4,
+                knowledgeNames = List(4) { "知识点$index-${it + 1}" },
+                knowledgeLineCount = 4,
                 attachmentCount = 0,
                 hasNoteArea = true,
             )
@@ -95,7 +96,7 @@ class PagePlannerTest {
         assertEquals(2, success.pages.size, "第 4 条放不下时必须整条移到下一页")
         assertTrue(
             success.overflowItems.isEmpty(),
-            "74.5mm 远小于后续页内容区 266mm，不得进入 overflowItems",
+            "72mm 远小于后续页内容区 266mm，不得进入 overflowItems",
         )
 
         val firstPage = success.pages[0]
@@ -108,9 +109,9 @@ class PagePlannerTest {
             "C-048：遇到第一条放不下的条目就结束当前页，不得跳过它去填后续条目",
         )
         assertEquals(
-            listOf(19.0, 93.5, 168.0),
+            listOf(19.0, 91.0, 163.0),
             firstPage.items.map { it.yOffsetMm },
-            "yOffsetMm 从 topMargin+header 起算，按已放置高度依次累加 74.5mm",
+            "yOffsetMm 从 topMargin+header 起算，按已放置高度依次累加 72mm",
         )
 
         assertEquals(
@@ -136,7 +137,7 @@ class PagePlannerTest {
             "被移走的条目必须按原顺序完整出现在下一页，不拆分",
         )
         assertEquals(
-            74.5,
+            72.0,
             secondPage.items.single().heightMm,
             1e-9,
             "不拆分条目、不压缩高度",
@@ -154,14 +155,16 @@ class PagePlannerTest {
      * P-08：跨多日（C-025）——每日从新页开始，pageNumber 全文档连续，
      * 同日多页 date 相同，日期升序；输出与输入 Map 的迭代顺序无关。
      *
-     * 输入故意把 2026-11-18 放在 2026-11-16 之前。默认模板下每条 68.5mm：
-     * 11-16 四条 → 首页 3 条（205.5 ≤ 258）、第 2 页 1 条；11-18 一条 → 第 3 页。
+     * 输入故意把 2026-11-18 放在 2026-11-16 之前。默认模板下大条目每条 72mm：
+     * 11-16 四条 → 首页 3 条（216 ≤ 266）、第 2 页 1 条；11-18 一条 → 第 3 页。
      */
     @Test
     fun `P-08 days start on new pages with continuous numbering and ascending dates`() {
         val firstDay = LocalDate.of(2026, 11, 16)
         val secondDay = LocalDate.of(2026, 11, 18)
-        val firstDayQuestions = (1..4).map { compactQuestion("d1-q$it") }
+        val firstDayQuestions = (1..4).map {
+            compactQuestion("d1-q$it", knowledgeCount = 4, knowledgeLineCount = 4)
+        }
         val secondDayQuestions = listOf(compactQuestion("d2-q1"))
 
         val result = DefaultPagePlanner().plan(
@@ -203,7 +206,7 @@ class PagePlannerTest {
             success.pages[0].continuationMarkers.map { it.questionId },
             "同日跨页仍按 C-048 生成续下页标记",
         )
-        assertTrue(success.overflowItems.isEmpty(), "默认高度 68.5mm 不应进入 overflowItems")
+        assertTrue(success.overflowItems.isEmpty(), "默认高度 72mm 不应进入 overflowItems")
     }
 
     /**
@@ -224,7 +227,8 @@ class PagePlannerTest {
             headerRowHeightMm = 5.0,
             rowHeightMm = 2.0,
             questionFixedInfoHeightMm = 2.0,
-            noteAreaBaseHeightMm = 1.0,
+            // 2026-11-24 新排版：顶部信息段 max(2×2, 2+2×2)=6 + 笔记行 4 + 间距 1 = 11mm。
+            noteAreaBaseHeightMm = 4.0,
             itemSpacingMm = 1.0,
             qrSizeMm = 2.0,
             qrPaddingMm = 1.0,
@@ -263,10 +267,11 @@ class PagePlannerTest {
     /**
      * P-14：单题高于 `contentHeightMm` → `OverflowItem(ITEM_TOO_TALL)`，不进 `pages`、不拆分、不压缩（C-016/C-025）。
      *
-     * 自定义模板（默认几何不可达，见 [smallPageTemplate]）：usable = 100、content = 95、firstPageContent = 85、附件上限 30。
-     * 过高条目（4 知识点 / 4 行名称 / 3 条附加）：max(4×5, 10+4×5+20+3×10) = 80；80 + 20（QR 底栏）+ 5（间距）= 105mm > 95。
+     * 自定义模板（默认几何不可达，见 [smallPageTemplate]）：usable = 100、content = 95、附件上限 30。
+     * 过高条目（4 知识点 / 4 行名称 / 3 条附加）：顶部 max(4×10, 10+4×10) = 50；
+     * 50 + 30（附加）+ 20（笔记行）+ 5（间距）= 105mm > 95。
      * 附件区 3×10 = 30 恰为上限，不触发 ATTACHMENT_OVER_LIMIT（P-11）。
-     * 正常条目（1 知识点 / 1 行 / 无附加）：max(5, 10+5+20) + 20 + 5 = 60mm ≤ 首页 85mm，仍可落在第 1 页。
+     * 正常条目（1 知识点 / 1 行 / 无附加）：max(10, 20) + 20 + 5 = 45mm ≤ content 95，仍可落在第 1 页。
      */
     @Test
     fun `P-14 item taller than content height goes to overflow without split or compression`() {
@@ -336,7 +341,7 @@ class PagePlannerTest {
             page.items.map { it.questionId },
             "P-14：过高条目被移出后，其余条目仍按原顺序正常分页",
         )
-        assertEquals(60.0, page.items.single().heightMm, 1e-9, "正常条目高度不变")
+        assertEquals(45.0, page.items.single().heightMm, 1e-9, "正常条目高度（新排版）")
         assertEquals(
             15.0,
             page.items.single().yOffsetMm,
@@ -353,17 +358,17 @@ class PagePlannerTest {
      * P-18：`itemHeight` 落在 `(contentHeightMm, usableHeightMm]` 时必须进入 `ITEM_TOO_TALL`，
      * 不得出现「既放不下又不在 overflow」的区间（C-016/C-025）。
      *
-     * 用同一个自定义模板（见 [smallPageTemplate]）把区间两端都钉死：
-     * - 恰好等于 contentHeightMm 的 95mm 条目（4 知识点 / 4 行 / 2 条附加）：
-     *   max(20, 10+20+20+20) = 70；70 + 20 + 5 = 95mm；按严格「>」判定不得进入 overflow，
+     * 用同一个短页模板（[smallPageTemplate] 把每条附件调为 15mm）把区间两端都钉死：
+     * - 恰好等于 contentHeightMm 的 95mm 条目（3 知识点 / 3 行 / 2 条附加）：
+     *   max(30, 10+30)=40；40 + 30 + 20 + 5 = 95mm；按严格「>」判定不得进入 overflow，
      *   首页放不下时按 C-048 移到第 2 页（每页容量都是 95mm）。
-     * - 恰好等于 usableHeightMm 的 100mm 条目（3 知识点 / 3 行 / 3 条附加）：
-     *   max(15, 10+15+20+30) = 75；75 + 20 + 5 = 100mm；必须进入 ITEM_TOO_TALL。
+     * - 恰好等于 usableHeightMm 的 100mm 条目（2 知识点 / 2 行 / 3 条附加）：
+     *   max(20, 10+20)=30；30 + 45 + 20 + 5 = 100mm；必须进入 ITEM_TOO_TALL。
      */
     @Test
     fun `P-18 item above content height but within usable height still goes to overflow`() {
         val date = LocalDate.of(2026, 11, 22)
-        val template = smallPageTemplate()
+        val template = smallPageTemplate().copy(attachmentHeightPerItemMm = 15.0)
         val contentHeightMm = 95.0
         val usableHeightMm = 100.0
         assertEquals(template.contentHeightMm, contentHeightMm, 1e-9, "前置条件：内容区高度")
@@ -373,18 +378,18 @@ class PagePlannerTest {
         val exactContent = RenderableQuestion(
             questionId = "p18-q-exact-content",
             questionNumber = "18-1",
-            knowledgeCount = 4,
-            knowledgeNames = listOf("集合", "不等式", "函数", "导数"),
-            knowledgeLineCount = 4,
+            knowledgeCount = 3,
+            knowledgeNames = listOf("集合", "不等式", "函数"),
+            knowledgeLineCount = 3,
             attachmentCount = 2,
             hasNoteArea = true,
         )
         val exactUsable = RenderableQuestion(
             questionId = "p18-q-exact-usable",
             questionNumber = "18-2",
-            knowledgeCount = 3,
-            knowledgeNames = listOf("集合", "不等式", "函数"),
-            knowledgeLineCount = 3,
+            knowledgeCount = 2,
+            knowledgeNames = listOf("集合", "不等式"),
+            knowledgeLineCount = 2,
             attachmentCount = 3,
             hasNoteArea = true,
         )
@@ -471,7 +476,7 @@ class PagePlannerTest {
      * （包括仅含图例的空白页），只返回真实的打印页面与 overflow 列表；
      * 「整份计划没有可打印题目」的空态由计划层负责提示。
      *
-     * 两个日期：11-23 只有一条 105mm 过高条目；11-24 一条 60mm 正常条目。
+     * 两个日期：11-23 只有一条 105mm 过高条目；11-24 一条 45mm 正常条目。
      * 预期只剩 11-24 的页面，且它是文档第 1 页（空白页不占页号）。
      */
     @Test
@@ -534,11 +539,11 @@ class PagePlannerTest {
      * 默认模板每条附件 10mm、上限 81.9mm，3 条也只有 30mm，永远触不到上限，因此必须自定义模板：
      * pageHeight=250、上下边距 10 → usable=230、附件上限=230×0.30=69mm；每页 content=225。
      * attachmentHeightPerItemMm=24 → 1 条 24、2 条 48 均在上限内，3 条 72 超限。
-     * 条目高度 rightTop=10+5=15、noteBase=20：
-     * - 1 条：rightBottom=20+24=44，max(5, 59)+20(QR)+5(间距) = 84mm；
-     * - 2 条：rightBottom=20+48=68，max(5, 83)+25 = 108mm；
-     * - 3 条：rightBottom=20+72=92，max(5, 107)+25 = 132mm（132 ≤ 225，本可放下，只因附件超限被移出）。
-     * 前两条 84+108=192 ≤ 每页 225mm，落在首页；第 3 条整条不打印。
+     * 顶部信息段 max(5, 10+5)=15、笔记行 20、间距 5：
+     * - 1 条：15 + 24 + 20 + 5 = 64mm；
+     * - 2 条：15 + 48 + 25 = 88mm；
+     * - 3 条：15 + 72 + 25 = 112mm（112 ≤ 225，本可放下，只因附件超限被移出）。
+     * 前两条 64+88=152 ≤ 每页 225mm，落在首页；第 3 条整条不打印。
      */
     @Test
     fun `P-05 attachment area grows with count and over-limit item goes to ATTACHMENT_OVER_LIMIT`() {
@@ -586,7 +591,7 @@ class PagePlannerTest {
                 OverflowItem(
                     questionId = "p05-q3",
                     date = date,
-                    heightMm = 132.0,
+                    heightMm = 112.0,
                     reason = OverflowReason.ATTACHMENT_OVER_LIMIT,
                 ),
             ),
@@ -620,12 +625,12 @@ class PagePlannerTest {
             "1/2 条附件的条目仍按原顺序打印；第 3 条整条移出，不得截断附加区后塞进页面",
         )
         assertEquals(
-            listOf(84.0, 108.0),
+            listOf(64.0, 88.0),
             page.items.map { it.heightMm },
-            "P-05：附加 1→2 条时条目高度按每条 24mm 递增（84→108），与超限条目 132 共同体现 rightBottom 递增",
+            "P-05：附加 1→2 条时条目高度按每条 24mm 递增（64→88），与超限条目 112 共同体现附加区递增",
         )
         assertEquals(
-            listOf(15.0, 99.0),
+            listOf(15.0, 79.0),
             page.items.map { it.yOffsetMm },
             "首页 yOffset = topMargin 10 + header 5 + 已放置高度；超限条目不占位置",
         )
@@ -640,11 +645,11 @@ class PagePlannerTest {
      *
      * 默认模板上限 81.9mm，3 条附件也只有 30mm，不可达，因此必须自定义模板：
      * pageHeight=120、上下边距 10 → usable=100、附件上限=100×0.30=30mm；每页 content=95。
-     * 两条附带条目（rightTop=10+5=15、noteBase=10）：
-     * - 模板 A：每条 15mm、2 条 = 30mm，恰好等于上限 → 必须打印，heightMm=15+10+30+20+5=80mm；
+     * 两条附带条目（顶部信息段 max(5, 10+5)=15、笔记行 max(10, QR 堆 15)=15、间距 5）：
+     * - 模板 A：每条 15mm、2 条 = 30mm，恰好等于上限 → 必须打印，heightMm=15+30+15+5=65mm；
      * - 模板 B：每条 15.5mm、2 条 = 31mm，超过 1mm → 整条 overflow；
-     *   heightMm 仍是含 31mm 附加区的公式原值 81mm（若截断附件区到 30mm 会得到 80mm）。
-     * 两条 80/81mm 都 ≤ 每页 95mm，即模板 B 的条目只因附件上限被移出，不是因为放不下。
+     *   heightMm 仍是含 31mm 附加区的公式原值 66mm（若截断附件区到 30mm 会得到 65mm）。
+     * 两条 65/66mm 都 ≤ 每页 95mm，即模板 B 的条目只因附件上限被移出，不是因为放不下。
      */
     @Test
     fun `P-11 attachment area at exactly 30 percent passes and one millimetre over overflows`() {
@@ -678,10 +683,10 @@ class PagePlannerTest {
         val placed = passing.pages.single().items.single()
         assertEquals("p11-q1", placed.questionId)
         assertEquals(
-            80.0,
+            65.0,
             placed.heightMm,
             1e-9,
-            "rightTop 15 + 笔记区 10+30 + QR 底栏 20 + 间距 5 = 80mm，附加区全额计入",
+            "顶部 15 + 附加区 30 + 笔记行 15 + 间距 5 = 65mm，附加区全额计入",
         )
         assertEquals(15.0, placed.yOffsetMm, 1e-9, "首页 yOffset = topMargin 10 + header 5")
 
@@ -697,13 +702,13 @@ class PagePlannerTest {
                 OverflowItem(
                     questionId = "p11-q1",
                     date = date,
-                    heightMm = 81.0,
+                    heightMm = 66.0,
                     reason = OverflowReason.ATTACHMENT_OVER_LIMIT,
                 ),
             ),
             rejected.overflowItems,
             "P-11：附加区 31mm 超过上限 1mm 即整条进入 ATTACHMENT_OVER_LIMIT；" +
-                "heightMm=81 保留含 31mm 附加区的原值，不得截断成 80",
+                "heightMm=66 保留含 31mm 附加区的原值，不得截断成 65",
         )
         assertTrue(
             rejected.pages.isEmpty(),
@@ -721,7 +726,8 @@ class PagePlannerTest {
      * 提示按 C-066 引导减少关联知识点/缩短描述，而不是建议拆分题目。
      *
      * 复用 P-14/P-18 的短页模板（usable=100、content=95、附件上限=30），把每条附件改为 15mm：
-     * 3 条附件面积 = 45mm > 30mm；条目高度 rightTop=15 + 笔记区 20+45 = 80，+20(QR)+5(间距) = 105mm > 95mm。
+     * 4 知识点 / 4 行时顶部信息段 = max(40, 50) = 50；
+     * 3 条附件面积 = 45mm > 30mm；条目高度 50 + 45 + 20 + 5 = 120mm > 95mm。
      * 两个条件同时成立，必须归为 ITEM_TOO_TALL，且 heightMm 保持公式原值。
      */
     @Test
@@ -732,9 +738,9 @@ class PagePlannerTest {
         val question = RenderableQuestion(
             questionId = "c061-q1",
             questionNumber = "61-1",
-            knowledgeCount = 1,
-            knowledgeNames = listOf("知识点"),
-            knowledgeLineCount = 1,
+            knowledgeCount = 4,
+            knowledgeNames = List(4) { "知识点${it + 1}" },
+            knowledgeLineCount = 4,
             attachmentCount = 3,
             hasNoteArea = true,
         )
@@ -752,12 +758,12 @@ class PagePlannerTest {
                 OverflowItem(
                     questionId = "c061-q1",
                     date = date,
-                    heightMm = 105.0,
+                    heightMm = 120.0,
                     reason = OverflowReason.ITEM_TOO_TALL,
                 ),
             ),
             success.overflowItems,
-            "C-061 方案 B：附加区 45mm 超限且整题 105mm 过高时，必须归为 ITEM_TOO_TALL",
+            "C-061 方案 B：附加区 45mm 超限且整题 120mm 过高时，必须归为 ITEM_TOO_TALL",
         )
         assertEquals(
             PaginationWarningCode.ITEM_TOO_TALL,
@@ -780,8 +786,8 @@ class PagePlannerTest {
      * `hasNoteArea=false` 时纸上没有笔记区与附加笔记，附加数量不再导致整题移出。
      *
      * 复用 P-11 的边界模板：usable=100、附件上限=30mm、每条附件 15.5mm，2 条 = 31mm 超过 1mm。
-     * - 打印笔记区（11-28）：rightBottom=10+31=41，height=15+41+20+5=81mm ≤ 95，但因附件超限进入 overflow；
-     * - 不打印笔记区（11-29）：rightBottom=0，height=max(5, 15)+20+5=40mm，必须正常打印。
+     * - 打印笔记区（11-28）：height=15+31+15+5=66mm ≤ 95，但因附件超限进入 overflow；
+     * - 不打印笔记区（11-29）：无笔记行，height=max(5, 15)+QR 预留带 20+5=40mm，必须正常打印。
      * 11-28 全部条目溢出 → 不建页（C-060）；11-29 因此成为文档第 1 页，只扣页级表头。
      */
     @Test
@@ -815,7 +821,7 @@ class PagePlannerTest {
                 OverflowItem(
                     questionId = "c062-q-note",
                     date = withNoteDate,
-                    heightMm = 81.0,
+                    heightMm = 66.0,
                     reason = OverflowReason.ATTACHMENT_OVER_LIMIT,
                 ),
             ),
@@ -852,17 +858,17 @@ class PagePlannerTest {
     /**
      * P-02：一日多条恰好填满内容区 → 无 overflow、无跨页、无续下页标记。
      *
-     * 用 pageHeight=285 的默认几何模板，内容区 = 261（可用）- 7（页级表头）= 254mm。
-     * 两条参数取满的常规题各 127mm：
-     * rightTop = 7 + 4×7.5 = 37，rightBottom = 30 + 3×10 = 60；
-     * 37 + 60 + 27（QR 底栏 + pageId 标签预留）+ 3（间距）= 127mm。
-     * 127 + 127 = 254.0mm，恰好等于内容区：最后一条底边 =
-     * 19 + 254 = 273 = 285 - 12（下页边距），不得再触发一次“放不下”判定。
+     * 用 pageHeight=235 的默认几何模板，内容区 = 211（可用）- 7（页级表头）= 204mm。
+     * 两条参数取满（1 知识点 / 4 行 / 3 条附加）的常规题各 102mm：
+     * 顶部 = max(7.5, 7 + 4×7.5 = 37) = 37，附加区 = 3×10 = 30，笔记行 30，间距 5；
+     * 37 + 30 + 30 + 5 = 102mm。
+     * 102 + 102 = 204.0mm，恰好等于内容区：最后一条底边 =
+     * 19 + 204 = 223 = 235 - 12（下页边距），不得再触发一次“放不下”判定。
      */
     @Test
     fun `P-02 items exactly filling the content area stay on one page without markers`() {
         val date = LocalDate.of(2026, 12, 1)
-        val template = TemplateGeometry(pageHeightMm = 285.0)
+        val template = TemplateGeometry(pageHeightMm = 235.0)
         val questions = (1..2).map { index ->
             RenderableQuestion(
                 questionId = "p02-q$index",
@@ -874,7 +880,7 @@ class PagePlannerTest {
                 hasNoteArea = true,
             )
         }
-        assertEquals(254.0, template.contentHeightMm, 1e-9, "前置条件：内容区高度")
+        assertEquals(204.0, template.contentHeightMm, 1e-9, "前置条件：内容区高度")
 
         val success = assertIs<PaginationResult.Success>(
             DefaultPagePlanner().plan(
@@ -893,20 +899,20 @@ class PagePlannerTest {
             "恰好填满时两条都必须留在同一页，不得把最后一条判为放不下",
         )
         assertEquals(
-            listOf(127.0, 127.0),
+            listOf(102.0, 102.0),
             page.items.map { it.heightMm },
-            "P-02：两条高度之和 254.0mm 恰好等于内容区",
+            "P-02：两条高度之和 204.0mm 恰好等于内容区",
         )
         assertEquals(
-            listOf(19.0, 146.0),
+            listOf(19.0, 121.0),
             page.items.map { it.yOffsetMm },
             "yOffsetMm = topMargin 12 + header 7 + 已放置高度",
         )
         assertEquals(
-            273.0,
+            223.0,
             page.items.last().yOffsetMm + page.items.last().heightMm,
             1e-9,
-            "最后一条底边正好落在下页边距上（285 - 12），不越界、不跨页",
+            "最后一条底边正好落在下页边距上（235 - 12），不越界、不跨页",
         )
         assertTrue(
             page.continuationMarkers.isEmpty(),
@@ -920,7 +926,7 @@ class PagePlannerTest {
      * P-12：输入 Map 乱序 → 输出按日期升序，与输入迭代顺序无关（C-025）。
      *
      * 三个日期按 **逆序** 插入 `LinkedHashMap`（12-04 → 12-02 → 12-03），
-     * 12-02 有 4 条 68.5mm 条目（首页 3 条、第 2 页 1 条），12-03 一条，12-04 两条。
+     * 12-02 有 4 条 72mm 条目（首页 3 条、第 2 页 1 条），12-03 一条，12-04 两条。
      * 除断言页序外，再与“按升序插入同一内容”的规划结果整体比较：
      * `PaginationResult.Success` 是 data class，任何字段差异（页、marker、overflow、warnings）都会暴露。
      */
@@ -929,7 +935,9 @@ class PagePlannerTest {
         val dayA = LocalDate.of(2026, 12, 2)
         val dayB = LocalDate.of(2026, 12, 3)
         val dayC = LocalDate.of(2026, 12, 4)
-        val dayAQuestions = (1..4).map { compactQuestion("p12-a$it") }
+        val dayAQuestions = (1..4).map {
+            compactQuestion("p12-a$it", knowledgeCount = 4, knowledgeLineCount = 4)
+        }
         val dayBQuestions = listOf(compactQuestion("p12-b1"))
         val dayCQuestions = (1..2).map { compactQuestion("p12-c$it") }
 
@@ -995,9 +1003,9 @@ class PagePlannerTest {
      * （C-062 方案 B）；附加数量不得被静默清零或丢弃。
      *
      * 默认模板、同一题、同样 2 条附加（每条 10mm）：
-     * - 打印笔记区：rightBottom = 30 + 20 = 50，高度 = 14.5 + 50 + 27 + 3 = 94.5mm；
-     * - 不打印笔记区：rightBottom = 0，高度 = max(7.5, 14.5) + 27 + 3 = 44.5mm，
-     *   与“0 条附加”的紧凑题同高，证明 2 条附加没有计入高度。
+     * - 打印笔记区：顶部 14.5 + 附加 20 + 笔记行 30 + 间距 5 = 69.5mm；
+     * - 不打印笔记区：无附加显示区、无笔记行，只留 QR 预留带 27，
+     *   高度 = max(7.5, 14.5) + 27 + 5 = 46.5mm，与“0 条附加”的紧凑题同高，证明附加数量未计入高度。
      * 再用 P-11/C-062 的边界模板（usable=100、上限 30mm、每条 15.5mm）锁定上限不判定：
      * 2 条附加 = 31mm > 30mm，但无笔记区时条目仍须完整打印（高度 40mm），不得进入 overflow。
      */
@@ -1025,14 +1033,14 @@ class PagePlannerTest {
 
         assertEquals(2, success.pages.single().items.size, "两条都应落在首页，不得因无笔记区被丢弃")
         assertEquals(
-            listOf(94.5, 44.5),
+            listOf(69.5, 46.5),
             success.pages.single().items.map { it.heightMm },
-            "P-15：无笔记区时 rightBottom=0；44.5mm 与 0 条附加的紧凑题同高，证明附加数量未计入高度",
+            "P-15：无笔记区时不含附加显示区；46.5mm 与 0 条附加的紧凑题同高，证明附加数量未计入高度",
         )
         assertEquals(
-            listOf(19.0, 113.5),
+            listOf(19.0, 88.5),
             success.pages.single().items.map { it.yOffsetMm },
-            "按 94.5mm 递推：19 + 94.5 = 113.5",
+            "按 69.5mm 递推：19 + 69.5 = 88.5",
         )
         assertTrue(success.overflowItems.isEmpty(), "默认模板下附件 20mm 远低于上限，不应进入 overflowItems")
         assertTrue(success.warnings.isEmpty(), "无笔记区的条目不应产生附件上限提示")
@@ -1075,16 +1083,17 @@ class PagePlannerTest {
     }
 
     /**
-     * P-16：`knowledgeLineCount` 1..4 → `rightTop` 按行数递增，不按 `knowledgeCount` 递增。
+     * P-16：2026-11-24 新排版下，顶部信息段取「左填涂行」与「右题目信息」中较高者：
+     * `knowledgeLineCount` 在右信息更高时增加高度，`knowledgeCount` 在左填涂更高时增加高度。
      *
-     * 默认行高 7.5mm、右上第一行 7mm、笔记区 30mm、QR 与 pageId 标签预留 27mm、间距 3mm。
+     * 默认行高 7.5mm、右上第一行 7mm、笔记行 30mm、间距 5mm。
      * 用加高页面模板（pageHeight=700，其余默认）让 7 条同处首页，避免续下页干扰高度断言：
-     * - 行数序列（knowledgeCount 固定 4，lines=1..4）：67 + 7.5×lines = 74.5 / 82 / 89.5 / 97mm；
-     * - 知识点数序列（lines 固定 1，knowledgeCount=2..4）：左侧最高 4×7.5=30mm，
-     *   始终低于右侧 14.5 + 30 = 44.5mm，高度恒为 74.5mm。
+     * - 行数序列（knowledgeCount 固定 1，lines=1..4）：7.5 + 7 + 7.5×lines + 35 = 49.5 / 57 / 64.5 / 72mm；
+     * - 知识点数序列（lines 固定 1，knowledgeCount=2..4）：
+     *   顶部 max(count×7.5, 14.5) + 35 = 50 / 57.5 / 65mm。
      */
     @Test
-    fun `P-16 height follows knowledge line count not knowledge count`() {
+    fun `P-16 height follows the taller of left rows and right info lines`() {
         val date = LocalDate.of(2026, 12, 7)
         val template = TemplateGeometry().copy(pageHeightMm = 700.0)
         assertEquals(669.0, template.contentHeightMm, 1e-9, "前置条件：加高内容区")
@@ -1092,8 +1101,8 @@ class PagePlannerTest {
             RenderableQuestion(
                 questionId = "p16-l$lines",
                 questionNumber = "16-$lines",
-                knowledgeCount = 4,
-                knowledgeNames = List(4) { "知识点${it + 1}" },
+                knowledgeCount = 1,
+                knowledgeNames = List(1) { "知识点${it + 1}" },
                 knowledgeLineCount = lines,
                 attachmentCount = 0,
                 hasNoteArea = true,
@@ -1121,98 +1130,106 @@ class PagePlannerTest {
 
         val page = success.pages.single()
         assertEquals(
-            listOf(74.5, 82.0, 89.5, 97.0),
+            listOf(49.5, 57.0, 64.5, 72.0),
             page.items.take(4).map { it.heightMm },
-            "P-16：knowledgeCount 固定 4 时，高度仍按 knowledgeLineCount 每行递增 7.5mm",
+            "P-16：knowledgeCount 固定 1 时，高度按 knowledgeLineCount 每行递增 7.5mm",
         )
         assertEquals(
-            listOf(74.5, 74.5, 74.5),
+            listOf(50.0, 57.5, 65.0),
             page.items.drop(4).map { it.heightMm },
-            "P-16：knowledgeLineCount 固定 1 时，knowledgeCount 2→4 不得改变高度",
+            "P-16：knowledgeLineCount 固定 1 时，左侧填涂行高于右信息后按知识点数递增",
         )
         assertEquals(
-            listOf(19.0, 93.5, 175.5, 265.0, 362.0, 436.5, 511.0),
+            listOf(19.0, 68.5, 125.5, 190.0, 262.0, 312.0, 369.5),
             page.items.map { it.yOffsetMm },
             "yOffsetMm = topMargin 12 + header 7 + 已放置高度",
         )
         assertEquals(
-            585.5,
+            434.5,
             page.items.last().yOffsetMm + page.items.last().heightMm,
             1e-9,
-            "7 条合计 566.5mm，底边 585.5mm 仍在内容区内",
+            "7 条合计 415.5mm，底边 434.5mm 仍在内容区内",
         )
         assertTrue(page.continuationMarkers.isEmpty(), "加高模板下 7 条同页，不应生成续下页标记")
         assertTrue(success.overflowItems.isEmpty(), "最大条目 97mm 远低于内容区，不应进入 overflowItems")
     }
 
     /**
-     * P-19：`itemHeight` 包含 `qrFooterHeightMm`（= QR + 留白 + pageId 标签预留），QR 不挤占笔记书写区。
+     * P-19：2026-11-24 起 QR 与 pageId 标签并排在笔记书写区右侧，不再占用题块底部高度。
      *
-     * 默认模板：rightTop 14.5 + 笔记区 30 = 44.5mm；QR 底栏 18 + 3 + 2 + 4 = 27mm；间距 3mm
-     * → itemHeight = 44.5 + 27 + 3 = 74.5mm。
-     * 把 QR 放大到 24 + 4 = 28mm（标签预留不变）后，条目高度只按底栏增量 +7mm 变为 81.5mm，
-     * 笔记书写区仍是 30mm（`height - qrFooter - itemSpacing` 恒为 44.5mm）。
+     * 默认模板：顶部 14.5 + 笔记行 max(30, QR 堆 24) + 间距 5 = 49.5mm。
+     * QR 增大到 24 + 4（标签间隙不变）时 QR 堆 = 30，仍不超过书写区 30mm，高度不变；
+     * QR 增大到 34 + 4（QR 堆 40 > 30）时，笔记行必须撑到 40mm，高度变为 59.5mm；
+     * 无笔记区的紧凑题仍按 QR 预留带 27mm 计高（14.5 + 27 + 5 = 46.5mm）。
      */
     @Test
-    fun `P-19 item height includes qr footer without squeezing the note area`() {
+    fun `P-19 qr sits beside the note row and only grows it when taller`() {
         val date = LocalDate.of(2026, 12, 8)
         val defaultTemplate = TemplateGeometry()
         val largerQrTemplate = defaultTemplate.copy(qrSizeMm = 24.0, qrPaddingMm = 4.0)
-        assertEquals(27.0, defaultTemplate.qrFooterHeightMm, 1e-9, "QR 底栏 = 18 + 3 + 2 + 4")
-        assertEquals(34.0, largerQrTemplate.qrFooterHeightMm, 1e-9, "QR 底栏 = 24 + 4 + 2 + 4")
+        val hugeQrTemplate = defaultTemplate.copy(qrSizeMm = 34.0, qrPaddingMm = 4.0)
+        assertEquals(27.0, defaultTemplate.qrFooterHeightMm, 1e-9, "QR 预留带 = 18 + 3 + 2 + 4")
+        assertEquals(24.0, defaultTemplate.qrStackHeightMm, 1e-9, "QR 堆 = 18 + 2 + 4")
+        assertEquals(30.0, largerQrTemplate.qrStackHeightMm, 1e-9, "放大后 QR 堆 = 24 + 2 + 4")
+        assertEquals(40.0, hugeQrTemplate.qrStackHeightMm, 1e-9, "再放大后 QR 堆 = 34 + 2 + 4")
         val question = compactQuestion("p19-q1")
-
-        val defaultSuccess = assertIs<PaginationResult.Success>(
-            DefaultPagePlanner().plan(
-                planId = "plan-p19-default",
-                dailyGroups = mapOf(date to listOf(question)),
-                template = defaultTemplate,
-            ),
-        )
-        val largerQrSuccess = assertIs<PaginationResult.Success>(
-            DefaultPagePlanner().plan(
-                planId = "plan-p19-large-qr",
-                dailyGroups = mapOf(date to listOf(question)),
-                template = largerQrTemplate,
-            ),
+        val noNoteQuestion = RenderableQuestion(
+            questionId = "p19-q-no-note",
+            questionNumber = "19-n",
+            knowledgeCount = 1,
+            knowledgeNames = listOf("知识点"),
+            knowledgeLineCount = 1,
+            attachmentCount = 0,
+            hasNoteArea = false,
         )
 
-        val defaultItem = defaultSuccess.pages.single().items.single()
+        fun plan(template: TemplateGeometry, id: String, q: RenderableQuestion) =
+            assertIs<PaginationResult.Success>(
+                DefaultPagePlanner().plan(
+                    planId = "plan-p19-$id",
+                    dailyGroups = mapOf(date to listOf(q)),
+                    template = template,
+                ),
+            ).pages.single().items.single()
+
+        val defaultItem = plan(defaultTemplate, "default", question)
         assertEquals(
-            74.5,
+            49.5,
             defaultItem.heightMm,
             1e-9,
-            "P-19：itemHeight = 44.5（rightTop 14.5 + 笔记区 30）+ 27（QR 底栏）+ 3（间距）",
+            "P-19：itemHeight = 顶部 14.5 + 笔记行 30 + 间距 5，QR 不再另占高度",
         )
         assertEquals(19.0, defaultItem.yOffsetMm, 1e-9, "首页 yOffset = topMargin 12 + header 7")
 
-        val largerQrItem = largerQrSuccess.pages.single().items.single()
+        val largerQrItem = plan(largerQrTemplate, "large-qr", question)
         assertEquals(
-            81.5,
+            49.5,
             largerQrItem.heightMm,
             1e-9,
-            "P-19：QR 底栏从 27mm 增至 34mm 时，条目高度精确增加 7mm",
+            "P-19：QR 堆 30 仍不超过书写区，条目高度不变",
+        )
+
+        val hugeQrItem = plan(hugeQrTemplate, "huge-qr", question)
+        assertEquals(
+            59.5,
+            hugeQrItem.heightMm,
+            1e-9,
+            "P-19：QR 堆 40 撑高笔记行，条目高度 = 14.5 + 40 + 5",
         )
         assertEquals(
-            largerQrItem.heightMm - defaultItem.heightMm,
-            largerQrTemplate.qrFooterHeightMm - defaultTemplate.qrFooterHeightMm,
+            hugeQrItem.heightMm - defaultItem.heightMm,
+            hugeQrTemplate.qrStackHeightMm - defaultTemplate.noteAreaBaseHeightMm,
             1e-9,
-            "P-19：条目高度增量必须恰好等于 QR 底栏增量",
+            "P-19：条目高度增量等于 QR 堆超出书写区的部分",
         )
-        for ((template, item) in listOf(defaultTemplate to defaultItem, largerQrTemplate to largerQrItem)) {
-            assertEquals(
-                44.5,
-                item.heightMm - template.qrFooterHeightMm - template.itemSpacingMm,
-                1e-9,
-                "P-19：QR 不挤占笔记书写区——扣除 QR 底栏与间距后仍为 rightTop 14.5 + 笔记区 30",
-            )
-        }
-        assertTrue(
-            largerQrItem.yOffsetMm + largerQrItem.heightMm <= 297.0 - 12.0,
-            "P-19：含 QR 底栏的条目仍落在下页边距以内",
+
+        val noNoteItem = plan(defaultTemplate, "no-note", noNoteQuestion)
+        assertEquals(
+            46.5,
+            noNoteItem.heightMm,
+            1e-9,
+            "P-19：无笔记区时按 QR 预留带计高（14.5 + 27 + 5）",
         )
-        assertTrue(defaultSuccess.overflowItems.isEmpty(), "常规条目不应进入 overflowItems")
-        assertTrue(largerQrSuccess.overflowItems.isEmpty(), "QR 变大不构成 overflow 原因")
     }
 
     /**
@@ -1283,10 +1300,10 @@ class PagePlannerTest {
     /**
      * P-06：左侧比右侧高时 `itemHeight` 取左侧，而不是右上/右下之和。
      *
-     * 默认模板、关闭笔记区（`rightBottom = 0`）：
+     * 默认模板、关闭笔记区（无附加显示区与书写行，仅 QR 预留带）：
      * - 4 个知识点：left = 4×7.5 = 30；rightTop = 7 + 1×7.5 = 14.5；
-     *   itemHeight = 30 + 27（QR 底栏与 pageId 标签）+ 3（间距）= 60mm（若误取右侧会得到 44.5mm）；
-     * - 2 个知识点：left = 15；rightTop = 14.5；itemHeight = 15 + 30 = 45mm。
+     *   itemHeight = 30 + 27（QR 预留带）+ 5（间距）= 62mm（若误取右侧会得到 46.5mm）；
+     * - 2 个知识点：left = 15；rightTop = 14.5；itemHeight = 15 + 27 + 5 = 47mm。
      */
     @Test
     fun `P-06 item height takes the taller left column`() {
@@ -1311,12 +1328,12 @@ class PagePlannerTest {
 
         val page = success.pages.single()
         assertEquals(
-            listOf(45.0, 60.0),
+            listOf(47.0, 62.0),
             page.items.map { it.heightMm },
-            "P-06：leftHeight 15/30 高于 rightTop 14.5，itemHeight 必须取左侧并加 QR 底栏与间距",
+            "P-06：leftHeight 15/30 高于 rightTop 14.5，itemHeight 必须取左侧并加 QR 预留带与间距",
         )
         assertEquals(
-            listOf(19.0, 64.0),
+            listOf(19.0, 66.0),
             page.items.map { it.yOffsetMm },
             "P-06：首页 yOffset = 12 + 7，之后按左侧派生的条目高度累加",
         )
@@ -1326,8 +1343,8 @@ class PagePlannerTest {
     /**
      * P-07：右侧比左侧高时 `itemHeight` 取 `rightTop + rightBottom` 之和。
      *
-     * 默认模板：left = 1×7.5 = 7.5；rightTop = 7 + 3×7.5 = 29.5；
-     * rightBottom = 30 + 2×10 = 50；itemHeight = 29.5 + 50 + 27（QR 与 pageId 标签）+ 3（间距）= 109.5mm。
+     * 默认模板：left = 1×7.5 = 7.5；rightTop = 7 + 3×7.5 = 29.5 → 顶部取 29.5；
+     * 附加显示区 = 2×10 = 20；笔记行 30；itemHeight = 29.5 + 20 + 30 + 5 = 84.5mm。
      */
     @Test
     fun `P-07 item height takes the right column sum when it is taller`() {
@@ -1352,13 +1369,13 @@ class PagePlannerTest {
 
         val item = success.pages.single().items.single()
         assertEquals(
-            109.5,
+            84.5,
             item.heightMm,
             1e-9,
-            "P-07：rightTop 29.5 + rightBottom 50 + QR 与 pageId 标签预留 27 + 间距 3 = 109.5mm",
+            "P-07：顶部 29.5 + 附加 20 + 笔记行 30 + 间距 5 = 84.5mm",
         )
         assertEquals(19.0, item.yOffsetMm, 1e-9, "首页 yOffset = 12 + 7")
-        assertTrue(success.overflowItems.isEmpty(), "P-07：109.5mm 低于内容区，不应进入 overflowItems")
+        assertTrue(success.overflowItems.isEmpty(), "P-07：84.5mm 低于内容区，不应进入 overflowItems")
     }
 
     /**
@@ -1611,8 +1628,8 @@ class PagePlannerTest {
      * 规格「单题高度公式」段：默认模板下参数取满（4 个知识点 / 4 行名称 / 3 条附加）的常规题
      * 必须仍能放进内容区；若默认模板把常规题普遍推到 overflow，属于模板参数错误，测试必须失败。
      *
-     * 默认模板：left = 4×7.5 = 30；rightTop = 7 + 4×7.5 = 37；
-     * rightBottom = 30 + 3×10 = 60；itemHeight = 97 + 27 + 3 = 127mm < 内容区 266mm。
+     * 默认模板：顶部 = max(4×7.5, 7 + 4×7.5) = 37；
+     * 附加显示区 = 3×10 = 30；笔记行 30；itemHeight = 37 + 30 + 30 + 5 = 102mm < 内容区 266mm。
      */
     @Test
     fun `acceptance default template keeps a maximum normal item within the content area`() {
@@ -1641,10 +1658,10 @@ class PagePlannerTest {
             "默认模板下参数取满的常规题不得被移出打印（规格要求模板错误在测试中失败）",
         )
         val item = success.pages.single().items.single()
-        assertEquals(127.0, item.heightMm, 1e-9, "默认模板的参数取满题高度为 127mm")
+        assertEquals(102.0, item.heightMm, 1e-9, "默认模板的参数取满题高度为 102mm")
         assertTrue(
             item.heightMm < template.contentHeightMm,
-            "常规题高度 127mm 必须小于默认内容区 ${template.contentHeightMm}mm",
+            "常规题高度 102mm 必须小于默认内容区 ${template.contentHeightMm}mm",
         )
     }
 
@@ -1667,15 +1684,15 @@ class PagePlannerTest {
     )
 
     /**
-     * P-14/P-18 共用模板：默认几何下单题最高约 129mm，远小于 contentHeightMm=266，两条用例不可达。
-     * 这里缩短页面：usable=100、每页 content=95、附件上限=30。
+     * P-14/P-18/C-060/C-061 共用模板：默认几何下单题最高 100mm，远小于 contentHeightMm=266，用例不可达。
+     * 这里缩短页面：usable=100、每页 content=95、附件上限=30；行高 10mm 让上下两段都存在可放大的空间。
      */
     private fun smallPageTemplate(): TemplateGeometry = TemplateGeometry(
         pageHeightMm = 120.0,
         topMarginMm = 10.0,
         bottomMarginMm = 10.0,
         headerRowHeightMm = 5.0,
-        rowHeightMm = 5.0,
+        rowHeightMm = 10.0,
         questionFixedInfoHeightMm = 10.0,
         noteAreaBaseHeightMm = 20.0,
         attachmentHeightPerItemMm = 10.0,
@@ -1687,7 +1704,7 @@ class PagePlannerTest {
         pageIdLabelGapMm = 0.0,
     )
 
-    /** 精简条目；默认参数在默认模板下高度 74.5mm（1 个知识点、1 行名称、无附件）。 */
+    /** 精简条目；默认参数在默认模板下高度 49.5mm（1 个知识点、1 行名称、无附件）。 */
     private fun compactQuestion(
         id: String,
         knowledgeCount: Int = 1,

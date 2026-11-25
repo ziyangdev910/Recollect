@@ -147,12 +147,14 @@ class OpenCvScanEngine(
         blocks: List<ItemBlockGeometry>,
     ): List<OmrRow> {
         val rows = mutableListOf<OmrRow>()
-        // 打印与扫描共用 TemplateGeometry 的列中心，不另写常量（2026-11-22）。
+        // 打印与扫描共用 TemplateGeometry 的列中心与行起点，不另写常量（2026-11-22）。
+        // 2026-11-24 新排版后填涂区仍在题块左上角（右上是题号/知识点，下方是通栏笔记），
+        // 行起点由 `bubbleRowTopMm` 统一给出；识别规则（采样窗、30% 命中、唯一命中优先）保持不变。
         val centers = (0 until TemplateGeometry.BUBBLE_COLUMNS)
             .map { column -> template.bubbleCenterXMm(column) }
         blocks.forEach { block ->
             for (index in 0 until block.rowCount) {
-                val topMm = block.topMm + index * template.rowHeightMm
+                val topMm = template.bubbleRowTopMm(block.topMm, index)
                 val readings = centers.map { centerXMm ->
                     sampleBubble(bitmap, centerXMm, topMm)
                 }

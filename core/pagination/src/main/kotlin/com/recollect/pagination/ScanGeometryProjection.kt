@@ -37,23 +37,24 @@ object ScanGeometryProjection {
     )
 
     /**
-     * 手写书写区：题块顶 + 右上信息高度 + 附加摘要高度 + 标题高度起，
-     * 高为笔记区基础高度扣除标题后的部分；横向取右上文本区。
+     * 手写书写区（2026-11-24 新排版）：题块顶部信息段（左填涂/右信息取高者）
+     * + 通栏附加笔记显示区 + 「复习笔记」标题起；书写区只占左侧，
+     * 右侧 [TemplateGeometry.qrSizeMm] 宽的 QR 列不参与 OCR。
      */
     fun noteWritingArea(
         item: PlacedItem,
         question: RenderableQuestion,
         template: TemplateGeometry,
     ): NoteWritingArea {
-        val knowledgeLineCount = question.knowledgeLineCount.coerceAtLeast(1)
-        val noteTop = item.yOffsetMm +
-            template.questionFixedInfoHeightMm +
-            knowledgeLineCount * template.rowHeightMm
-        val attachmentHeight = question.attachmentCount * template.attachmentHeightPerItemMm
+        val topSection = template.topSectionHeightMm(
+            knowledgeCount = question.knowledgeCount,
+            knowledgeLineCount = question.knowledgeLineCount,
+        )
+        val attachmentHeight = template.notesDisplayHeightMm(question.attachmentCount)
         return NoteWritingArea(
-            leftMm = template.contentLeftMm + template.leftAreaWidthMm + template.textPaddingMm,
-            topMm = noteTop + attachmentHeight + template.noteTitleHeightMm,
-            widthMm = template.rightTextWidthMm,
+            leftMm = template.contentLeftMm + template.textPaddingMm,
+            topMm = item.yOffsetMm + topSection + attachmentHeight + template.noteTitleHeightMm,
+            widthMm = template.noteWritingWidthMm,
             heightMm = template.noteAreaBaseHeightMm - template.noteTitleHeightMm,
         )
     }
