@@ -1,5 +1,6 @@
 package com.recollect.feature.progress
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,14 +58,22 @@ fun ReviewProgressScreen(viewModel: ReviewProgressViewModel) {
             CircularProgressIndicator()
         }
 
-        UiState.Empty -> Box(
+        UiState.Empty -> Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp),
-            contentAlignment = Alignment.Center,
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "题库还是空的。录入题目后，这里会显示每道题的复习进度与到期时间。",
+                text = "还没有复习进度",
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "录入题目后，这里会显示每道题的掌握度、\n到期时间与未来两周的安排。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }
@@ -116,11 +126,16 @@ private fun ProgressList(content: ReviewProgressContent) {
 @Composable
 private fun StatsCard(stats: ReviewProgressStats) {
     val colors = MaterialTheme.colorScheme
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 16.dp),
+                .padding(horizontal = 8.dp, vertical = 18.dp),
         ) {
             StatTile(
                 label = "题目总数",
@@ -179,7 +194,12 @@ private fun StatTile(
 private fun ForecastCard(content: ReviewProgressContent) {
     val colors = MaterialTheme.colorScheme
     val upcoming = content.forecast.sumOf { it.count }
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -241,8 +261,10 @@ private fun ForecastChart(days: List<DueForecastDay>) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height((6f + 64f * day.count / maxCount).dp)
-                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-                        .background(if (day.isToday) colors.primary else colors.secondaryContainer),
+                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                        .background(
+                            if (day.isToday) colors.primary else colors.primary.copy(alpha = 0.32f),
+                        ),
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -259,7 +281,12 @@ private fun ForecastChart(days: List<DueForecastDay>) {
 @Composable
 private fun QuestionProgressCard(question: QuestionProgressUi) {
     val colors = MaterialTheme.colorScheme
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -348,9 +375,12 @@ private fun KnowledgePointProgressRow(knowledgePoint: KnowledgePointProgressUi) 
                 progress = { knowledgePoint.masteryPercent / 100f },
                 modifier = Modifier
                     .weight(1f)
-                    .height(6.dp),
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(50)),
                 color = palette.accent,
                 trackColor = colors.surfaceVariant,
+                // 0% 时不画终点圆点，避免把“未掌握”误读为接近满格。
+                drawStopIndicator = {},
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(

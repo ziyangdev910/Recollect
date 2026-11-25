@@ -1,25 +1,33 @@
 package com.recollect.feature.backup
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.recollect.data.room.export.BackupDocument
@@ -38,10 +46,27 @@ fun BackupScreen(viewModel: BackupViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { IntroCard() }
+        item { IntroHeader() }
+        item {
+            Button(
+                onClick = { scope.launch { viewModel.exportAndShare() } },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                enabled = viewModel.state !is BackupState.Exporting,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_share),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("导出并分享")
+            }
+        }
         item {
             StateCard(
                 state = viewModel.state,
@@ -49,38 +74,24 @@ fun BackupScreen(viewModel: BackupViewModel) {
                 onRetryShare = { scope.launch { viewModel.retryShare() } },
             )
         }
-        item {
-            Button(
-                onClick = { scope.launch { viewModel.exportAndShare() } },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = viewModel.state !is BackupState.Exporting,
-            ) {
-                Text("导出并分享")
-            }
-        }
         item { PrivacyNote() }
     }
 }
 
+/** 页头说明：先讲清楚导出了什么、发到哪里，再把主按钮交给用户。 */
 @Composable
-private fun IntroCard() {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = "导出并分享数据库",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "把本机题库、知识点、题目来源、复习反馈、每日复习时长与打印页快照导出为一个 JSON 文件，" +
-                    "生成后自动打开系统分享面板，可发送给微信、文件管理器或其他应用。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun IntroHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "导出并分享数据库",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        Text(
+            text = "把本机题库、知识点、题目来源、复习反馈、每日复习时长与打印页快照导出为一个 JSON 文件，" +
+                "生成后自动打开系统分享面板，可发送给微信、文件管理器或其他应用。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -93,7 +104,13 @@ private fun StateCard(
     when (state) {
         BackupState.Idle -> Unit
 
-        BackupState.Exporting -> Card(modifier = Modifier.fillMaxWidth()) {
+        BackupState.Exporting -> Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -101,8 +118,15 @@ private fun StateCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                Text("正在读取数据库并生成备份文件…")
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                )
+                Text(
+                    text = "正在读取数据库并生成备份文件…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
             }
         }
 
@@ -112,28 +136,35 @@ private fun StateCard(
             onRetryShare = onRetryShare,
         )
 
-        is BackupState.Error -> Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        is BackupState.Error -> {
+            val colors = MaterialTheme.colorScheme
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
+                border = BorderStroke(1.dp, colors.error.copy(alpha = 0.2f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
-                Text(
-                    text = "导出失败",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                Text(
-                    text = state.message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                Text(
-                    text = "本地数据库未受影响，可重试。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(onClick = onRetryExport) { Text("重新导出") }
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "导出失败",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.onErrorContainer,
+                    )
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onErrorContainer,
+                    )
+                    Text(
+                        text = "本地数据库未受影响，可重试。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onErrorContainer.copy(alpha = 0.8f),
+                    )
+                    OutlinedButton(onClick = onRetryExport) { Text("重新导出") }
+                }
             }
         }
     }
@@ -146,7 +177,12 @@ private fun ExportedCard(
     onRetryShare: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

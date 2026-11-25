@@ -1,5 +1,6 @@
 package com.recollect.feature.print
 
+import com.recollect.common.formatQuestionLabel
 import com.recollect.common.qr.QrPayloadCodec
 import com.recollect.pagination.PlannedPage
 import com.recollect.pagination.RenderableQuestion
@@ -55,6 +56,13 @@ data class PrintPageLayout(
  */
 data class PrintItemLayout(
     val questionId: String,
+    /**
+     * 当日题序（1 起）：以每日复习计划为编组，同一天跨页连续编号，换日从 1 重新开始。
+     * 题序徽标绘制在左侧「序号」列的左边，即整个题块的左上角（2026-11-25 用户要求）。
+     */
+    val dailyIndex: Int,
+    /** 题序徽标「【n】」；位于题块左上角（左侧「序号」列左侧的页边空白带），加粗。 */
+    val questionIndexText: PrintText,
     val blockTopMm: Double,
     val blockHeightMm: Double,
     val left: LeftAreaLayout,
@@ -97,7 +105,7 @@ data class RightTopLayout(
     val topMm: Double,
     val widthMm: Double,
     val heightMm: Double,
-    val pageLine: PrintText, // 题号（可附来源页），加粗
+    val pageLine: PrintText, // 题目标识「来源 第X页 第Y题」，加粗
     val knowledgeText: PrintText, // 知识点全称，允许换行
 )
 
@@ -182,6 +190,8 @@ object PrintLayoutBuilder {
         noteTexts: Map<String, List<String>>,
         template: TemplateGeometry,
     ): PrintLayout {
+        // 以日期为编组跨页累计题序：同一天的第 2 页接着第 1 页继续编号，换日归零。
+        val dailyCounters = mutableMapOf<LocalDate, Int>()
         return PrintLayout(
             planId = planId,
             pages = pages.map { page ->
@@ -191,6 +201,7 @@ object PrintLayoutBuilder {
                     questions = questions,
                     noteTexts = noteTexts,
                     template = template,
+                    dailyCounters = dailyCounters,
                 )
             },
         )
@@ -202,6 +213,7 @@ object PrintLayoutBuilder {
         questions: Map<String, RenderableQuestion>,
         noteTexts: Map<String, List<String>>,
         template: TemplateGeometry,
+        dailyCounters: MutableMap<LocalDate, Int>,
     ): PrintPageLayout {
         val contentLeft = template.contentLeftMm
         val contentTop = template.contentTopMm
@@ -254,12 +266,14 @@ object PrintLayoutBuilder {
                 val question = requireNotNull(questions[placed.questionId]) {
                     "打印输入缺少题目 ${placed.questionId}；计划层必须在分页前补齐投影（C-067）"
                 }
+                val dailyIndex = dailyCounters.merge(page.date, 1, Int::plus)!!
                 itemLayout(
                     planId = planId,
                     pageId = page.pageId,
                     placedQuestionId = placed.questionId,
                     placedTop = placed.yOffsetMm,
                     placedHeight = placed.heightMm,
+                    dailyIndex = dailyIndex,
                     question = question,
                     noteTexts = noteTexts[placed.questionId].orEmpty(),
                     template = template,
@@ -280,6 +294,7 @@ object PrintLayoutBuilder {
         placedQuestionId: String,
         placedTop: Double,
         placedHeight: Double,
+        dailyIndex: Int,
         question: RenderableQuestion,
         noteTexts: List<String>,
         template: TemplateGeometry,
@@ -322,6 +337,17 @@ object PrintLayoutBuilder {
         }
 
         val textLeft = rightAreaLeft + template.textPaddingMm
+        // 2026-11-25 用户要求：每日题序徽标置于左侧「序号」列的左边，即整个题块的左上角。
+        // 徽标落在页边距与内容区之间的空白带（12–26mm），不改变填涂区列几何与 OMR 采样中心。
+        val questionIndexText = PrintText(
+            text = "【$dailyIndex】",
+            leftMm = contentLeft - QUESTION_INDEX_WIDTH_MM - QUESTION_INDEX_GAP_MM,
+            topMm = placedTop,
+            widthMm = QUESTION_INDEX_WIDTH_MM,
+            heightMm = template.rowHeightMm,
+            fontMm = QUESTION_INDEX_FONT_MM,
+            bold = true,
+        )
         val rightTop = RightTopLayout(
             xMm = rightAreaLeft,
             topMm = placedTop,
@@ -390,6 +416,8 @@ object PrintLayoutBuilder {
 
         return PrintItemLayout(
             questionId = placedQuestionId,
+            dailyIndex = dailyIndex,
+            questionIndexText = questionIndexText,
             blockTopMm = placedTop,
             blockHeightMm = placedHeight,
             left = LeftAreaLayout(
@@ -592,13 +620,13 @@ object PrintLayoutBuilder {
     )
 
     /**
-     * 右上第一行：题号；不再显示页序（2026-11-24 用户要求删除「页码 XX」；QR 载荷与页脚仍使用完整 pageId）。
-     * 来源页码非空时追加，用于定位题目在试卷/作业本的哪一面。
+     * 右上第一行：`来源 第X页 第Y题`（2026-11-25 用户要求）。
+     *
+     * 与计划预览共用 [formatQuestionLabel]；X 为页码编号、Y 为题号，
+     * 来源说明缺失时只保留页码与题号。QR 载荷与页脚仍使用完整 pageId。
      */
-    private fun pageLineText(question: RenderableQuestion): String {
-        val line = "题号 ${question.questionNumber}"
-        return if (question.sourcePage.isBlank()) line else "$line　来源页 ${question.sourcePage}"
-    }
+    private fun pageLineText(question: RenderableQuestion): String =
+        formatQuestionLabel(question.sourcePage, question.questionNumber)
 }
 
 /** C-013：左侧名称超过 10 个 Unicode 码点时截断为前 9 个码点 + “…”；右上保留全称。 */
@@ -616,6 +644,12 @@ private const val MAX_LEFT_NAME_CODE_POINTS = 10
 private const val HEADER_INDEX_WIDTH_MM = 7.0 // 表头「序号」的显示余量；行号列宽见 TemplateGeometry
 private const val HEADER_TIER_LABEL_WIDTH_MM = 10.0 // 「较熟悉」约 9mm，留 1mm 余量
 private const val HEADER_TEXT_HEIGHT_MM = 3.5 // 3.0mm 表头字的视觉行高；底边贴住第一条知识点行
+
+// 2026-11-25 用户要求：每日题序徽标「【n】」置于左侧「序号」列的左边（题块最左缘）。
+// 宽度按两位数字预留（全角括号约 1em、数字约 0.5em）；徽标落在 12–26mm 的页边空白带内。
+private const val QUESTION_INDEX_WIDTH_MM = 12.0
+private const val QUESTION_INDEX_GAP_MM = 1.0
+private const val QUESTION_INDEX_FONT_MM = 3.8
 
 private const val ATTACHMENT_LINES = 2
 private const val QR_QUIET_ZONE_MODULES = 4

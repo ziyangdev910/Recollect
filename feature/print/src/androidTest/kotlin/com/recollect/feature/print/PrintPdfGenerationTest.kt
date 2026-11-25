@@ -43,7 +43,7 @@ class PrintPdfGenerationTest : AndroidTestCase() {
                 1,
                 0,
                 hasNoteArea = true,
-                sourcePage = "P12",
+                sourcePage = "12-课后练习",
             ),
             RenderableQuestion(
                 "q2",
@@ -53,7 +53,7 @@ class PrintPdfGenerationTest : AndroidTestCase() {
                 2,
                 3,
                 hasNoteArea = false,
-                sourcePage = "P3",
+                sourcePage = "3-同步练习",
             ),
             RenderableQuestion(
                 "q3",
@@ -63,6 +63,7 @@ class PrintPdfGenerationTest : AndroidTestCase() {
                 2,
                 3,
                 hasNoteArea = true,
+                sourcePage = "3",
             ),
             RenderableQuestion("q4", "T-4", 1, listOf("相似三角形"), 1, 0, hasNoteArea = true),
         )

@@ -1,5 +1,6 @@
 package com.recollect.feature.planning
 
+import com.recollect.common.formatQuestionLabel
 import com.recollect.data.room.entity.NoteAttachmentItem
 import com.recollect.data.room.repository.PlanRepository
 import com.recollect.data.room.repository.PlanStatus

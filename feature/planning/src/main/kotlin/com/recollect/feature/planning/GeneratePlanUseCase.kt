@@ -2,6 +2,8 @@ package com.recollect.feature.planning
 
 import com.recollect.common.KnowledgeTextMeasurer
 import com.recollect.common.PlanIdGenerator
+import com.recollect.common.UNKNOWN_QUESTION_NUMBER
+import com.recollect.common.formatQuestionLabel
 import com.recollect.data.room.entity.NoteAttachmentItem
 import com.recollect.data.room.mapping.toRenderableQuestion
 import com.recollect.data.room.repository.KnowledgePointRef

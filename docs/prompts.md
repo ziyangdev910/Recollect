@@ -1718,6 +1718,50 @@ D-12：单题关联 1～4 个知识点；编号全局唯一、不复用；删除
 
 ---
 
+## 追加：设计系统与页面重排（2026-11-25）【done】
+
+【本轮背景】用户安装 `taste-skill`（design-taste-frontend 2.5.1）与 `impeccable`（4.10.0）两个设计 skill，要求依据其设计语言、结合项目用户流程，重排页面并突出主流程。本轮只改 UI 与主题，不改路由、状态机、调度、打印与扫描语义。
+
+【本轮任务】
+- 新增 `app/.../ui/theme/Theme.kt`：完整浅/深色 Material 3 color roles（纸张底、松烟墨绿主色、赭石次色、朱砂警示）、收敛字号与 6/10/18/24dp 形状；`AppRoot` 套用 `RecollectTheme`；
+- 首页顺序：计划主卡 → 复习流程条（按计划状态点亮）→ 常用操作 2×2 → 学习概览 → 设置面板；计划状态胶囊语义色，主按钮 48dp；
+- 题库：搜索图标/清除、三段式题卡、整卡编辑、教学式空态（空库隐藏 FAB）；录入页保存为通栏主按钮；
+- 计划预览：摘要卡 + 通栏打印、日期栏页卡、推迟/警告语义色、重新生成降为底部；
+- 打印：摘要卡 + 打印/分享，系统返回后确认卡为主内容；扫描：流程说明与结果卡；确认：顶部进度、语义标签、决策后收起按钮；
+- 进度/导出/关于页同步重排；同步 `app.md`、`CLAUDE.md`、`overview.md`、changelog 与 agent-log。
+
+【验收】`./gradlew test verifyCorePurity :app:assembleDebug` 通过；无实体机连接，视觉/深色/字体缩放验收待补。
+
+---
+
+## 追加：题目标识改为「来源 第X页 第Y题」（2026-11-25）【done】
+
+【本轮背景】用户要求计划预览「每日安排」中的题目描述与打印稿第一行统一改为「来源 第X页 第Y题」：X 为页码编号、Y 为题号，替代原来的「页码-来源-题号」与「题号 … 来源页 …」。
+
+【本轮任务】
+- `core:common` 新增 `formatQuestionLabel(sourcePage, questionNumber)` 与 `UNKNOWN_QUESTION_NUMBER`；`sourcePage` 仍为数据层展示串 `页码编号-来源说明`（说明为空时只有编号），函数拆出页码与来源后按「来源 第X页 第Y题」拼接；没有来源说明时页码显示为「编号X」，缺少页码时只保留已有部分；旧稿整串没有页码编号时整串作为来源；
+- `feature:planning` 删除内部 `formatQuestionLabel` 与常量，改用共享函数；`PlanPreviewPage.questionLabels`、`PlanPreviewDeferred.questionLabel` 与推迟快照不变；
+- `feature:print` 的 `pageLineText` 改用共享函数，打印稿第一行与预览完全一致；
+- 单测覆盖 `core:common` 的格式化函数、计划预览的生成/重开标签与打印页 `pageLine` 文本；同步 `CLAUDE.md`、`overview.md`、changelog 与 agent-log。
+
+【落地说明（2026-11-25）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；真机 `PrintPdfGenerationTest` 生成 PDF，打印稿显示「课后练习 第12页 第T-1题」「同步练习 第3页 第T-2题」与无来源时的「第T-3题」，证据 `evidence/print/daily-number-2026-11-25/print/`。`docs/specs/app.md`/`planning.md`/`print-template.md` 已按用户授权回写。
+
+---
+
+## 追加：题库卡片标题与标签并排（2026-11-25）【done】
+
+【本轮背景】用户要求题库页题目卡片的大标题改为「来源 第X页 第Y题」（有来源）或「编号X 第Y题」（无来源），并把“耗时”标签与“知识点”标签并排放置；随后要求把来源与「第X页 第Y题」分行显示。
+
+【本轮任务】
+- `core:common` 新增 `formatQuestionLabelLines`：有来源说明时首行返回来源、次行返回 `第X页 第Y题`；无来源说明时首行返回 `编号X`、次行返回 `第Y题`；`formatQuestionLabel` 继续以空格把它拼成单行，供预览/打印使用；
+- `EntryScreen.QuestionCard` 大标题改用 `formatQuestionLabelLines(row.sourcePage, row.questionNumber)`，两行均为 `titleLarge`、单行省略；
+- 去掉原来的「来源 … · 时长 …」副行；新增中性底色的 `DurationChip`（时钟图标 + `X 分钟`），与知识点的 `KnowledgeChip` 放在同一个 `FlowRow` 内并排，大字号下整体换行；
+- 不改变搜索、编辑/删除按钮、列表排序与空态；同步 `CLAUDE.md`、`overview.md`、changelog 与 agent-log。
+
+【落地说明（2026-11-25）】已完成。`./gradlew test verifyCorePurity :app:assembleDebug` 通过；release 覆盖安装后在实体机题库页确认两行标题为「化学练透 / 第26页 第5题」，耗时标签与知识点标签在同一行；证据 `evidence/screens/entry-card-2026-11-25/entry-card-two-lines.{png,xml}`。`docs/specs/entry.md`、`app.md` 的题卡描述已按用户授权回写。
+
+---
+
 ## 附录：固定循环速查
 
 ```text

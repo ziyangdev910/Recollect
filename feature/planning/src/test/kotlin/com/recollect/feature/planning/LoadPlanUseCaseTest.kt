@@ -74,9 +74,9 @@ class LoadPlanUseCaseTest {
         assertEquals(2, question.knowledgeLineCount)
         assertEquals(1, question.attachmentCount)
         assertEquals("附件笔记", outcome.printJob.notes.getValue("q1").single().text)
-        assertEquals(listOf("8-P21-第T-1题"), outcome.preview.pages.single().questionLabels)
+        assertEquals(listOf("P21 第8页 第T-1题"), outcome.preview.pages.single().questionLabels)
         val deferred = outcome.preview.deferred.single()
-        assertEquals("9-P22-第T-2题", deferred.questionLabel, "重开计划仍要说明被推迟的题")
+        assertEquals("P22 第9页 第T-2题", deferred.questionLabel, "重开计划仍要说明被推迟的题")
         assertEquals("复习时间不足", deferred.label)
     }
 
@@ -117,9 +117,9 @@ class LoadPlanUseCaseTest {
         ).load("K7M2Q9", TemplateGeometry.a4Print()) as PlanGenerationOutcome.Planned
 
         assertEquals(
-            "9-P22-第T-2题",
+            "P22 第9页 第T-2题",
             outcome.preview.deferred.single().questionLabel,
-            "旧快照缺来源页码时，用题库补齐「页码-第X题」",
+            "旧快照缺来源页码时，用题库补齐「来源 第X页 第Y题」",
         )
     }
 

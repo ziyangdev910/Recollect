@@ -24,10 +24,7 @@ Kotlin + Jetpack Compose，Room，CameraX，OpenCV，ML Kit，ZXing。minSdk 26�
 ./gradlew assembleRelease
 ```
 
-Windows 下也可直接运行 `debug_compile_and_install.bat`（构建 debug APK 并安装到
-实机）或 `release_compile_and_install.bat`（构建开启 R8 的 release APK 并安装）。
-release 签名读取仓库外 `keystore.properties` 指向的正式 keystore，缺失时回退 debug
-签名。
+release 签名读取仓库外 `keystore.properties` 指向的正式 keystore，缺失时回退 debug 签名。
 
 ## 算法来源
 
@@ -38,15 +35,13 @@ release 签名读取仓库外 `keystore.properties` 指向的正式 keystore，�
 
 ## 开源许可证
 
-本项目采用 **GNU General Public License v3.0（仅此版本）并附加 Classpath
-Exception 2.0** 发布：
+本项目采用 **GNU General Public License v3.0（仅此版本）并附加 Classpath Exception 2.0** 发布：
 
 ```
 SPDX-License-Identifier: GPL-3.0-only WITH Classpath-exception-2.0
 ```
 
-GPL-3.0 全文见 [LICENSE](LICENSE)，Classpath 例外全文见
-[LICENSE-EXCEPTION](LICENSE-EXCEPTION)。
+GPL-3.0 全文见 [LICENSE](LICENSE)，Classpath 例外全文见 [LICENSE-EXCEPTION](LICENSE-EXCEPTION)。
 
 你可以自由使用、修改和分发本项目的源代码，但任何分发本应用或其衍生版本的行为，
 必须同样以 GPL-3.0 公开对应源代码；**闭源分发（包括将衍生版本闭源上架应用商店）

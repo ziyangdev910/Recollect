@@ -1,5 +1,6 @@
 package com.recollect.feature.planning
 
+import com.recollect.common.UNKNOWN_QUESTION_NUMBER
 import com.recollect.data.room.entity.NoteAttachmentItem
 import com.recollect.pagination.PlannedPage
 import com.recollect.pagination.RenderableQuestion
@@ -38,25 +39,14 @@ data class PrintJob(
 )
 
 /**
- * 计划预览的题目标识：`页码-第X题`（X 为题号）。
+ * PlanPreview 的单页投影；不携带调度状态。
  *
- * 标注了来源的题目可能在不同页码上出现相同题号，只显示题号无法区分；
- * 没有来源页码时退回 `第X题`，避免出现前导分隔符。
+ * 题目标识由 [com.recollect.common.formatQuestionLabel] 生成，格式为 `来源 第X页 第Y题`
+ * （X 为页码编号、Y 为题号；缺少来源或页码时只拼接已有部分）。
  */
-internal fun formatQuestionLabel(sourcePage: String, questionNumber: String): String = when {
-    questionNumber == UNKNOWN_QUESTION_NUMBER -> UNKNOWN_QUESTION_NUMBER
-    sourcePage.isBlank() -> "第${questionNumber}题"
-    else -> "$sourcePage-第${questionNumber}题"
-}
-
-/** 缺题号时的占位；预览只展示可读文字，不暴露题目 id。 */
-internal const val UNKNOWN_QUESTION_NUMBER = "未知题号"
-
-/** PlanPreview 的单页投影；不携带调度状态。 */
 data class PlanPreviewPage(
     val pageNumber: Int,
     val date: LocalDate,
-    /** 形如 `2-第3题`；没有来源页码时为 `第3题`。 */
     val questionLabels: List<String>,
 )
 
@@ -79,7 +69,7 @@ data class PlanPreviewWarning(
  */
 data class PlanPreviewDeferred(
     val questionId: String,
-    /** 与页面卡片相同的标识格式：`页码-第X题`；无来源页码时为 `第X题`。 */
+    /** 与页面卡片相同的标识格式：`来源 第X页 第Y题`；缺少来源或页码时只拼接已有部分。 */
     val questionLabel: String,
     val label: String,
     val message: String,

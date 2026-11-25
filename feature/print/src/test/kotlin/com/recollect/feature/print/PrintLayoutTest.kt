@@ -41,7 +41,7 @@ class PrintLayoutTest {
                 knowledgeLineCount = 1,
                 attachmentCount = 0,
                 hasNoteArea = true,
-                sourcePage = "P12",
+                sourcePage = "12-课后练习",
             ),
             RenderableQuestion(
                 questionId = "q2",
@@ -60,6 +60,7 @@ class PrintLayoutTest {
                 knowledgeLineCount = 2,
                 attachmentCount = 3,
                 hasNoteArea = true,
+                sourcePage = "3",
             ),
             RenderableQuestion(
                 questionId = "q4",
@@ -69,7 +70,7 @@ class PrintLayoutTest {
                 knowledgeLineCount = 4,
                 attachmentCount = 0,
                 hasNoteArea = true,
-                sourcePage = "P7",
+                sourcePage = "7-单元测试",
             ),
             RenderableQuestion(
                 questionId = "q5",
@@ -207,8 +208,26 @@ class PrintLayoutTest {
         assertEquals(33.0, q1.rightTop.topMm, EPSILON)
         // 顶部信息段取 max(左填涂 7.5, 右信息 14.5) = 14.5。
         assertEquals(7.0 + 1 * 7.5, q1.rightTop.heightMm, EPSILON)
-        // 2026-11-24 用户要求：题目开头不再显示「页码 XX」，保留题号与来源页。
-        assertEquals("题号 T-1　来源页 P12", q1.rightTop.pageLine.text)
+        // 2026-11-25 用户要求：每日题序徽标「【n】」置于左侧「序号」列的左边（题块左上角）。
+        assertEquals(1, q1.dailyIndex)
+        assertEquals("【1】", q1.questionIndexText.text)
+        assertEquals(13.0, q1.questionIndexText.leftMm, EPSILON) // 26 - 12 - 1
+        assertEquals(33.0, q1.questionIndexText.topMm, EPSILON)
+        assertEquals(7.5, q1.questionIndexText.heightMm, EPSILON)
+        assertEquals(3.8, q1.questionIndexText.fontMm, EPSILON)
+        assertTrue(q1.questionIndexText.bold)
+        // 徽标右缘与「序号」列之间留 1mm，且不越过四角标记白边的 26mm 内容区边界。
+        assertEquals(
+            q1.left.rows[0].indexText.leftMm - 1.0,
+            q1.questionIndexText.leftMm + q1.questionIndexText.widthMm,
+            EPSILON,
+        )
+        // 右侧题号/来源行保持原位置，不因左侧徽标让位。
+        assertEquals(95.36, q1.rightTop.pageLine.leftMm, EPSILON) // 92.36 + 3
+        assertEquals(85.64, q1.rightTop.pageLine.widthMm, EPSILON)
+
+        // 2026-11-25 用户要求：题目标识改为「来源 第X页 第Y题」（X 页码编号、Y 题号）。
+        assertEquals("课后练习 第12页 第T-1题", q1.rightTop.pageLine.text)
         assertTrue(q1.rightTop.pageLine.bold)
         assertEquals("一元二次方程", q1.rightTop.knowledgeText.text)
         assertEquals(1, q1.rightTop.knowledgeText.maxLines)
@@ -254,6 +273,8 @@ class PrintLayoutTest {
 
         // C-062：纸上没有笔记区时不绘制笔记与附件，且不截断附件区（P-15 已在分页层处理高度）。
         val q2 = first.items[1]
+        assertEquals(2, q2.dailyIndex)
+        assertEquals("【2】", q2.questionIndexText.text)
         assertEquals(82.5, q2.blockTopMm, EPSILON) // 33 + 49.5
         assertEquals(54.0, q2.blockHeightMm, EPSILON) // 顶部 max(2*7.5, 7+2*7.5)=22 + QR 预留带 27 + 5
         assertEquals(2, q2.left.rows.size)
@@ -285,6 +306,10 @@ class PrintLayoutTest {
         // C-062：hasNoteArea=true 时附件区按 3 条完整绘制，不截断到 30% 上限。
         val q3 = first.items[2]
         assertEquals("q3", q3.questionId)
+        assertEquals(3, q3.dailyIndex)
+        assertEquals("【3】", q3.questionIndexText.text)
+        // 没有来源说明时页码显示为「编号X」。
+        assertEquals("编号3 第T-3题", q3.rightTop.pageLine.text)
         assertEquals(136.5, q3.blockTopMm, EPSILON) // 33 + 49.5(q1) + 54(q2)
         // 顶部 max(7.5, 7+2*7.5=22) + 附加 30 + 笔记行 30 + 间距 5 = 87mm。
         assertEquals(87.0, q3.blockHeightMm, EPSILON)
@@ -315,9 +340,12 @@ class PrintLayoutTest {
 
         val q4 = second.items.single()
         assertEquals("q4", q4.questionId)
+        // 同一天跨页继续编号：周一前 3 题在首页，第 4 题在第 2 页仍为【4】。
+        assertEquals(4, q4.dailyIndex)
+        assertEquals("【4】", q4.questionIndexText.text)
         assertEquals(33.0, q4.blockTopMm, EPSILON) // 新页只扣页级表头
         assertEquals(72.0, q4.blockHeightMm, EPSILON) // 顶部 max(7.5, 7+4*7.5=37) + 30 + 5
-        assertEquals("题号 T-4　来源页 P7", q4.rightTop.pageLine.text)
+        assertEquals("单元测试 第7页 第T-4题", q4.rightTop.pageLine.text)
         assertEquals(70.0, q4.note?.topMm!!, EPSILON) // 33 + 37
         assertEquals(75.0, q4.qr.topMm, EPSILON) // 70 + 29 − 24
 
@@ -326,6 +354,9 @@ class PrintLayoutTest {
         assertEquals(tuesday, third.date)
         assertEquals("2026-11-17 周二", third.dateHeading?.text)
         assertEquals(33.0, third.items.single().blockTopMm, EPSILON)
+        // 换日重新从 1 开始：周二的题序为【1】。
+        assertEquals(1, third.items.single().dailyIndex)
+        assertEquals("【1】", third.items.single().questionIndexText.text)
 
         // 四角 ArUco：内码 10mm、距页边 12mm、白边 4mm（print-template.md）。
         assertEquals(4, first.arucoMarkers.size)

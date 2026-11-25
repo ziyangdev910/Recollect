@@ -22,3 +22,7 @@ ppt/
 *.keystore
 *.jks
 keystore.properties
+
+# 测试构建脚本
+debug_compile_and_install.bat
+release_compile_and_install.bat

@@ -188,7 +188,7 @@ private fun QuestionForm(
             )
         }
 
-        // 题号与编号字段（页码编号/试卷编号）同行并排，各占一半宽度。
+        // 题号、编号（页码编号/试卷编号）与复习时长三栏并排，各占三分之一宽度。
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -197,7 +197,8 @@ private fun QuestionForm(
             OutlinedTextField(
                 value = questionNumber,
                 onValueChange = { questionNumber = it },
-                label = { Text("题号，例如 T-1") },
+                label = { Text("题号") },
+                placeholder = { Text("T-1") },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
@@ -251,10 +252,35 @@ private fun QuestionForm(
                     }
                 },
             )
+
+            // 复习时长与题号、编号同排；单位放在输入区内，标签可保持短文本。
+            OutlinedTextField(
+                value = minutes,
+                onValueChange = { minutes = it.filter(Char::isDigit) },
+                label = { Text("复习时长") },
+                suffix = {
+                    Text(
+                        text = "分钟",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                singleLine = true,
+                isError = !reviewMinutesValid,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+            )
         }
         if (hasSource && currentPageCode < 1) {
             Text(
                 text = "请输入不小于 1 的页码编号。",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (!reviewMinutesValid) {
+            Text(
+                text = "复习时长必须为不小于 1 的整数。",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -404,46 +430,28 @@ private fun QuestionForm(
             selectedIds.size in 1..EntryDraft.MAX_KNOWLEDGE_POINTS &&
             currentPageCode >= 1 &&
             reviewMinutesValid
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // 保存作为整页唯一的主操作通栏展示，位于表单末尾。
+        Button(
+            enabled = canSave && !viewModel.saving,
+            onClick = {
+                scope.launch {
+                    val saved = viewModel.save(
+                        questionNumber = questionNumber,
+                        sourcePageCode = currentPageCode,
+                        sourcePageLabel = sourceTags.firstOrNull { it.id == selectedSourceId }?.name
+                            ?: legacySourceName,
+                        knowledgePointIds = selectedIds.toList(),
+                        estimatedReviewMinutes = minutes.toIntOrNull()
+                            ?: EntryDraft.DEFAULT_REVIEW_MINUTES,
+                    )
+                    if (saved) onSaved()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
         ) {
-            OutlinedTextField(
-                value = minutes,
-                onValueChange = { minutes = it.filter(Char::isDigit) },
-                label = { Text("预估复习时长（分钟）") },
-                singleLine = true,
-                isError = !reviewMinutesValid,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f),
-            )
-            Button(
-                enabled = canSave && !viewModel.saving,
-                onClick = {
-                    scope.launch {
-                        val saved = viewModel.save(
-                            questionNumber = questionNumber,
-                            sourcePageCode = currentPageCode,
-                            sourcePageLabel = sourceTags.firstOrNull { it.id == selectedSourceId }?.name
-                                ?: legacySourceName,
-                            knowledgePointIds = selectedIds.toList(),
-                            estimatedReviewMinutes = minutes.toIntOrNull()
-                                ?: EntryDraft.DEFAULT_REVIEW_MINUTES,
-                        )
-                        if (saved) onSaved()
-                    }
-                },
-            ) {
-                Text("保存")
-            }
-        }
-        if (!reviewMinutesValid) {
-            Text(
-                text = "预估复习时长必须输入不小于 1 的整数。",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text(if (viewModel.saving) "保存中…" else "保存")
         }
     }
 

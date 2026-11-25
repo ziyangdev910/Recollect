@@ -79,6 +79,42 @@ class HomePlanPresentationTest {
     }
 
     @Test
+    fun `stage follows the data available on home`() {
+        assertEquals(ReviewStage.RECORD, currentReviewStage(0, null))
+        assertEquals(ReviewStage.RECORD, currentReviewStage(null, null))
+        assertEquals(ReviewStage.PLAN, currentReviewStage(12, null))
+        assertEquals(ReviewStage.PRINT, currentReviewStage(12, PlanStatus.GENERATED))
+        assertEquals(ReviewStage.SCAN, currentReviewStage(12, PlanStatus.PRINTED))
+        assertEquals(ReviewStage.CONFIRM, currentReviewStage(12, PlanStatus.COMPLETED))
+    }
+
+    @Test
+    fun `stage prefers the plan over a stale question count`() {
+        // 题目统计读取失败（null）时，仍能凭计划状态判断该去打印或回读。
+        assertEquals(ReviewStage.PRINT, currentReviewStage(null, PlanStatus.GENERATED))
+        assertEquals(ReviewStage.SCAN, currentReviewStage(null, PlanStatus.PRINTED))
+    }
+
+    @Test
+    fun `exactly one card is highlighted per stage`() {
+        assertEquals(HomeHighlight.RECORD, homeHighlight(ReviewStage.RECORD))
+        assertEquals(HomeHighlight.PLAN, homeHighlight(ReviewStage.PLAN))
+        assertEquals(HomeHighlight.PLAN, homeHighlight(ReviewStage.PRINT))
+        assertEquals(HomeHighlight.SCAN, homeHighlight(ReviewStage.SCAN))
+        // 本轮确认完成后主卡已聚焦下一周，继续用计划卡引导开始下一轮。
+        assertEquals(HomeHighlight.PLAN, homeHighlight(ReviewStage.CONFIRM))
+    }
+
+    @Test
+    fun `stage hint names the action to take`() {
+        assertEquals("录入题目", ReviewStage.RECORD.actionLabel)
+        assertEquals("生成计划", ReviewStage.PLAN.actionLabel)
+        assertEquals("打印计划", ReviewStage.PRINT.actionLabel)
+        assertEquals("扫描回读", ReviewStage.SCAN.actionLabel)
+        assertEquals("查看复习进度", ReviewStage.CONFIRM.actionLabel)
+    }
+
+    @Test
     fun `next week messages explain why it became the focus`() {
         // 下周区块只有在升为主区块时才会展示说明，因此承接“本周已完成”的语境。
         assertEquals(

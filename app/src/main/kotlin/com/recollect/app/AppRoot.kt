@@ -7,25 +7,25 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
@@ -36,14 +36,17 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.recollect.app.navigation.AppNavigator
 import com.recollect.app.navigation.AppRoute
+import com.recollect.app.ui.theme.RecollectTheme
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.repository.PlanStatus
 import com.recollect.feature.backup.BackupScreen
@@ -111,7 +115,7 @@ import kotlinx.coroutines.launch
  * 本阶段提供 Home → Entry → PlanPreview 的首个可跑纵切；其余路由保持占位。
  * [container] 由 `MainActivity` 注入，屏幕级 ViewModel 从这里取 Repository/UseCase。
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(
     container: AppContainer,
@@ -325,28 +329,34 @@ fun AppRoot(
         }
     }
 
-    MaterialTheme {
-        // 所有手动输入文本框统一处理：Compose 的光标/选区手柄是独立窗口里的 Popup，
-        // 只在创建时按输入框当时的位置锚定一次；键盘弹出后输入框被系统整窗平移或由
-        // imePadding 滚动带起，手柄不会跟着移动，会孤零零地停在旧位置。键盘可见期间
-        // 把手柄设为透明（光标、选区高亮、输入与拖动仍正常），键盘收起后恢复显示。
-        val imeVisible = WindowInsets.isImeVisible
+    RecollectTheme {
+        // 所有文本框统一处理：Compose 的光标/选区手柄（光标下方的小三角/水滴）是独立窗口里的
+        // Popup，只按输入框创建时的位置锚定一次，键盘弹出后不会跟随输入框移动。这里把
+        // handleColor 设为透明，整个应用都不再绘制该手柄；光标、选区高亮、输入与拖动仍正常。
         val baseSelectionColors = LocalTextSelectionColors.current
-        val selectionColors = remember(baseSelectionColors, imeVisible) {
-            if (!imeVisible) {
-                baseSelectionColors
-            } else {
-                TextSelectionColors(
-                    handleColor = Color.Transparent,
-                    backgroundColor = baseSelectionColors.backgroundColor,
-                )
-            }
+        val selectionColors = remember(baseSelectionColors) {
+            TextSelectionColors(
+                handleColor = Color.Transparent,
+                backgroundColor = baseSelectionColors.backgroundColor,
+            )
         }
         CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
             Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
                 topBar = {
                     TopAppBar(
-                        title = { Text(routeTitle(current)) },
+                        title = {
+                            Text(
+                                text = routeTitle(current),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background,
+                            titleContentColor = MaterialTheme.colorScheme.onBackground,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                         navigationIcon = {
                             if (canPop) {
                                 IconButton(onClick = { navigator.pop() }) {
@@ -365,22 +375,32 @@ fun AppRoot(
                                 // （导入用原导出图形、导出用原导入图形）。
                                 TextButton(
                                     onClick = { importPicker.launch(IMPORT_MIME_TYPES) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
                                 ) {
-                                    Text("导入数据库")
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "导入数据库",
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Icon(
                                         painter = painterResource(R.drawable.ic_export),
                                         contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
+                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
-                                TextButton(onClick = { navigator.push(AppRoute.Backup) }) {
-                                    Text("导出数据库")
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                TextButton(
+                                    onClick = { navigator.push(AppRoute.Backup) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                ) {
+                                    Text(
+                                        "导出数据库",
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Icon(
                                         painter = painterResource(R.drawable.ic_import),
                                         contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
+                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }
@@ -632,6 +652,9 @@ private fun HomeScreen(
     onScan: () -> Unit,
     onAbout: () -> Unit,
 ) {
+    // 当前环节决定首页唯一被点亮的卡片；计划主卡与 2×2 操作卡互斥地承担引导。
+    val stage = currentReviewStage(questionCount, thisWeekPlanStatus)
+    val highlight = homeHighlight(stage)
     var showDailyMinutesDialog by remember { mutableStateOf(false) }
     if (showDailyMinutesDialog) {
         DailyReviewMinutesDialog(
@@ -645,9 +668,9 @@ private fun HomeScreen(
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        // 主卡 + 概览 + 四个快捷入口 + 底部设置入口；内容超出屏幕时可滚动。
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        // 首页按「计划 → 流程 → 概览 → 操作 → 设置」的顺序组织，一屏内先看到最该做的事。
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item {
             PlanHeroCard(
@@ -657,142 +680,306 @@ private fun HomeScreen(
                 nextWeekStatus = nextWeekPlanStatus,
                 nextWeekStart = nextWeekStart,
                 nextWeekEnd = nextWeekEnd,
+                active = highlight == HomeHighlight.PLAN,
                 onPlanPreview = onPlanPreview,
             )
         }
         item {
-            HomeStatsCard(
-                questionCount = questionCount,
-                knowledgeCount = knowledgeCount,
-                overdueCount = overdueCount,
-                dueWithinWeekCount = dueWithinWeekCount,
+            FlowGuideCard(
+                currentStage = stage,
+                cycleComplete = thisWeekPlanStatus == PlanStatus.COMPLETED,
             )
         }
         item {
-            // 第一行主入口：录入题目直达新建题目页，管理题库进入题库列表页。
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_entry,
-                    title = "录入题目",
-                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    onClick = onCreateQuestion,
-                )
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_library,
-                    title = "管理题库",
-                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    onClick = onEntry,
+            HomeSection(title = "常用操作", hint = "记录 → 打印 → 回读") {
+                QuickActionsGrid(
+                    highlight = highlight,
+                    onEntry = onEntry,
+                    onCreateQuestion = onCreateQuestion,
+                    onProgress = onProgress,
+                    onScan = onScan,
                 )
             }
         }
         item {
-            // 第二行操作类入口：扫描回读与复习进度。
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_scan,
-                    title = "扫描回读",
-                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    onClick = onScan,
-                )
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_home_progress,
-                    title = "查看复习进度",
-                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                    onClick = onProgress,
+            HomeSection(title = "学习概览", hint = "数据来自本机题库") {
+                HomeStatsCard(
+                    questionCount = questionCount,
+                    knowledgeCount = knowledgeCount,
+                    overdueCount = overdueCount,
+                    dueWithinWeekCount = dueWithinWeekCount,
                 )
             }
         }
         item {
-            // 底部设置类入口：左侧修改每日复习时长（时钟图标），右侧进入关于页面（信息图标）。
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HomeSettingsCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_clock,
-                    title = "每日复习时长",
-                    subtitle = "当前 $dailyReviewMinutes 分钟",
-                    onClick = { showDailyMinutesDialog = true },
-                )
-                HomeSettingsCard(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_info,
-                    title = "关于",
-                    subtitle = "版本 $versionName",
-                    onClick = onAbout,
+            HomeSection(title = "设置") {
+                HomeSettingsPanel(
+                    dailyReviewMinutes = dailyReviewMinutes,
+                    versionName = versionName,
+                    onEditDailyMinutes = { showDailyMinutesDialog = true },
+                    onAbout = onAbout,
                 )
             }
         }
     }
 }
 
-/**
- * 底部的设置类入口卡片：图标在左，文字整体左对齐。
- *
- * 与上方的快捷操作卡片区分开：这里承载的是“设置”而非“操作”，
- * 因此左侧图标使用 surfaceVariant 底、文字可带一行副标题。
- */
+/** 首页区块标题：标题左对齐，右侧可放一条极轻量的说明。 */
 @Composable
-private fun HomeSettingsCard(
-    iconRes: Int,
+private fun HomeSection(
     title: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    subtitle: String? = null,
+    hint: String? = null,
+    content: @Composable () -> Unit,
 ) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.height(HOME_SETTINGS_CARD_HEIGHT),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.Start,
-            ) {
+        }
+        content()
+    }
+}
+
+/**
+ * 复习流程条：把「录入 → 生成 → 打印 → 扫描 → 确认」画成一条可读的路径，
+ * 已完成与当前步骤用品牌色区分，帮助第一次使用的学生知道下一步做什么。
+ */
+@Composable
+private fun FlowGuideCard(
+    currentStage: ReviewStage,
+    cycleComplete: Boolean,
+) {
+    val colors = MaterialTheme.colorScheme
+    val hint = if (cycleComplete) {
+        "本轮已完成，可开始下一轮"
+    } else {
+        "下一步：${currentStage.actionLabel}"
+    }
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerLow,
+        border = BorderStroke(1.dp, colors.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = title,
+                    text = "复习流程",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.primary,
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // 连接线画在圆点后方，让五个环节读起来是一条路径而不是五个按钮。
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(0.84f)
+                        .padding(top = 13.dp)
+                        .height(1.dp)
+                        .background(colors.outlineVariant),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    val currentIndex = currentStage.ordinal
+                    ReviewStage.entries.forEachIndexed { index, stage ->
+                        val active = !cycleComplete && index == currentIndex
+                        val done = cycleComplete || index < currentIndex
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            active -> colors.primary
+                                            done -> colors.primaryContainer
+                                            else -> colors.surfaceVariant
+                                        },
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = (index + 1).toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = when {
+                                        active -> colors.onPrimary
+                                        done -> colors.onPrimaryContainer
+                                        else -> colors.onSurfaceVariant
+                                    },
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = stage.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (active) colors.onSurface else colors.onSurfaceVariant,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * 快捷操作网格：第一行是记录与管理，第二行是回读与进度。
+ *
+ * 只有与当前环节对应的那一个入口使用高亮样式，其余保持中性，
+ * 与计划主卡同一时刻只亮一处，避免首页出现两个视觉重点。
+ */
+@Composable
+private fun QuickActionsGrid(
+    highlight: HomeHighlight,
+    onEntry: () -> Unit,
+    onCreateQuestion: () -> Unit,
+    onProgress: () -> Unit,
+    onScan: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            QuickActionCard(
+                modifier = Modifier.weight(1f),
+                iconRes = R.drawable.ic_home_entry,
+                title = "录入题目",
+                caption = "记录一道新题",
+                highlighted = highlight == HomeHighlight.RECORD,
+                onClick = onCreateQuestion,
+            )
+            QuickActionCard(
+                modifier = Modifier.weight(1f),
+                iconRes = R.drawable.ic_home_library,
+                title = "管理题库",
+                caption = "搜索与整理",
+                onClick = onEntry,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            QuickActionCard(
+                modifier = Modifier.weight(1f),
+                iconRes = R.drawable.ic_home_scan,
+                title = "扫描回读",
+                caption = "拍摄打印稿",
+                highlighted = highlight == HomeHighlight.SCAN,
+                onClick = onScan,
+            )
+            QuickActionCard(
+                modifier = Modifier.weight(1f),
+                iconRes = R.drawable.ic_home_progress,
+                title = "查看复习进度",
+                caption = "掌握度与到期",
+                onClick = onProgress,
+            )
+        }
+    }
+}
+
+/** 设置区：两项设置放在同一面板内，用分割线区分，避免再堆两张卡片。 */
+@Composable
+private fun HomeSettingsPanel(
+    dailyReviewMinutes: Int,
+    versionName: String,
+    onEditDailyMinutes: () -> Unit,
+    onAbout: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerLow,
+        border = BorderStroke(1.dp, colors.outlineVariant),
+    ) {
+        Column {
+            HomeSettingsRow(
+                iconRes = R.drawable.ic_clock,
+                title = "每日复习时长",
+                subtitle = "当前 $dailyReviewMinutes 分钟",
+                onClick = onEditDailyMinutes,
+            )
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 60.dp),
+                color = colors.outlineVariant,
+            )
+            HomeSettingsRow(
+                iconRes = R.drawable.ic_info,
+                title = "关于",
+                subtitle = "版本 $versionName",
+                onClick = onAbout,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeSettingsRow(
+    iconRes: Int,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(colors.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron_right),
+            contentDescription = null,
+            tint = colors.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -858,6 +1045,8 @@ private fun DailyReviewMinutesDialog(
  *
  * 本周计划完成（COMPLETED）后，下周计划升为卡片主区块（大标题、说明、通栏主按钮），
  * 本周降为次要行（仍可预览/重印）；其余状态保持本周为主。
+ * [active] 为 true 时整卡使用主色容器，承担首页当轮的“下一步”引导；
+ * 处于录入或扫描环节时退回中性表面，把注意力让给对应的操作卡。
  * 只提供“本周”和“下周”两个窗口；点击任一入口只会复用该窗口已有计划，
  * 不会因为再次点击而顺延到更远的周。
  */
@@ -869,6 +1058,7 @@ private fun PlanHeroCard(
     nextWeekStatus: PlanStatus?,
     nextWeekStart: LocalDate,
     nextWeekEnd: LocalDate,
+    active: Boolean,
     onPlanPreview: (PlanWeek) -> Unit,
 ) {
     val focus = homePlanFocus(thisWeekStatus)
@@ -890,25 +1080,37 @@ private fun PlanHeroCard(
     val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
+        colors = CardDefaults.cardColors(
+            containerColor = if (active) colors.primaryContainer else colors.surfaceContainerLow,
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (active) colors.primary.copy(alpha = 0.18f) else colors.outlineVariant,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            PlanPrimaryBlock(window = primary, onPlanPreview = onPlanPreview)
+            PlanPrimaryBlock(window = primary, active = active, onPlanPreview = onPlanPreview)
 
             // 同一张卡内的次要入口：本周完成后与下周互换主次。
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(colors.onPrimaryContainer.copy(alpha = 0.15f)),
+            HorizontalDivider(
+                color = if (active) {
+                    colors.onPrimaryContainer.copy(alpha = 0.14f)
+                } else {
+                    colors.outlineVariant
+                },
             )
-            PlanSecondaryRow(window = secondary, onPlanPreview = onPlanPreview)
+            PlanSecondaryRow(window = secondary, active = active, onPlanPreview = onPlanPreview)
         }
     }
 }
+
+/** 首页只显示「11月18日 — 11月24日」这类短日期，年份在同一周内没有信息量。 */
+private fun formatWeekRange(start: LocalDate, end: LocalDate): String =
+    "${start.monthValue}月${start.dayOfMonth}日 — ${end.monthValue}月${end.dayOfMonth}日"
 
 /** 计划卡里的一个周窗口：本周或下周，携带该窗口的日期与状态。 */
 private data class PlanCardWindow(
@@ -927,37 +1129,51 @@ private data class PlanCardWindow(
 @Composable
 private fun PlanPrimaryBlock(
     window: PlanCardWindow,
+    active: Boolean,
     onPlanPreview: (PlanWeek) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val titleColor = if (active) colors.onPrimaryContainer else colors.onSurface
+    val secondaryColor = if (active) {
+        colors.onPrimaryContainer.copy(alpha = 0.72f)
+    } else {
+        colors.onSurfaceVariant
+    }
+    val messageColor = if (active) {
+        colors.onPrimaryContainer.copy(alpha = 0.85f)
+    } else {
+        colors.onSurfaceVariant
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = window.week.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.onPrimaryContainer,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = titleColor,
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "${window.start} — ${window.end}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onPrimaryContainer.copy(alpha = 0.75f),
+                    text = formatWeekRange(window.start, window.end),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = secondaryColor,
                 )
             }
-            StatusPill(planStatusLabel(window.status))
+            StatusPill(status = window.status, onTint = active)
         }
         Text(
             text = planStatusMessage(window.week, window.status),
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.onPrimaryContainer.copy(alpha = 0.85f),
+            color = messageColor,
         )
         Button(
             onClick = { onPlanPreview(window.week) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = colors.primary,
-                contentColor = colors.onPrimary,
+                containerColor = if (active) colors.primary else colors.surfaceVariant,
+                contentColor = if (active) colors.onPrimary else colors.onSurfaceVariant,
             ),
         ) {
             Icon(
@@ -979,52 +1195,77 @@ private fun PlanPrimaryBlock(
 @Composable
 private fun PlanSecondaryRow(
     window: PlanCardWindow,
+    active: Boolean,
     onPlanPreview: (PlanWeek) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
+    val titleColor = if (active) colors.onPrimaryContainer else colors.onSurface
+    val dateColor = if (active) {
+        colors.onPrimaryContainer.copy(alpha = 0.75f)
+    } else {
+        colors.onSurfaceVariant
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = window.week.title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.onPrimaryContainer,
+                color = titleColor,
             )
             Text(
-                text = "${window.start} — ${window.end}",
+                text = formatWeekRange(window.start, window.end),
                 style = MaterialTheme.typography.bodySmall,
-                color = colors.onPrimaryContainer.copy(alpha = 0.75f),
+                color = dateColor,
             )
         }
         Column(
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            StatusPill(planStatusLabel(window.status), compact = true)
+            StatusPill(status = window.status, compact = true, onTint = active)
             CompactPlanAction(
                 label = planSecondaryActionLabel(window.week, window.status),
+                color = if (active) colors.onPrimaryContainer else colors.primary,
                 onClick = { onPlanPreview(window.week) },
             )
         }
     }
 }
 
+/** 状态胶囊用语义色：待打印偏朱砂、已打印偏赭石、已完成用主色。 */
 @Composable
-private fun StatusPill(text: String, compact: Boolean = false) {
+private fun StatusPill(
+    status: PlanStatus?,
+    compact: Boolean = false,
+    onTint: Boolean = true,
+) {
     val colors = MaterialTheme.colorScheme
+    val (container, content) = when (status) {
+        // 未生成胶囊在强调卡上用半透明纸色浮起，在安静卡上换用 surfaceVariant 才看得见。
+        null -> if (onTint) {
+            colors.surface.copy(alpha = 0.7f) to colors.onSurfaceVariant
+        } else {
+            colors.surfaceVariant to colors.onSurfaceVariant
+        }
+
+        PlanStatus.GENERATED -> colors.tertiaryContainer to colors.onTertiaryContainer
+        PlanStatus.PRINTED -> colors.secondaryContainer to colors.onSecondaryContainer
+        PlanStatus.COMPLETED -> colors.primary to colors.onPrimary
+        PlanStatus.SUPERSEDED -> colors.surfaceVariant to colors.onSurfaceVariant
+    }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(colors.surface.copy(alpha = 0.65f))
+            .clip(CircleShape)
+            .background(container)
             .padding(
                 horizontal = if (compact) 8.dp else 10.dp,
                 vertical = if (compact) 2.dp else 4.dp,
             ),
     ) {
         Text(
-            text = text,
+            text = planStatusLabel(status),
             style = MaterialTheme.typography.labelMedium,
-            color = colors.onPrimaryContainer,
+            color = content,
         )
     }
 }
@@ -1039,22 +1280,21 @@ private fun StatusPill(text: String, compact: Boolean = false) {
 @Composable
 private fun CompactPlanAction(
     label: String,
+    color: Color,
     onClick: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
-            .height(30.dp)
-            .clip(RoundedCornerShape(50))
+            .heightIn(min = 48.dp)
+            .clip(CircleShape)
             .clickable(onClick = onClick)
-            .padding(start = 14.dp),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.CenterEnd,
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Medium,
-            color = colors.onPrimaryContainer,
+            color = color,
         )
     }
 }
@@ -1068,11 +1308,15 @@ private fun HomeStatsCard(
     dueWithinWeekCount: Int?,
 ) {
     val colors = MaterialTheme.colorScheme
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerLow,
+        border = BorderStroke(1.dp, colors.outlineVariant),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 12.dp),
+                .padding(vertical = 18.dp),
         ) {
             HomeStat(
                 label = "题目",
@@ -1080,18 +1324,21 @@ private fun HomeStatsCard(
                 valueColor = colors.onSurface,
                 modifier = Modifier.weight(1f),
             )
+            StatDivider()
             HomeStat(
                 label = "知识点",
                 value = knowledgeCount,
                 valueColor = colors.onSurface,
                 modifier = Modifier.weight(1f),
             )
+            StatDivider()
             HomeStat(
                 label = "已逾期",
                 value = overdueCount,
                 valueColor = if ((overdueCount ?: 0) > 0) colors.error else colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
+            StatDivider()
             HomeStat(
                 label = "7 天内",
                 value = dueWithinWeekCount,
@@ -1100,6 +1347,16 @@ private fun HomeStatsCard(
             )
         }
     }
+}
+
+@Composable
+private fun StatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(30.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
 }
 
 @Composable
@@ -1116,7 +1373,6 @@ private fun HomeStat(
         Text(
             text = value?.toString() ?: "—",
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
             color = valueColor,
         )
         Text(
@@ -1127,58 +1383,83 @@ private fun HomeStat(
     }
 }
 
-/** 首页快捷入口统一高度：2×2 卡片去掉一行后适当加高，便于点按。 */
-private val HOME_ACTION_CARD_HEIGHT = 72.dp
-
-/** 底部设置入口高度：左侧带副标题，略高于快捷操作卡片。 */
-private val HOME_SETTINGS_CARD_HEIGHT = 64.dp
+/** 首页快捷入口统一高度；图标在上、标题与一句说明在下，点按区域整块可点。 */
+private val HOME_ACTION_CARD_HEIGHT = 104.dp
 
 /**
- * 2×2 小标签入口：图标在左、标题居中，四个入口保持同一高度。
+ * 快捷入口卡片：图标块 + 标题 + 一行说明。
  *
- * 半屏宽度不再放副标题与箭头，标题单行显示，保证一屏内完整呈现四个入口。
+ * 高亮时整卡换成主色容器、图标块填主色，与计划主卡使用同一套强调语义；
+ * 未高亮的入口保持中性，让首页只有一个视觉重点。
  */
 @Composable
 private fun QuickActionCard(
     iconRes: Int,
     title: String,
-    iconContainer: Color,
-    iconTint: Color,
+    caption: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
 ) {
+    val colors = MaterialTheme.colorScheme
+    val container = if (highlighted) colors.primaryContainer else colors.surfaceContainerLow
+    val borderColor = if (highlighted) {
+        colors.primary.copy(alpha = 0.18f)
+    } else {
+        colors.outlineVariant
+    }
+    val titleColor = if (highlighted) colors.onPrimaryContainer else colors.onSurface
+    val captionColor = if (highlighted) {
+        colors.onPrimaryContainer.copy(alpha = 0.75f)
+    } else {
+        colors.onSurfaceVariant
+    }
+    val iconBackground = if (highlighted) colors.primary else colors.surfaceVariant
+    val iconTint = if (highlighted) colors.onPrimary else colors.onSurfaceVariant
     Card(
-        onClick = onClick,
-        modifier = modifier.height(HOME_ACTION_CARD_HEIGHT),
+        modifier = modifier
+            .heightIn(min = HOME_ACTION_CARD_HEIGHT)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = container),
+        border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(iconContainer),
+                    .size(34.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(iconBackground),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     painter = painterResource(iconRes),
                     contentDescription = null,
                     tint = iconTint,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(19.dp),
                 )
             }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = titleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = captionColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

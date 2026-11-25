@@ -920,3 +920,45 @@
 | 2026-11-25 | `core/pagination/.../TemplateGeometry.kt`、`feature/print/.../PrintLayout.kt` | 题间距改为「复习笔记横线间距」的视觉节奏：新增横线条数/底部内边距与横线偏移、`noteQrTopOffsetMm`；`itemSpacingMm` = 5mm；QR + pageId 标签组合底边与最后一条横线对齐 | 2026-11-25 用户要求 |
 | 2026-11-25 | `core/pagination/src/test/.../{PagePlannerTest,TemplateGeometryTest}.kt`、`feature/print/src/test/.../PrintLayoutTest.kt` | 按 5mm 题间距重算高度/坐标；新增横线偏移与 QR 对齐断言 | 2026-11-25 用户要求 |
 | 2026-11-25 | `docs/specs/{print-template,pagination}.md`、`evidence/print/spacing-2026-11-25-final/`（新增） | 回写题间距=横线间距、QR 底边对齐最后一条横线的规则；真机 PDF/PNG 实测横线间距 8.0mm、题间可见空白 7.8mm | 2026-11-25 用户授权回写 |
+| 2026-11-25 | `app/src/main/kotlin/com/recollect/app/ui/theme/Theme.kt`（新增） | 建立「纸张与墨色」Material 3 设计系统：完整浅/深色 color roles（纸张底、松烟墨绿主色、赭石次色、朱砂警示）、收敛的字号阶梯与 6/10/18/24dp 形状；接入系统深色模式，替代默认紫色基线主题 | 2026-11-25 用户要求；不改变架构决策 |
+| 2026-11-25 | `app/src/main/res/{values,values-night,values-v31,values-night-v31}/*.xml`、`drawable/ic_launcher_{background,foreground}.xml` | 启动底色、系统栏图标与启动图标同步品牌色；新增深色启动画面与系统栏图标规则 | 2026-11-25 用户要求 |
+| 2026-11-25 | `app/src/main/kotlin/com/recollect/app/AppRoot.kt` | 全局套用 `RecollectTheme`；导航栏改用主题色；首页重排为「计划主卡 → 复习流程条 → 常用操作 → 学习概览 → 设置面板」，计划状态胶囊语义色、短日期、48dp 主按钮与设置列表行 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/entry/src/main/kotlin/com/recollect/feature/entry/EntryScreen.kt`、`res/drawable/ic_{search,add,clock}.xml`（新增） | 题库页：带图标/清除按钮的搜索框、三段式题目卡片（题号 + 来源/时长 + 知识点标签）、整卡进入编辑；空题库改为教学式空态并隐藏悬浮按钮 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/entry/src/main/kotlin/com/recollect/feature/entry/QuestionEditScreen.kt` | 预估时长独占一行，保存改为通栏唯一主按钮（48dp） | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/planning/src/main/kotlin/com/recollect/feature/planning/PlanPreviewScreen.kt`、`res/drawable/ic_print.xml`（新增） | 计划预览：顶部计划摘要 + 通栏打印主按钮；每日安排改为「日期栏 + 题目标签」卡片；推迟/警告使用语义色分区；重新生成降为底部次要入口 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/print/src/main/kotlin/com/recollect/feature/print/PrintPlanScreen.kt`、`res/drawable/ic_{print,share}.xml`（新增） | 打印页：计划摘要卡、唯一打印主按钮、分享 PDF 次按钮；系统返回后把「已打印/未打印」确认提升为主内容 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/scan/src/main/kotlin/com/recollect/scan/ui/ScanScreen.kt` | 扫描页：顶部流程说明；识别成功卡突出「进入确认页」；权限/错误/结果使用语义色容器 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/confirm/src/main/kotlin/com/recollect/feature/confirm/ConfirmScreen.kt` | 确认页：顶部整批确认进度条与剩余行数；识别结果/决策使用语义色标签；决策完成后收起操作按钮只保留最终选择与对勾；提交面板去嵌套 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/progress/src/main/kotlin/com/recollect/feature/progress/ReviewProgressScreen.kt` | 复习进度：教学式空态、描边卡片、圆角进度条与低饱和分布图 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/backup/src/main/kotlin/com/recollect/feature/backup/BackupScreen.kt`、`res/drawable/ic_share.xml`（新增） | 导出页：页头说明 + 通栏主按钮；导出中/失败使用语义色容器 | 2026-11-25 用户要求 |
+| 2026-11-25 | `app/src/main/kotlin/com/recollect/app/AboutScreen.kt` | 关于页：品牌图标渐变、信息列表整行可点并带箭头、说明与致谢分区，减少卡片嵌套 | 2026-11-25 用户要求 |
+| 2026-11-25 | `docs/specs/app.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-25.md` | 同步本轮 UI 设计系统与页面重排说明、验证命令与未完成的真机视觉验证 | 2026-11-25 用户授权回写 |
+| 2026-11-25 | `app/.../AppRoot.kt` | 实体机 1.3 倍字号复测：首页快捷卡片由固定 104dp 改为 `heightIn(min=104dp)`，避免大字号压字 | 2026-11-25 实机验证 |
+| 2026-11-25 | `feature/entry/.../EntryScreen.kt` | 实体机 1.3 倍字号复测：题卡「来源 + 预估时长」改为 `FlowRow`，大字号下整体换行，不再把「分钟」拆成两行 | 2026-11-25 实机验证 |
+| 2026-11-25 | `app/.../AboutScreen.kt` | 信息行值允许两行，许可证全称在窄屏/大字号下不被过早省略 | 2026-11-25 实机验证 |
+| 2026-11-25 | `feature/print/.../PrintPlanScreen.kt` | 打印页每日安排日期改为「11月25日 · 周三」，与计划预览一致 | 2026-11-25 实机验证 |
+| 2026-11-25 | `feature/progress/.../ReviewProgressScreen.kt`、`feature/confirm/.../ConfirmScreen.kt` | 0% 进度条去掉终点圆点，避免把“未掌握/未标记”误读为接近完成 | 2026-11-25 实机验证 |
+| 2026-11-25 | `feature/confirm/.../ConfirmScreen.kt` | 决策完成后只保留顶部最终选择标签与对勾，删除底部重复的决策文案 | 2026-11-25 实机验证 |
+| 2026-11-25 | `evidence/screens/ui-2026-11-25/`（新增，gitignore） | 实体机浅色/深色/1.3 倍字号截图与 UI 树；确认页内容用临时 `org.recollect.ui` 测试包 + 独立测试库预置会话验证，测试包已卸载、`applicationIdSuffix` 已移除、原 release 数据未改动 | 2026-11-25 实机验证 |
+| 2026-11-25 | `feature/print/.../PrintPlanScreen.kt` | 待确认打印时不再重复显示「请确认是否已经完成打印：」消息卡；确认卡本身已表达同一信息，错误消息仍保留 | 2026-11-25 用户要求 |
+| 2026-11-25 | `evidence/screens/ui-2026-11-25/37-*`～`44-*`（新增，gitignore） | 实体机验证系统打印 → 保存 PDF → 待确认态只显示「纸张打印好了吗？」卡片；验证期间打印确认写入后已通过 14:35 测试前备份导入恢复，首页回到「待打印」、题库 6 道题不变；测试生成的 PDF 与备份文件已删除 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/print/.../PrintLayout.kt`、`PrintRenderer.kt` | 以每日复习计划为编组增加题序徽标「【n】」：同一天跨页连续编号，换日从 1 重新开始；徽标加粗 3.8mm，置于左侧「序号」列的左边（题块左上角，落在 12–26mm 页边空白带），右侧题号/来源行保持原位；不改变填涂区、QR 与扫描几何 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/print/src/test/.../PrintLayoutTest.kt` | 新增题序断言：周一第 1–3 题为【1】【2】【3】、同日第 2 页第 4 题为【4】、周二重新从【1】开始；锁定徽标位于「序号」列左侧 1mm、字号 3.8mm，且右侧题号行位置不变 | 验收门禁 |
+| 2026-11-25 | `evidence/print/daily-number-2026-11-25/`（新增，gitignore） | 实体机 `PrintPdfGenerationTest` 生成的 PDF 与 300 DPI PNG，目视核对周一【1】【2】【3】与周二【1】 | 2026-11-25 用户要求 |
+| 2026-11-25 | `core/common/.../QuestionLabel.kt`（新增）、`feature/planning/.../PlanningModels.kt` | 新增共享题目标识 `formatQuestionLabel` 与 `UNKNOWN_QUESTION_NUMBER`：按「来源 第X页 第Y题」拼接（X 页码编号、Y 题号）；没有来源说明时页码显示为「编号X」（如 `编号12 第T-1题`），旧稿无页码编号时整串作为来源；计划预览删除内部同名函数，改用共享实现 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/print/.../PrintLayout.kt` | 打印稿第一行由「题号 T-1　来源页 P12」改为与计划预览一致的「来源 第X页 第Y题」 | 2026-11-25 用户要求 |
+| 2026-11-25 | `core/common/src/test/.../QuestionLabelTest.kt`（新增）、`feature/planning/src/test/.../{GeneratePlanUseCaseTest,LoadPlanUseCaseTest}.kt`、`feature/print/src/test/.../PrintLayoutTest.kt` | 覆盖新旧来源串、无来源、无页码编号与题号缺失；计划预览与打印页 `pageLine` 断言更新为新格式 | 验收门禁 |
+| 2026-11-25 | `evidence/print/daily-number-2026-11-25/`（更新，gitignore） | 重新生成打印 PDF 证据：第一行显示「课后练习 第12页 第T-1题」「同步练习 第3页 第T-2题」与无来源的「编号3 第T-3题」 | 2026-11-25 用户要求 |
+| 2026-11-25 | `docs/specs/app.md`、`docs/specs/planning.md`、`docs/specs/print-template.md` | 按用户授权回写：题目标识「来源 第X页 第Y题」（无来源说明时「编号X 第Y题」）用于计划预览与打印稿；补记每日题序徽标的位置、字号、同日跨页连续与换日重置规则 | 2026-11-25 用户授权 |
+| 2026-11-25 | `core/common/.../QuestionLabel.kt` | 新增 `formatQuestionLabelLines`：有来源说明时首行返回来源、次行返回「第X页 第Y题」；无来源说明时首行返回「编号X」、次行返回「第Y题」；`formatQuestionLabel` 仍以空格拼成单行，供计划预览与打印稿使用 | 2026-11-25 用户要求 |
+| 2026-11-25 | `feature/entry/.../EntryScreen.kt` | 题库题卡大标题改为两行——来源（无来源时为「编号X」）与「第X页 第Y题」；去掉「来源 … · 时长 …」副行，新增中性底色 `DurationChip`，与知识点标签在同一个 `FlowRow` 内并排，大字号下整体换行 | 2026-11-25 用户要求 |
+| 2026-11-25 | `evidence/screens/entry-card-2026-11-25/`（新增，gitignore） | 实体机题库页截图与 UI 树：确认「化学练透 / 第26页 第5题」两行标题，以及耗时与知识点标签同排 | 2026-11-25 用户要求 |
+| 2026-11-25 | `docs/specs/entry.md`、`docs/specs/app.md` | 按用户授权回写题库题卡：两行大标题（来源 / 无来源时「编号X」+「第X页 第Y题」）、耗时与知识点标签并排；新增 E-23 验收项 | 2026-11-25 用户授权 |
+| 2026-11-25 | `app/.../HomePlanPresentation.kt`、`app/.../AppRoot.kt` | 首页按复习流程动态高亮唯一引导卡：新增 `ReviewStage`/`HomeHighlight` 与 `currentReviewStage`/`homeHighlight` 纯函数（由题目数与本周计划状态推断）；录入/扫描高亮对应 2×2 操作卡，生成/打印/完成高亮计划主卡；计划主卡非引导时退回 `surfaceContainerLow` + 中性按钮，操作卡高亮改为整卡 `primaryContainer`；流程条右侧显示动作名 | 2026-11-25 用户要求 |
+| 2026-11-25 | `app/src/test/.../HomePlanPresentationTest.kt` | 覆盖环节推断（含题目统计缺失）、高亮映射唯一性与「下一步」动作文案 | 验收门禁 |
+| 2026-11-25 | `docs/specs/app.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/agent-log/2026-11-25.md` | 同步首页动态引导卡说明；`evidence/screens/home-flow-guide.png`（gitignore）记录打印环节实机截图 | 2026-11-25 用户授权 |
+| 2026-11-25 | `feature/entry/.../QuestionEditScreen.kt` | 录入页首行改为「题号 / 编号 / 复习时长」三栏并排（各占三分之一）：题号标签缩短为「题号」+ 占位符 `T-1`，时长标签「复习时长」+ 输入区后缀「分钟」，两处校验错误合并显示在三栏下方；保存仍为底部通栏主按钮 | 2026-11-25 用户要求 |
+| 2026-11-25 | `docs/specs/app.md`、`CLAUDE.md`、`docs/agent-log/2026-11-25.md` | 同步录入页三栏布局；`evidence/screens/entry-three-fields{,-1.3x}.png`（gitignore）记录 1.0/1.3 倍字号实机截图 | 2026-11-25 用户授权 |
+| 2026-11-25 | `app/.../AppRoot.kt` | 整个应用始终隐藏 Compose 光标/选区手柄（光标下方的小三角/水滴）：`LocalTextSelectionColors.handleColor` 恒为透明，取代此前「仅键盘可见期间隐藏」；光标、选区高亮、输入与拖动仍正常；移除仅供该判断使用的 `isImeVisible`/`ExperimentalLayoutApi` 引用 | 2026-11-25 用户要求 |
+| 2026-11-25 | `evidence/screens/handle-hidden-*.png`（新增，gitignore） | 实体机（release 覆盖安装）验证录入页聚焦、长按工具条与选区状态下均不绘制光标手柄 | 2026-11-25 用户要求 |
+| 2026-11-25 | `CLAUDE.md`、`docs/agent-log/2026-11-25.md` | 同步「始终隐藏手柄」；不涉及规格与数据 | 2026-11-25 用户授权 |

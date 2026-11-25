@@ -14,6 +14,44 @@ import com.recollect.feature.planning.PlanWeek
 internal fun homePlanFocus(thisWeekStatus: PlanStatus?): PlanWeek =
     if (thisWeekStatus == PlanStatus.COMPLETED) PlanWeek.NEXT else PlanWeek.CURRENT
 
+/** 复习闭环的五个环节；首页用当前计划状态点亮“下一步”。 */
+internal enum class ReviewStage(val label: String, val actionLabel: String) {
+    RECORD("录入", "录入题目"),
+    PLAN("生成", "生成计划"),
+    PRINT("打印", "打印计划"),
+    SCAN("扫描", "扫描回读"),
+    CONFIRM("确认", "查看复习进度"),
+}
+
+/**
+ * 由首页现有数据推断用户此刻所处的环节：
+ * 没有题目先录入；有题目但本周无计划先生成；已生成去打印；已打印去回读；
+ * 计划完成后本轮结束，提示开始下一轮。
+ */
+internal fun currentReviewStage(questionCount: Int?, status: PlanStatus?): ReviewStage = when {
+    questionCount == 0 -> ReviewStage.RECORD
+    status == null -> if (questionCount == null) ReviewStage.RECORD else ReviewStage.PLAN
+    status == PlanStatus.GENERATED -> ReviewStage.PRINT
+    status == PlanStatus.PRINTED -> ReviewStage.SCAN
+    status == PlanStatus.COMPLETED -> ReviewStage.CONFIRM
+    else -> ReviewStage.PLAN
+}
+
+/** 首页上被“下一步”点亮的那张卡片。 */
+internal enum class HomeHighlight { RECORD, PLAN, SCAN }
+
+/**
+ * 把当前环节映射到首页要突出的卡片。
+ *
+ * 录入与扫描对应 2×2 操作卡；生成、打印，以及计划完成后（主卡已聚焦下一周）
+ * 都对应计划主卡，确保任意时刻只有一张卡片承担引导。
+ */
+internal fun homeHighlight(stage: ReviewStage): HomeHighlight = when (stage) {
+    ReviewStage.RECORD -> HomeHighlight.RECORD
+    ReviewStage.PLAN, ReviewStage.PRINT, ReviewStage.CONFIRM -> HomeHighlight.PLAN
+    ReviewStage.SCAN -> HomeHighlight.SCAN
+}
+
 /** 主/次区块与按钮文案里使用的周标题。 */
 internal val PlanWeek.title: String
     get() = when (this) {

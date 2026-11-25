@@ -5,20 +5,27 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,8 +35,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -39,6 +48,9 @@ import kotlinx.coroutines.launch
  * 页内相机（C-096 方案 B）拍摄或相册选图 → 识别 → 写入待确认记录 → 进入确认页。
  * 相机权限被拒绝时保留相册选图作为回退；识别失败不写库，只提供「重拍 / 手动输入 / 取消」
  * （C-011 方案二）。页面自身不访问 OpenCV/ML Kit：图像管线由 [ScanViewModel] 注入的端口完成（R-03）。
+ *
+ * 2026-11-25 排版调整：顶部先说明「拍摄 → 识别 → 确认」的流程；识别成功后用一张结果卡
+ * 把「进入确认页」变成唯一主操作，错误与权限说明各自使用语义色容器。
  */
 @Composable
 fun ScanScreen(
@@ -93,10 +105,15 @@ fun ScanScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        Text(
+            text = "拍摄整页打印稿，系统会自动定位并识别填涂与笔记，最后由你逐题确认。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         if (cameraGranted) {
             ScanCameraPane(
@@ -115,16 +132,40 @@ fun ScanScreen(
             OutlinedButton(
                 onClick = openGallery,
                 enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
             ) {
                 Text("从相册选择")
             }
         }
 
         if (state.busy || state.loading) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CircularProgressIndicator()
-                Text(if (state.busy) "正在识别：定位 → 二维码 → 填涂 → 笔记…" else "正在恢复扫描会话…")
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        text = if (state.busy) {
+                            "正在识别：定位 → 二维码 → 填涂 → 笔记…"
+                        } else {
+                            "正在恢复扫描会话…"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
         }
 
@@ -136,24 +177,31 @@ fun ScanScreen(
         }
 
         state.message?.let { message ->
-            Text(
-                text = message,
-                color = if (state.messageIsError) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-            )
+            MessageCard(message = message, isError = state.messageIsError)
         }
 
         state.error?.let { error ->
-            Card(modifier = Modifier.fillMaxWidth()) {
+            val colors = MaterialTheme.colorScheme
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
+                border = BorderStroke(1.dp, colors.error.copy(alpha = 0.2f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
                 Column(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("无法回读本页", style = MaterialTheme.typography.titleSmall)
-                    Text(error.message)
+                    Text(
+                        text = "无法回读本页",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.onErrorContainer,
+                    )
+                    Text(
+                        text = error.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onErrorContainer,
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (error.manualAllowed) {
                             Button(onClick = { viewModel.startManualInput() }) {
@@ -161,7 +209,7 @@ fun ScanScreen(
                             }
                         }
                         TextButton(onClick = { viewModel.dismissError() }) {
-                            Text("取消")
+                            Text("取消", color = colors.onErrorContainer)
                         }
                     }
                 }
@@ -180,8 +228,10 @@ fun ScanScreen(
 
         if (state.session == null && !state.loading && !state.busy) {
             Text(
-                text = "还没有识别到打印页。请拍摄带四角标记与二维码的打印稿。",
+                text = "还没有识别到打印页。请拍摄带四角标记与二维码的打印稿；" +
+                    "也可以从相册选择已有照片。",
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -192,18 +242,29 @@ private fun CameraPermissionCard(
     denied: Boolean,
     onRequestPermission: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = colors.secondaryContainer,
+        border = BorderStroke(1.dp, colors.secondary.copy(alpha = 0.18f)),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("需要相机权限", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "需要相机权限",
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.onSecondaryContainer,
+            )
             Text(
                 text = if (denied) {
                     "相机权限已被拒绝。可再次授权，或直接使用下方的「从相册选择」。"
                 } else {
                     "扫描打印稿需要授权使用相机权限。"
                 },
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSecondaryContainer,
             )
             Button(onClick = onRequestPermission) {
                 Text(if (denied) "再次授权相机" else "授权相机")
@@ -217,22 +278,62 @@ private fun SessionCard(
     session: ScanSessionSummary,
     onOpenConfirm: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val colors = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
+        border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.18f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "计划 ${session.planId} · 已扫 ${session.pages.size} 页 / ${session.rowCount} 行",
-                style = MaterialTheme.typography.titleSmall,
-            )
+            Column {
+                Text(
+                    text = "已识别到打印页",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.onPrimaryContainer,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "计划 ${session.planId} · 已扫 ${session.pages.size} 页 / ${session.rowCount} 行",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onPrimaryContainer.copy(alpha = 0.75f),
+                )
+            }
             session.pages.forEach { page ->
-                val future = if (page.pageIsFuture) " · 未来日期" else ""
-                Text("${page.pageId} · ${page.plannedDate} · ${page.rowCount} 行$future")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${page.pageId} · ${page.plannedDate} · ${page.rowCount} 行",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onPrimaryContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (page.pageIsFuture) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = colors.tertiaryContainer,
+                            contentColor = colors.onTertiaryContainer,
+                        ) {
+                            Text(
+                                text = "未来日期",
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
             }
             Button(
                 onClick = onOpenConfirm,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
             ) {
                 Text("进入确认页")
             }
@@ -248,15 +349,22 @@ private fun ManualEntryCard(
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val colors = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("手动输入", style = MaterialTheme.typography.titleSmall)
             Text(
                 text = "按页脚二维码旁的小字输入页面 ID，再填纸面题号。",
                 style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
             )
             OutlinedTextField(
                 value = manual.pageId,
@@ -277,7 +385,7 @@ private fun ManualEntryCard(
                 modifier = Modifier.fillMaxWidth(),
             )
             manual.error?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error)
+                Text(error, color = colors.error)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onSubmit, enabled = !manual.busy) {
@@ -288,6 +396,26 @@ private fun ManualEntryCard(
                 }
             }
         }
+    }
+}
+
+/** 操作结果：成功用主色容器，失败用错误容器。 */
+@Composable
+private fun MessageCard(message: String, isError: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = if (isError) colors.errorContainer else colors.primaryContainer,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (isError) colors.onErrorContainer else colors.onPrimaryContainer,
+            textAlign = TextAlign.Start,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+        )
     }
 }
 

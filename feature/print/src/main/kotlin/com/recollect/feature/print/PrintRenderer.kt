@@ -50,6 +50,8 @@ class PrintRenderer {
             }
         }
 
+        // 2026-11-25 用户要求：每日题序徽标绘制在题目信息区左上角。
+        drawText(canvas, item.questionIndexText, pxPerMm)
         drawText(canvas, item.rightTop.pageLine, pxPerMm)
         drawText(canvas, item.rightTop.knowledgeText, pxPerMm)
 

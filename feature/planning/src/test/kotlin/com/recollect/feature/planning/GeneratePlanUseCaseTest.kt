@@ -62,7 +62,7 @@ class GeneratePlanUseCaseTest {
             com.recollect.data.room.repository.KnowledgePointRef(id = "kp-1", number = 1, name = "分数"),
         ),
         numbers: Map<String, String> = mapOf("q-1" to "T-1"),
-        sources: Map<String, String> = mapOf("q-1" to "P9"),
+        sources: Map<String, String> = mapOf("q-1" to "9-P9"),
     ): GeneratePlanUseCase = GeneratePlanUseCase(
         knowledgePointRepository = FakeKnowledgePointRepository(states = states, catalog = catalog),
         questionRepository = FakeQuestionRepository(
@@ -94,11 +94,11 @@ class GeneratePlanUseCaseTest {
             ?: error("预期生成可打印计划，实际为 $outcome")
         assertEquals(1, planned.preview.pages.size, "应只有 1 页")
         assertEquals(1, planned.preview.pages.single().questionLabels.size, "该页应只有 1 条")
-        assertEquals("P9-第T-1题", planned.preview.pages.single().questionLabels.single())
+        assertEquals("P9 第9页 第T-1题", planned.preview.pages.single().questionLabels.single())
         assertEquals("ABC123-01", planned.printJob.pages.single().pageId)
         assertEquals(1, planned.printJob.questions.getValue("q-1").knowledgeCount)
         assertEquals(listOf("分数"), planned.printJob.questions.getValue("q-1").knowledgeNames)
-        assertEquals("P9", planned.printJob.questions.getValue("q-1").sourcePage, "来源页码随打印投影传递")
+        assertEquals("9-P9", planned.printJob.questions.getValue("q-1").sourcePage, "来源页码随打印投影传递")
         assertTrue(planRepository.savedDraft != null, "成功计划必须在同一事务入口保存")
     }
 
@@ -213,19 +213,19 @@ class GeneratePlanUseCaseTest {
             states = states,
             catalog = catalog,
             numbers = mapOf("q-1" to "T-1", "q-2" to "T-2"),
-            sources = mapOf("q-1" to "P9", "q-2" to "P10"),
+            sources = mapOf("q-1" to "9-P9", "q-2" to "10-P10"),
         ).execute(settings)
 
         val planned = outcome as? PlanGenerationOutcome.Planned
             ?: error("预期生成计划，实际为 $outcome")
         assertEquals(
-            listOf("P9-第T-1题"),
+            listOf("P9 第9页 第T-1题"),
             planned.preview.pages.flatMap { it.questionLabels },
             "60 分钟容量只排得下第一题",
         )
         val deferred = planned.preview.deferred.single()
         assertEquals("q-2", deferred.questionId)
-        assertEquals("P10-第T-2题", deferred.questionLabel, "推迟题与页面卡片用同一题目标识")
+        assertEquals("P10 第10页 第T-2题", deferred.questionLabel, "推迟题与页面卡片用同一题目标识")
         assertEquals("复习时间不足", deferred.label, "界面只用中文标签")
         assertTrue(deferred.message.contains("缩短本题预估复习时长"), "界面给出缩短单题时长的建议")
         assertTrue(deferred.message.contains("延长每日复习时长"), "界面给出延长每日时长的建议")
@@ -235,7 +235,7 @@ class GeneratePlanUseCaseTest {
                 com.recollect.data.room.repository.PlanDeferredRecord(
                     questionId = "q-2",
                     questionNumber = "T-2",
-                    sourcePage = "P10",
+                    sourcePage = "10-P10",
                     reason = com.recollect.scheduler.DeferReason.TIME_OVERFLOW,
                 ),
             ),

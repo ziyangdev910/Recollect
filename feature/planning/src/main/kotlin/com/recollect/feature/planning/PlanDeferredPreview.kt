@@ -1,5 +1,7 @@
 package com.recollect.feature.planning
 
+import com.recollect.common.UNKNOWN_QUESTION_NUMBER
+import com.recollect.common.formatQuestionLabel
 import com.recollect.data.room.repository.PlanDeferredRecord
 import com.recollect.scheduler.DeferReason
 import com.recollect.scheduler.DeferredItem
@@ -53,7 +55,7 @@ internal fun DeferredItem.toDeferredRecord(
  * 已持久化的推迟快照 → 预览投影。
  *
  * [fallbackSourcePages] 只在快照缺来源页码时使用（改动前生成的旧计划），
- * 让「未排入计划」卡片与页面卡片一样显示 `页码-第X题`。
+ * 让「未排入计划」卡片与页面卡片一样显示 `来源 第X页 第Y题`。
  */
 internal fun PlanDeferredRecord.toPreviewDeferred(
     fallbackSourcePages: Map<String, String> = emptyMap(),
