@@ -15,6 +15,13 @@ captures/
 # 截图证据
 evidence/
 
+# log
+docs/agent-log/
+docs/changelog.md
+
+# prompts
+docs/prompts.md
+
 # ppt大纲
 ppt/
 
