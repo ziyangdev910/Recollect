@@ -87,7 +87,7 @@ fun AboutScreen(
                 style = MaterialTheme.typography.headlineMedium,
             )
             Text(
-                text = "版本 $versionName",
+                text = "v$versionName",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
             )

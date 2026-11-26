@@ -74,7 +74,7 @@ import com.recollect.app.navigation.AppRoute
 import com.recollect.app.ui.theme.RecollectTheme
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.repository.PlanStatus
-import com.recollect.feature.backup.BackupScreen
+import com.recollect.feature.backup.BackupDialog
 import com.recollect.feature.backup.BackupViewModel
 import com.recollect.feature.backup.ImportDialogs
 import com.recollect.feature.backup.ImportState
@@ -173,6 +173,9 @@ fun AppRoot(
     // 的页面级 ViewModel（知识点、来源、进度）在下次打开（或当前停留）时重建并重读。
     var homeRefreshKey by remember(container) { mutableStateOf(0) }
     var dataRevision by remember(container) { mutableStateOf(0) }
+    // 2026-11-26 用户要求：导出数据库改为悬浮在首页之上的弹窗，用本地状态控制显示，
+    // 不进入路由返回栈；关闭（返回图标/系统返回）即销毁本次 ViewModel 状态。
+    var showBackupDialog by remember(container) { mutableStateOf(false) }
 
     // 导入数据库：两个入口（导航栏「导入数据库」与系统「用其他方式打开」）
     // 共用同一个状态机；覆盖确认、失败提示与成功 Toast 都由它驱动。
@@ -345,10 +348,23 @@ fun AppRoot(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Text(
-                                text = routeTitle(current),
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            // 2026-11-26 用户要求：仅在首页标题「拾知」的右下角以
+                            // 小字号、非强调色显示版本号；其余页面标题保持原样。
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = routeTitle(current),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                if (current == AppRoute.Home) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "v${container.appVersionName}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 1.dp),
+                                    )
+                                }
+                            }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.background,
@@ -362,44 +378,6 @@ fun AppRoot(
                                     Icon(
                                         painter = painterResource(R.drawable.ic_arrow_back),
                                         contentDescription = "返回",
-                                    )
-                                }
-                            }
-                        },
-                        // 2026-11-22 用户要求：主界面导航栏右侧提供「导入数据库」「导出数据库」
-                        // 入口，标签文字在左、对应语义图标固定在标签最右侧。
-                        actions = {
-                            if (current == AppRoute.Home) {
-                                // 2026-11-22 用户要求：导入与导出的图标互换
-                                // （导入用原导出图形、导出用原导入图形）。
-                                TextButton(
-                                    onClick = { importPicker.launch(IMPORT_MIME_TYPES) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                ) {
-                                    Text(
-                                        "导入数据库",
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_export),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                                TextButton(
-                                    onClick = { navigator.push(AppRoute.Backup) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                ) {
-                                    Text(
-                                        "导出数据库",
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_import),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }
@@ -420,7 +398,6 @@ fun AppRoot(
                             overdueCount = overdueCount,
                             dueWithinWeekCount = dueWithinWeekCount,
                             dailyReviewMinutes = dailyReviewMinutes,
-                            versionName = container.appVersionName,
                             onSaveDailyReviewMinutes = saveDailyReviewMinutes,
                             onEntry = { navigator.push(AppRoute.Entry) },
                             onCreateQuestion = {
@@ -431,6 +408,10 @@ fun AppRoot(
                             onProgress = { navigator.push(AppRoute.Progress) },
                             onScan = { navigator.push(AppRoute.Scan) },
                             onAbout = { navigator.push(AppRoute.About) },
+                            // 2026-11-26 用户要求：导入/导出数据库从标题栏移到设置区块；
+                            // 导出改为悬浮在首页之上的设置风格弹窗，不进入页面返回栈。
+                            onImport = { importPicker.launch(IMPORT_MIME_TYPES) },
+                            onExport = { showBackupDialog = true },
                         )
 
                         AppRoute.Entry -> {
@@ -558,16 +539,6 @@ fun AppRoot(
                             )
                         }
 
-                        AppRoute.Backup -> {
-                            val viewModel = remember(container) {
-                                BackupViewModel(
-                                    exporter = container.databaseExporter,
-                                    sharer = container.backupSharer,
-                                )
-                            }
-                            BackupScreen(viewModel)
-                        }
-
                         AppRoute.About -> AboutScreen(
                             appName = "拾知",
                             versionName = container.appVersionName,
@@ -616,6 +587,21 @@ fun AppRoot(
                 onCancel = { importViewModel.cancel() },
                 onDismissError = { importViewModel.dismissError() },
             )
+
+            // 2026-11-26 用户要求：导出数据库改为悬浮在主页面上方的设置风格弹窗。
+            // ViewModel 只在弹窗显示期间存在，关闭后丢弃，重新打开时从空闲状态开始。
+            if (showBackupDialog) {
+                val backupViewModel = remember {
+                    BackupViewModel(
+                        exporter = container.databaseExporter,
+                        sharer = container.backupSharer,
+                    )
+                }
+                BackupDialog(
+                    viewModel = backupViewModel,
+                    onDismiss = { showBackupDialog = false },
+                )
+            }
         }
     }
 }
@@ -641,7 +627,6 @@ private fun HomeScreen(
     overdueCount: Int?,
     dueWithinWeekCount: Int?,
     dailyReviewMinutes: Int,
-    versionName: String,
     onSaveDailyReviewMinutes: (Int) -> Unit,
     onEntry: () -> Unit,
     onCreateQuestion: () -> Unit,
@@ -649,6 +634,8 @@ private fun HomeScreen(
     onProgress: () -> Unit,
     onScan: () -> Unit,
     onAbout: () -> Unit,
+    onImport: () -> Unit,
+    onExport: () -> Unit,
 ) {
     val stage = currentReviewStage(questionCount, thisWeekPlanStatus)
     val highlight = homeHighlight(stage)
@@ -700,9 +687,10 @@ private fun HomeScreen(
             HomeSection(title = "设置") {
                 HomeSettingsPanel(
                     dailyReviewMinutes = dailyReviewMinutes,
-                    versionName = versionName,
                     onEditDailyMinutes = { showDailyMinutesDialog = true },
                     onAbout = onAbout,
+                    onImport = onImport,
+                    onExport = onExport,
                 )
             }
         }
@@ -944,13 +932,17 @@ private fun QuickActionsGrid(
     }
 }
 
-/** 设置区：两项设置放在同一面板内，用分割线区分，避免再堆两张卡片。 */
+/**
+ * 设置区：上方是每日复习时长设置行；下方并排三个等宽入口（导入数据库 / 导出数据库 / 关于），
+ * 每个入口各占原设置面板总宽度的三分之一。版本号显示在首页标题旁，此处不再重复。
+ */
 @Composable
 private fun HomeSettingsPanel(
     dailyReviewMinutes: Int,
-    versionName: String,
     onEditDailyMinutes: () -> Unit,
     onAbout: () -> Unit,
+    onImport: () -> Unit,
+    onExport: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -965,17 +957,75 @@ private fun HomeSettingsPanel(
                 subtitle = "当前 $dailyReviewMinutes 分钟",
                 onClick = onEditDailyMinutes,
             )
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 60.dp),
-                color = colors.outlineVariant,
-            )
-            HomeSettingsRow(
-                iconRes = R.drawable.ic_info,
-                title = "关于",
-                subtitle = "版本 $versionName",
-                onClick = onAbout,
+            HorizontalDivider(color = colors.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                HomeSettingsAction(
+                    modifier = Modifier.weight(1f),
+                    // 2026-11-22 用户要求：导入与导出的图标互换
+                    // （导入用原导出图形、导出用原导入图形），移动位置后保持。
+                    iconRes = R.drawable.ic_export,
+                    title = "导入数据库",
+                    onClick = onImport,
+                )
+                HomeSettingsAction(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_import,
+                    title = "导出数据库",
+                    onClick = onExport,
+                )
+                HomeSettingsAction(
+                    modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_info,
+                    title = "关于",
+                    onClick = onAbout,
+                )
+            }
+        }
+    }
+}
+
+/** 设置面板底部的等宽入口：图标在上、文字在下，整体居中。 */
+@Composable
+private fun HomeSettingsAction(
+    modifier: Modifier,
+    iconRes: Int,
+    title: String,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(colors.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
             )
         }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1267,7 +1317,6 @@ private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Scan -> "扫描"
     is AppRoute.Confirm -> "确认"
     AppRoute.Settings -> "设置"
-    AppRoute.Backup -> "导出数据库"
     AppRoute.About -> "关于"
     AppRoute.License -> "开源许可"
 }
