@@ -1,13 +1,19 @@
 package com.recollect.feature.planning
 
 import com.recollect.data.room.repository.PlanGenerationException
+import com.recollect.data.room.repository.PlanStatus
+import com.recollect.data.room.repository.StoredPlan
 import com.recollect.pagination.PaginationFailureCode
+import com.recollect.pagination.RenderableQuestion
+import com.recollect.pagination.TemplateGeometry
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -166,6 +172,55 @@ class PlanPreviewViewModelTest {
     }
 
     @Test
+    fun `selecting the next week loads a different week window`() = runBlocking {
+        val requestedStarts = mutableListOf<LocalDate>()
+
+        fun planned(settings: PlanningSettings): PlanGenerationOutcome.Planned {
+            requestedStarts += settings.planStartDate
+            return PlanGenerationOutcome.Planned(
+                printJob = PrintJob(
+                    planId = "ABC123",
+                    pages = emptyList(),
+                    questions = emptyMap(),
+                    notes = emptyMap(),
+                    template = settings.template,
+                ),
+                preview = PlanPreviewContent(
+                    planId = "ABC123",
+                    pages = listOf(PlanPreviewPage(1, settings.planStartDate, listOf("第T-1题"))),
+                    warnings = emptyList(),
+                ),
+            )
+        }
+
+        val session = object : PlanSession {
+            override suspend fun activePlan(settings: PlanningSettings): StoredPlan? = null
+
+            override suspend fun open(settings: PlanningSettings): PlanGenerationOutcome =
+                planned(settings)
+
+            override suspend fun regenerate(settings: PlanningSettings): PlanGenerationOutcome =
+                planned(settings)
+        }
+        val viewModel = PlanPreviewViewModel(
+            session = session,
+            clock = clock,
+            settingsFactory = { week, today -> week.settingsFor(today) },
+        )
+
+        viewModel.refresh()
+        assertEquals(PlanWeek.CURRENT, viewModel.week)
+        val currentStart = requestedStarts.single()
+
+        viewModel.selectWeek(PlanWeek.NEXT)
+
+        assertEquals(PlanWeek.NEXT, viewModel.week)
+        assertEquals(2, requestedStarts.size, "切换周必须重新打开该窗口的计划")
+        assertEquals(currentStart.plusWeeks(1), requestedStarts.last())
+        assertTrue(viewModel.state is PlanPreviewUiState.Content)
+    }
+
+    @Test
     fun `empty outcome keeps warnings visible in the empty state`() = runBlocking {
         val warning = PlanPreviewWarning(
             questionId = "q-1",
@@ -241,5 +296,174 @@ class PlanPreviewViewModelTest {
         val empty = viewModel.state as? PlanPreviewUiState.Empty
             ?: error("预期空态，实际为 ${viewModel.state}")
         assertEquals(listOf(deferred), empty.deferred, "空计划也要说明有哪些题被推迟")
+    }
+
+    @Test
+    fun `opening a plan generated before a bank edit prompts to regenerate`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialWeek = PlanWeek.CURRENT,
+            currentQuestionBank = {
+                mapOf(
+                    "q1" to planCreatedAt.minusSeconds(60),
+                    "q2" to planCreatedAt.plusSeconds(60),
+                )
+            },
+        )
+
+        viewModel.refresh()
+
+        assertTrue(viewModel.bankChanged, "计划生成后新增/编辑题目时必须询问是否重新生成")
+    }
+
+    @Test
+    fun `not due questions alone do not trigger the bank prompt`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialWeek = PlanWeek.CURRENT,
+            // q2 未到期、本就不在计划里：不能因此误报“题库已更新”。
+            currentQuestionBank = {
+                mapOf(
+                    "q1" to planCreatedAt.minusSeconds(60),
+                    "q2" to planCreatedAt.minusSeconds(60),
+                )
+            },
+        )
+
+        viewModel.refresh()
+
+        assertFalse(viewModel.bankChanged)
+    }
+
+    @Test
+    fun `archiving a planned question triggers the bank prompt`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialWeek = PlanWeek.CURRENT,
+            currentQuestionBank = {
+                mapOf("q2" to planCreatedAt.minusSeconds(60))
+            },
+        )
+
+        viewModel.refresh()
+
+        assertTrue(viewModel.bankChanged, "计划中的题目被归档后必须询问是否重新生成")
+    }
+
+    @Test
+    fun `freshly generated plan does not trigger the bank prompt`() = runBlocking {
+        val now = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = null,
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialWeek = PlanWeek.CURRENT,
+            currentQuestionBank = {
+                mapOf("q1" to now.plusSeconds(60))
+            },
+        )
+
+        viewModel.refresh()
+
+        assertFalse(viewModel.bankChanged, "刚生成的计划不应询问是否重新生成")
+    }
+
+    @Test
+    fun `completed current week opens next week by default`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.COMPLETED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialWeek = null,
+        )
+
+        viewModel.refreshIfNeeded()
+
+        assertEquals(PlanWeek.NEXT, viewModel.week, "本周已完成确认时默认进入下周计划")
+    }
+
+    @Test
+    fun `unfinished current week opens current week by default`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.PRINTED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialWeek = null,
+        )
+
+        viewModel.refreshIfNeeded()
+
+        assertEquals(PlanWeek.CURRENT, viewModel.week, "本周未完成确认时默认进入本周计划")
+    }
+
+    private fun storedPlan(createdAt: Instant, status: PlanStatus): StoredPlan = StoredPlan(
+        planId = "PLAN01",
+        weekStart = today,
+        weekEnd = today.plusDays(6),
+        status = status,
+        printedAt = null,
+        createdAt = createdAt,
+        renderMeta = emptyList(),
+    )
+
+    private fun scriptedSession(
+        existing: StoredPlan?,
+        outcome: PlanGenerationOutcome,
+    ): PlanSession = object : PlanSession {
+        override suspend fun activePlan(settings: PlanningSettings): StoredPlan? = existing
+
+        override suspend fun open(settings: PlanningSettings): PlanGenerationOutcome = outcome
+
+        override suspend fun regenerate(settings: PlanningSettings): PlanGenerationOutcome = outcome
+    }
+
+    private fun plannedOutcome(questionIds: List<String>): PlanGenerationOutcome.Planned {
+        val questions = questionIds.associateWith { id ->
+            RenderableQuestion(
+                questionId = id,
+                questionNumber = id,
+                knowledgeCount = 1,
+                knowledgeNames = listOf("知识点"),
+                knowledgeLineCount = 1,
+                attachmentCount = 0,
+            )
+        }
+        return PlanGenerationOutcome.Planned(
+            printJob = PrintJob(
+                planId = "PLAN01",
+                pages = emptyList(),
+                questions = questions,
+                notes = emptyMap(),
+                template = TemplateGeometry.a4Print(),
+            ),
+            preview = PlanPreviewContent(
+                planId = "PLAN01",
+                pages = emptyList(),
+                warnings = emptyList(),
+            ),
+        )
     }
 }

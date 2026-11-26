@@ -35,6 +35,7 @@ class PlanSessionTest {
                 weekEnd = end,
                 status = PlanStatus.GENERATED,
                 printedAt = null,
+                createdAt = java.time.Instant.EPOCH,
                 renderMeta = listOf(renderMeta),
             )
             storedPages["PLAN01"] = listOf(
@@ -79,6 +80,7 @@ class PlanSessionTest {
                 weekEnd = end,
                 status = PlanStatus.PRINTED,
                 printedAt = null,
+                createdAt = java.time.Instant.EPOCH,
                 renderMeta = listOf(renderMeta),
             )
         }

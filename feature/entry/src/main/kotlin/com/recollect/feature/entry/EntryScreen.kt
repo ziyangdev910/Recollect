@@ -175,8 +175,8 @@ fun EntryScreen(
                                 .fillMaxWidth()
                                 .weight(1f),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
-                            // 底部留出悬浮按钮的高度，避免遮挡最后一张卡片。
-                            contentPadding = PaddingValues(bottom = 96.dp),
+                            // 底部留出两个悬浮按钮的高度，避免遮挡最后一张卡片。
+                            contentPadding = PaddingValues(bottom = 176.dp),
                         ) {
                             items(filteredQuestions, key = { it.questionId }) { row ->
                                 QuestionCard(
@@ -217,23 +217,48 @@ fun EntryScreen(
         }
 
         // 空题库时页面中央已经有「录入第 1 道题」，不再重复显示悬浮按钮。
+        // 已有题目时，「预览计划」是下一步主操作，放在「录入题目」下方并高亮；
+        // 「录入题目」退为中性，避免两个主按钮同时抢注意力。
         if (!libraryEmpty) {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    viewModel.clearActionError()
-                    onCreateQuestion()
-                },
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(24.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_add),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("录入题目")
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        viewModel.clearActionError()
+                        onCreateQuestion()
+                    },
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("录入题目")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        viewModel.clearActionError()
+                        onCreatePlan()
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_plan),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("预览计划")
+                }
             }
         }
     }

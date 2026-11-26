@@ -7,6 +7,7 @@ import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.Question
 import com.recollect.data.room.entity.QuestionKnowledgeCrossRef
 import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -53,7 +54,13 @@ class RoomEntryRepository(
             insertLinks(questionId, selected.map { it.id })
             recomputeActivity(selected.map { it.id })
 
-            summaryOf(questionId, validated, selected, printed = false)
+            summaryOf(
+                questionId = questionId,
+                validated = validated,
+                selected = selected,
+                printed = false,
+                updatedAt = now,
+            )
         }
     }
 
@@ -66,6 +73,7 @@ class RoomEntryRepository(
             val selected = resolveKnowledgePoints(validated.knowledgePointIds)
             val previousLinkIds = crossRefDao.forQuestion(questionId)
                 .map { it.knowledgePointId }
+            val now = clock.instant()
 
             questionDao.update(
                 existing.copy(
@@ -74,14 +82,20 @@ class RoomEntryRepository(
                     sourcePage = validated.sourcePageLabel,
                     sourcePageCode = validated.sourcePageCode,
                     // 用户编辑后刷新修改时间，题库列表据此把该题排到最前。
-                    updatedAt = clock.instant(),
+                    updatedAt = now,
                 ),
             )
             crossRefDao.deleteForQuestion(questionId)
             insertLinks(questionId, selected.map { it.id })
             recomputeActivity((previousLinkIds + selected.map { it.id }).distinct())
 
-            summaryOf(questionId, validated, selected, printed = existing.pageId.isNotEmpty())
+            summaryOf(
+                questionId = questionId,
+                validated = validated,
+                selected = selected,
+                printed = existing.pageId.isNotEmpty(),
+                updatedAt = now,
+            )
         }
     }
 
@@ -113,6 +127,7 @@ class RoomEntryRepository(
                 knowledgePointIds = resolved.map { it.id },
                 estimatedReviewMinutes = question.estimatedReviewMinutes,
                 printed = question.pageId.isNotEmpty(),
+                updatedAt = question.updatedAt,
             )
         }
     }
@@ -176,6 +191,7 @@ class RoomEntryRepository(
         validated: ValidatedDraft,
         selected: List<KnowledgePoint>,
         printed: Boolean,
+        updatedAt: Instant,
     ): EntrySummary {
         val ordered = selected.sortedBy { it.number }
         return EntrySummary(
@@ -187,6 +203,7 @@ class RoomEntryRepository(
             knowledgePointIds = ordered.map { it.id },
             estimatedReviewMinutes = validated.estimatedReviewMinutes,
             printed = printed,
+            updatedAt = updatedAt,
         )
     }
 

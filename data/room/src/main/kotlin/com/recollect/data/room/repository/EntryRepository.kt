@@ -1,5 +1,7 @@
 package com.recollect.data.room.repository
 
+import java.time.Instant
+
 /**
  * 录入端口：一个事务内新建「1 道题 + 1～4 个知识点标签 + 关联」。
  *
@@ -63,6 +65,8 @@ data class EntrySummary(
     val estimatedReviewMinutes: Int = EntryDraft.DEFAULT_REVIEW_MINUTES,
     /** 是否已打印过复习稿；编辑时提示旧稿失效。 */
     val printed: Boolean = false,
+    /** 用户最近一次新建/编辑时间；用于判断计划生成后题库是否变化。 */
+    val updatedAt: Instant = Instant.EPOCH,
 ) {
     /** 展示用页码：`编号-说明`；说明为空时只显示编号。 */
     val sourcePage: String

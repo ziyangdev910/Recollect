@@ -65,4 +65,15 @@ class AppNavigator(initial: AppRoute = AppRoute.Home) {
     fun replace(route: AppRoute) {
         backStack[backStack.lastIndex] = route
     }
+
+    /**
+     * 清空返回栈并落到目标页。
+     *
+     * 打印/确认完成后退回首页使用：这两条流程可能从计划预览或多层扫描页进入，
+     * 只 pop 一层会回到中间页；重置后返回键直接交给系统。
+     */
+    fun resetTo(route: AppRoute) {
+        backStack.clear()
+        backStack.add(route)
+    }
 }

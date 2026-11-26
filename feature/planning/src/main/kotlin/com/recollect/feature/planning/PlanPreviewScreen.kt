@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -56,8 +59,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlanPreviewScreen(
     viewModel: PlanPreviewViewModel,
-    /** 本次预览打开的是哪一周：决定“重新生成…”文案，避免把下周计划叫成本周计划。 */
-    planWeek: PlanWeek = PlanWeek.CURRENT,
     onPrint: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -65,126 +66,159 @@ fun PlanPreviewScreen(
     // 只在本次计划实例首次进入时加载/生成；从打印页返回预览时复用原计划，不刷新计划号。
     LaunchedEffect(viewModel) { viewModel.refreshIfNeeded() }
 
-    when (val state = viewModel.state) {
-        PlanPreviewUiState.Loading -> Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "正在按知识点到期情况生成计划…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        WeekSelector(
+            selected = viewModel.week,
+            onSelect = { week -> scope.launch { viewModel.selectWeek(week) } },
+        )
 
-        is PlanPreviewUiState.Content -> Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PlanSummaryCard(
-                planId = state.planId,
-                pageCount = state.pages.size,
-                questionCount = state.pages.sumOf { it.questionLabels.size },
-                onPrint = onPrint,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "每日安排",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "共 ${state.pages.size} 页",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // Column 会给非 weighted 子项无界高度；LazyColumn 必须拿到有界高度。
-            LazyColumn(
+        when (val state = viewModel.state) {
+            PlanPreviewUiState.Loading -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                items(state.pages, key = { it.pageNumber }) { page ->
-                    PlanPageCard(page)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "正在按知识点到期情况生成计划…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                if (state.deferred.isNotEmpty()) {
-                    item { DeferredList(state.deferred) }
+            }
+
+            is PlanPreviewUiState.Content -> {
+                PlanSummaryCard(
+                    planId = state.planId,
+                    pageCount = state.pages.size,
+                    questionCount = state.pages.sumOf { it.questionLabels.size },
+                    onPrint = onPrint,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "每日安排",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "共 ${state.pages.size} 页",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                if (state.warnings.isNotEmpty()) {
-                    item { WarningList(state.warnings) }
-                }
-                item {
-                    // 显式重新生成：新计划号会替代该窗口的当前计划；默认路径只复用已有计划。
-                    TextButton(
-                        onClick = { showRegenerateConfirm = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = planWeek.regenerateLabel,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+
+                // Column 会给非 weighted 子项无界高度；LazyColumn 必须拿到有界高度。
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(state.pages, key = { it.pageNumber }) { page ->
+                        PlanPageCard(page)
+                    }
+                    if (state.deferred.isNotEmpty()) {
+                        item { DeferredList(state.deferred) }
+                    }
+                    if (state.warnings.isNotEmpty()) {
+                        item { WarningList(state.warnings) }
+                    }
+                    item {
+                        // 显式重新生成：新计划号会替代该窗口的当前计划；默认路径只复用已有计划。
+                        TextButton(
+                            onClick = { showRegenerateConfirm = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = viewModel.week.regenerateLabel,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        is PlanPreviewUiState.Empty -> Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            EmptyPlanCard(state.message)
-            DeferredList(state.deferred)
-            WarningList(state.warnings)
-            TextButton(
-                onClick = { showRegenerateConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
+            is PlanPreviewUiState.Empty -> Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                EmptyPlanCard(state.message)
+                DeferredList(state.deferred)
+                WarningList(state.warnings)
+                TextButton(
+                    onClick = { showRegenerateConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = viewModel.week.regenerateLabel,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            is PlanPreviewUiState.Error -> Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    text = planWeek.regenerateLabel,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = state.error.message,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
-            }
-        }
-
-        is PlanPreviewUiState.Error -> Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = state.error.message,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center,
-            )
-            if (state.error.retryable) {
-                Button(onClick = { scope.launch { viewModel.refresh() } }) {
-                    Text("重试")
+                if (state.error.retryable) {
+                    Button(onClick = { scope.launch { viewModel.refresh() } }) {
+                        Text("重试")
+                    }
                 }
             }
         }
     }
 
+    // 打开已有计划时，若题库在计划生成后发生变化，先询问是否重新生成。
+    if (viewModel.bankChanged) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissBankChanged() },
+            title = { Text("题库已更新") },
+            text = { Text("当前题库与上次生成计划时不同，是否重新生成计划？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch { viewModel.regenerate() }
+                    },
+                ) {
+                    Text("重新生成")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissBankChanged() }) {
+                    Text("保持当前计划")
+                }
+            },
+        )
+    }
+
     if (showRegenerateConfirm) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
-            title = { Text(planWeek.regenerateLabel) },
+            title = { Text(viewModel.week.regenerateLabel) },
             text = {
                 Text(
                     "将生成新的计划号。旧计划仍可回读，但不再是最新计划；" +
@@ -205,6 +239,27 @@ fun PlanPreviewScreen(
                 TextButton(onClick = { showRegenerateConfirm = false }) { Text("取消") }
             },
         )
+    }
+}
+
+/** 顶部周选择栏：本周/下周各自加载或生成对应窗口的计划。 */
+@Composable
+private fun WeekSelector(
+    selected: PlanWeek,
+    onSelect: (PlanWeek) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PlanWeek.entries.forEach { week ->
+            FilterChip(
+                selected = week == selected,
+                onClick = { onSelect(week) },
+                label = { Text(week.tabLabel) },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 

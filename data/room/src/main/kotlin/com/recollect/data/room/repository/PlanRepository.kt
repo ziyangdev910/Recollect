@@ -58,6 +58,8 @@ data class StoredPlan(
     val weekEnd: LocalDate,
     val status: PlanStatus,
     val printedAt: Instant?,
+    /** 计划生成时间；用于判断题库在生成后是否被修改（题库变更提示）。 */
+    val createdAt: Instant,
     val renderMeta: List<PlanRenderMeta>,
     /** 生成时被推迟的题目；旧计划为空列表。 */
     val deferredRecords: List<PlanDeferredRecord> = emptyList(),
@@ -216,6 +218,7 @@ class RoomPlanRepository(
         weekEnd = weekEnd,
         status = PlanStatus.valueOf(status),
         printedAt = printedAt,
+        createdAt = createdAt,
         renderMeta = PlanRenderMetaJson.decode(renderMeta),
         deferredRecords = PlanDeferredJson.decode(deferred),
     )

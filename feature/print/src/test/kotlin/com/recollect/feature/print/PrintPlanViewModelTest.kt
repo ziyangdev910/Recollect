@@ -156,6 +156,45 @@ class PrintPlanViewModelTest {
     }
 
     @Test
+    fun `confirming printed reports success so the page can return home`() = runBlocking {
+        val launcher = RecordingPrintLauncher()
+        val writer = RecordingSnapshotWriter()
+        val viewModel = PrintPlanViewModel(
+            input = input(),
+            launcher = launcher,
+            snapshotWriter = writer,
+            pdfSharer = RecordingPdfSharer(),
+        )
+
+        viewModel.print()
+        launcher.onDocumentGenerated?.invoke(
+            listOf(PrintedQuestionSnapshot("q1", "ABC123-01", "payload")),
+        )
+
+        assertTrue(viewModel.confirmPrinted(), "快照落库成功时页面应退回首页并提示「打印完成」")
+        assertFalse(viewModel.shareLaunched, "打印确认不触发分享返回判定")
+    }
+
+    @Test
+    fun `share marks launched and recorded only after the snapshots are saved`() = runBlocking {
+        val writer = RecordingSnapshotWriter()
+        val viewModel = PrintPlanViewModel(
+            input = input(),
+            launcher = RecordingPrintLauncher(),
+            snapshotWriter = writer,
+            pdfSharer = RecordingPdfSharer(),
+        )
+
+        assertFalse(viewModel.shareLaunched)
+        assertFalse(viewModel.shareRecorded)
+
+        viewModel.sharePdf()
+
+        assertTrue(viewModel.shareLaunched, "分享面板已打开，返回本页后应判定完成")
+        assertTrue(viewModel.shareRecorded, "快照写入成功后才能提示「打印完成」")
+    }
+
+    @Test
     fun `superseded plan does not overwrite the latest print snapshot`() = runBlocking {
         val launcher = RecordingPrintLauncher()
         val writer = RecordingSnapshotWriter(PrintSnapshotWriteResult.IGNORED_NOT_ACTIVE)

@@ -195,14 +195,16 @@ class ConfirmViewModel(
      *
      * - 存在未标记行时状态机先阻止（按钮禁用 + 本方法提示），UseCase 仍会再拒绝（C-079）；
      * - 部分题目被跳过时展示清单并重新加载剩余待确认行，不伪装成全部成功（C-078）。
+     *
+     * @return 整批全部提交成功时为 true；页面据此退回首页并提示「确认完成」。
      */
-    suspend fun submit() {
-        val current = machine ?: return
-        if (submitting || submitted) return
+    suspend fun submit(): Boolean {
+        val current = machine ?: return false
+        if (submitting || submitted) return false
         if (!current.canSubmit) {
             message = "还有 ${current.unmarkedCount} 行未标记"
             publish()
-            return
+            return false
         }
 
         submitting = true
@@ -210,7 +212,7 @@ class ConfirmViewModel(
         report = null
         publish()
 
-        try {
+        return try {
             val result = submitter.submit(sessionId, current.toDecisions())
             report = SubmitReport(
                 writtenFeedbackCount = result.saveResult.writtenFeedbackCount,
@@ -221,9 +223,11 @@ class ConfirmViewModel(
             if (result.saveResult.skippedQuestionIds.isEmpty()) {
                 submitted = true
                 publish()
+                true
             } else {
                 message = "部分题目被跳过，剩余待确认行已保留；请修复数据后重试。"
                 reloadPendingRows()
+                false
             }
         } catch (e: CancellationException) {
             submitting = false
@@ -232,10 +236,12 @@ class ConfirmViewModel(
             submitting = false
             message = e.message ?: "提交被拒绝，请检查逐行标记。"
             publish()
+            false
         } catch (e: Exception) {
             submitting = false
             message = e.message ?: "提交失败，请重试。"
             publish()
+            false
         }
     }
 

@@ -44,6 +44,14 @@ class PrintPlanViewModel(
     var state by mutableStateOf(initialState(input))
         private set
 
+    /** 分享面板已成功打开，等待用户返回本页；返回后据此判断“分享完成”。 */
+    var shareLaunched by mutableStateOf(false)
+        private set
+
+    /** 本次分享已写回打印快照（与「已打印」同一落库路径）；为 false 时不得提示完成。 */
+    var shareRecorded by mutableStateOf(false)
+        private set
+
     private var pendingSnapshots: List<PrintedQuestionSnapshot>? = null
 
     fun print() {
@@ -73,11 +81,15 @@ class PrintPlanViewModel(
         }
     }
 
-    /** 用户确认纸张已打印：把暂存快照写回题目。 */
-    suspend fun confirmPrinted() {
-        val snapshots = pendingSnapshots ?: return
-        val current = state as? PrintPlanUiState.Content ?: return
-        try {
+    /**
+     * 用户确认纸张已打印：把暂存快照写回题目。
+     *
+     * @return 快照成功落库时为 true；页面据此退回首页并提示「打印完成」。
+     */
+    suspend fun confirmPrinted(): Boolean {
+        val snapshots = pendingSnapshots ?: return false
+        val current = state as? PrintPlanUiState.Content ?: return false
+        return try {
             val result = snapshotWriter.save(current.input.planId, snapshots)
             pendingSnapshots = null
             state = when (result) {
@@ -93,11 +105,13 @@ class PrintPlanViewModel(
                     messageIsError = true,
                 )
             }
+            result == PrintSnapshotWriteResult.SAVED
         } catch (e: Exception) {
             state = current.copy(
                 message = e.message ?: "记录打印快照失败，请重试。",
                 messageIsError = true,
             )
+            false
         }
     }
 
@@ -111,6 +125,8 @@ class PrintPlanViewModel(
     suspend fun sharePdf() {
         val current = state as? PrintPlanUiState.Content ?: return
         if (current.pdfSharing) return
+        shareLaunched = false
+        shareRecorded = false
         state = current.copy(pdfSharing = true, message = "正在生成 PDF…", messageIsError = false)
         val outcome = try {
             pdfSharer.share(current.input)
@@ -123,8 +139,11 @@ class PrintPlanViewModel(
         val latest = state as? PrintPlanUiState.Content ?: return
         state = when (outcome) {
             is PdfShareOutcome.Shared -> {
+                // 分享面板已打开：页面重新获得焦点后即可提示完成（快照写入成功时）。
+                shareLaunched = true
                 val record = recordSharedDocument(current.input, outcome.fileName)
                 if (record.recorded) {
+                    shareRecorded = true
                     // 快照已按“已打印”落库，丢弃仍在等待确认的打印暂存，避免再次询问。
                     pendingSnapshots = null
                 }

@@ -24,11 +24,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlinx.coroutines.launch
@@ -57,8 +66,32 @@ private fun formatPrintDay(date: LocalDate): String {
  * 系统返回后，把「纸面是否已打印」的确认提升为主内容，避免用户误以为流程已经结束。
  */
 @Composable
-fun PrintPlanScreen(viewModel: PrintPlanViewModel) {
+fun PrintPlanScreen(
+    viewModel: PrintPlanViewModel,
+    /** 打印确认或 PDF 分享完成（页面重新获得焦点后）回调；由 app 层退回首页并提示。 */
+    onPrintCompleted: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
+    // 分享面板会暂时让应用失焦；回到本页后再根据分享结果决定是否退回首页。
+    var shareReturned by remember { mutableStateOf(false) }
+    var completed by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && viewModel.shareLaunched) {
+                shareReturned = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(shareReturned, viewModel.shareRecorded) {
+        if (!completed && shareReturned && viewModel.shareRecorded) {
+            completed = true
+            onPrintCompleted()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -76,7 +109,7 @@ fun PrintPlanScreen(viewModel: PrintPlanViewModel) {
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
-                    text = "请先返回「计划预览」生成计划，再从预览页进入打印。",
+                    text = "请先返回首页，从「预览计划」进入计划预览后再打印。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -87,7 +120,14 @@ fun PrintPlanScreen(viewModel: PrintPlanViewModel) {
 
                 if (state.awaitingPrintedConfirmation) {
                     PrintedConfirmationCard(
-                        onConfirm = { scope.launch { viewModel.confirmPrinted() } },
+                        onConfirm = {
+                            scope.launch {
+                                if (viewModel.confirmPrinted() && !completed) {
+                                    completed = true
+                                    onPrintCompleted()
+                                }
+                            }
+                        },
                         onDecline = { viewModel.declinePrinted() },
                         onReprint = { viewModel.print() },
                     )

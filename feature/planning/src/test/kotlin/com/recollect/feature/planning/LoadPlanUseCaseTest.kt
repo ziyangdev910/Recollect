@@ -37,6 +37,7 @@ class LoadPlanUseCaseTest {
                 weekEnd = date,
                 status = PlanStatus.PRINTED,
                 printedAt = null,
+                createdAt = java.time.Instant.EPOCH,
                 renderMeta = listOf(meta),
                 deferredRecords = listOf(
                     PlanDeferredRecord(
@@ -89,6 +90,7 @@ class LoadPlanUseCaseTest {
                 weekEnd = date,
                 status = PlanStatus.PRINTED,
                 printedAt = null,
+                createdAt = java.time.Instant.EPOCH,
                 renderMeta = listOf(meta),
                 // 改动前生成的快照只有题号，没有来源页码。
                 deferredRecords = listOf(
@@ -132,6 +134,7 @@ class LoadPlanUseCaseTest {
                 weekEnd = date,
                 status = PlanStatus.GENERATED,
                 printedAt = null,
+                createdAt = java.time.Instant.EPOCH,
                 renderMeta = emptyList(),
             )
             storedPages["K7M2Q9"] = listOf(

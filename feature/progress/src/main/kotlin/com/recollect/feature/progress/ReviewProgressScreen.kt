@@ -112,7 +112,7 @@ private fun ProgressList(content: ReviewProgressContent) {
         item { ForecastCard(content) }
         item {
             Text(
-                text = "题目进度 · 按到期时间排序",
+                text = "题目进度",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -293,7 +293,7 @@ private fun QuestionProgressCard(question: QuestionProgressUi) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "题号 ${question.questionNumber}",
+                    text = "${question.sourcePage.split("-")[1]}\n第${question.sourcePage.split("-")[0]}页 第${question.questionNumber}题",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
@@ -301,9 +301,6 @@ private fun QuestionProgressCard(question: QuestionProgressUi) {
             }
             Text(
                 text = buildString {
-                    append("来源页 ")
-                    append(question.sourcePage)
-                    append(" · ")
                     append(question.lastReviewedDate?.let { "上次复习 $it" } ?: "尚未复习")
                     question.dueDate?.let { append(" · 最早到期 $it") }
                 },

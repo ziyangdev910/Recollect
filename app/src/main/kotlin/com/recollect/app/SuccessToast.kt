@@ -20,6 +20,12 @@ fun showImportSuccessToast(context: Context) = showSuccessToast(context, "导入
 /** 录入/编辑题目保存成功：绿色对勾 +「保存成功」。 */
 fun showSaveSuccessToast(context: Context) = showSuccessToast(context, "保存成功")
 
+/** 打印或分享完成后退回首页：绿色对勾 +「打印完成」。 */
+fun showPrintCompleteToast(context: Context) = showSuccessToast(context, "打印完成")
+
+/** 确认页提交完成后退回首页：绿色对勾 +「确认完成」。 */
+fun showConfirmCompleteToast(context: Context) = showSuccessToast(context, "确认完成")
+
 private fun showSuccessToast(context: Context, message: String) {
     val density = context.resources.displayMetrics.density
     fun dp(value: Int): Int = (value * density).toInt()

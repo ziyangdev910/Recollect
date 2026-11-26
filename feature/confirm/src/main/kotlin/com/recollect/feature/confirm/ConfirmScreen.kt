@@ -62,7 +62,11 @@ import kotlinx.coroutines.launch
  * 决策完成后收起操作按钮、只显示对勾与最终选择，降低长列表的视觉噪音。
  */
 @Composable
-fun ConfirmScreen(viewModel: ConfirmViewModel) {
+fun ConfirmScreen(
+    viewModel: ConfirmViewModel,
+    /** 整批提交成功回调；由 app 层退回首页并提示「确认完成」。 */
+    onConfirmed: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) { viewModel.load() }
 
@@ -138,7 +142,11 @@ fun ConfirmScreen(viewModel: ConfirmViewModel) {
             state = state,
             viewModel = viewModel,
             onNeedTier = { tierRequest = it },
-            onSubmit = { scope.launch { viewModel.submit() } },
+            onSubmit = {
+                scope.launch {
+                    if (viewModel.submit()) onConfirmed()
+                }
+            },
         )
     }
 }

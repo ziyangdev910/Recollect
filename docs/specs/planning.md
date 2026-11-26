@@ -142,18 +142,25 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## PlanSession 与本周计划复用（C-097）
 
-- `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED/COMPLETED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。计划窗口由首页入口（本周/下周）决定，预览页不自行顺延到更远的周（C-098）。
+- `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED/COMPLETED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。计划窗口由预览页顶部的「本周计划 / 下周计划」选项决定（2026-11-26 用户要求），预览页不自行顺延到更远的周（C-098）。
 - `PlanSession.regenerate(settings)`：仅由用户在预览页显式确认后调用；把当前计划号传给 `PlanGenerator.regenerate(settings, previousPlanId)`，新计划保存事务内把旧计划标记为 SUPERSEDED。
 - `LoadPlanUseCase` 只读取 `plan` 头、`plan_page` 与 `plan.renderMeta`/题块几何重建 `PlannedPage`、`RenderableQuestion` 与附件文本；不重新调度、不重新分页。缺元数据/几何时直接失败，不按当前题库猜测。预览的题目标识从 `renderMeta.sourcePage + questionNumber` 重建；推迟卡片从 `plan.deferred` 重建，旧快照缺 `sourcePage` 时仅用 `QuestionRepository.sourcePages()` 做展示兜底（不改写快照、不影响打印）。
 - `GeneratePlanUseCase` 在保存前冻结 `PlanRenderMeta`（题号、来源页、知识点名称、行数、附件数与附件文本）并传入 `PlanDraft`；`weekStartDate/weekEndDate` 取 `PlanningSettings` 的计划窗口。
 - `PlanPreviewViewModel` 首次进入调用 `refreshIfNeeded`（open），从打印页返回复用当前状态；`regenerate()` 才生成新计划号并清空旧打印任务。
+
+## 预览默认周与题库变更提示（2026-11-26）
+
+- `PlanSession.activePlan(settings)` 暴露该窗口当前的活动计划（含 `createdAt`）：预览页首次进入时读取本周窗口的计划状态，本周计划 COMPLETED（完成确认）则默认选中「下周计划」，否则默认选中「本周计划」。
+- 打开已有计划时判断题库是否与生成时不同：任一未归档题目在计划 `createdAt` 之后被新增/编辑（`Question.updatedAt` 晚于计划 `createdAt`），或计划中已排入/推迟/告警的题目已不在未归档题库（被归档），则提示「题库已更新，是否重新生成计划？」。确认后走 `regenerate()`；取消则保持当前计划，同一周不再重复询问。
+- 计划只排入当天到期的题目，未到期题目本就不在计划中，因此**不得**用“全部题库 vs 计划题目”的集合差异判断变化，避免每次打开都误报。
+- `StoredPlan.createdAt` 与 `EntrySummary.updatedAt` 只用于该判断；`Question.updatedAt` 仅在用户新建/编辑时更新，打印快照、归档、调度等系统写回不改变它。
 
 ## 计划完成判定（C-099）
 
 - `PlanStatus.COMPLETED` 由确认提交驱动，不按日期自动判定：当一份计划的所有 `plan_page` 页都已在 `confirmation_decision_log` 中出现，且本次提交没有整题跳过时，`RoomFeedbackRepository.saveDecisions` 在**同一事务**内把计划状态从 GENERATED/PRINTED 迁移为 COMPLETED。
 - 判定比较的是页集合（`plan_page.pageId` ⊆ `confirmation_decision_log.pageId`），不是行数；其他计划或残留日志不会让计划提前完成。
 - 已被显式替代（SUPERSEDED）或已经 COMPLETED 的计划不会被改写；有整题跳过时本次不判定，留待修复后的重试。
-- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：首页仍能查看/重印已完成计划；本周完成时首页把下周计划升为卡片主区块、本周降为次要行（C-100），下周未生成时主按钮为“生成下周计划”。
+- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：预览页仍能查看/重印已完成计划。首页不再展示本周/下周计划卡，C-100 的“主次区块交换”随计划卡一起移除；计划窗口改由预览页顶部的「本周计划 / 下周计划」选项选择（2026-11-26 用户要求）。
 - 已完成计划允许重印：`savePrintSnapshots` 可为 COMPLETED 写题目快照，但 `markPrinted` 只把 GENERATED/PRINTED 置为 PRINTED，不得把 COMPLETED 降级。
 
 ## ID、时区与默认设置

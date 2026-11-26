@@ -1,26 +1,14 @@
 package com.recollect.app
 
 import com.recollect.data.room.repository.PlanStatus
-import com.recollect.feature.planning.PlanWeek
-
-/**
- * 首页计划卡的纯展示规则（C-100）。
- *
- * 规则只有一条：本周计划完成（COMPLETED）后，把下周计划升为卡片主区块、本周降为次要行；
- * 其余状态保持本周为主。判断只看计划状态，不看日期——周末若本周仍有未回读的页，
- * 首页应继续把本周放在主位提醒补回读；周一自然翻周后，原“下周”变成新的“本周”，
- * focus 会随新窗口的状态重新计算。
- */
-internal fun homePlanFocus(thisWeekStatus: PlanStatus?): PlanWeek =
-    if (thisWeekStatus == PlanStatus.COMPLETED) PlanWeek.NEXT else PlanWeek.CURRENT
 
 /** 复习闭环的五个环节；首页用当前计划状态点亮“下一步”。 */
-internal enum class ReviewStage(val label: String, val actionLabel: String) {
-    RECORD("录入", "录入题目"),
-    PLAN("生成", "生成计划"),
-    PRINT("打印", "打印计划"),
-    SCAN("扫描", "扫描回读"),
-    CONFIRM("确认", "查看复习进度"),
+internal enum class ReviewStage(val label: String) {
+    RECORD("录入"),
+    PLAN("生成"),
+    PRINT("打印"),
+    SCAN("扫描"),
+    CONFIRM("确认"),
 }
 
 /**
@@ -37,56 +25,53 @@ internal fun currentReviewStage(questionCount: Int?, status: PlanStatus?): Revie
     else -> ReviewStage.PLAN
 }
 
-/** 首页上被“下一步”点亮的那张卡片。 */
+/** 首页常用操作里被前置并高亮的那张卡片。 */
 internal enum class HomeHighlight { RECORD, PLAN, SCAN }
 
 /**
- * 把当前环节映射到首页要突出的卡片。
- *
- * 录入与扫描对应 2×2 操作卡；生成、打印，以及计划完成后（主卡已聚焦下一周）
- * 都对应计划主卡，确保任意时刻只有一张卡片承担引导。
+ * 把当前环节映射到首页要前置的卡片：
+ * 录入 → 录入题目；生成/打印 → 预览计划；扫描/确认 → 扫描回读。
  */
 internal fun homeHighlight(stage: ReviewStage): HomeHighlight = when (stage) {
     ReviewStage.RECORD -> HomeHighlight.RECORD
-    ReviewStage.PLAN, ReviewStage.PRINT, ReviewStage.CONFIRM -> HomeHighlight.PLAN
-    ReviewStage.SCAN -> HomeHighlight.SCAN
+    ReviewStage.PLAN, ReviewStage.PRINT -> HomeHighlight.PLAN
+    ReviewStage.SCAN, ReviewStage.CONFIRM -> HomeHighlight.SCAN
 }
 
-/** 主/次区块与按钮文案里使用的周标题。 */
-internal val PlanWeek.title: String
-    get() = when (this) {
-        PlanWeek.CURRENT -> "本周计划"
-        PlanWeek.NEXT -> "下周计划"
+/** 流程图下方的操作指引：说明这一步在做什么、下一步点哪里。 */
+internal fun stageGuidance(stage: ReviewStage, cycleComplete: Boolean): String =
+    if (cycleComplete) {
+        "本轮已完成。可以查看复习进度，或继续录入新题开始下一轮。"
+    } else {
+        when (stage) {
+            ReviewStage.RECORD -> "先录入至少一道题；攒够题目后，就能生成可打印的复习计划。"
+            ReviewStage.PLAN -> "题目已就绪。点击「预览计划」，按知识点到期情况查看安排。"
+            ReviewStage.PRINT -> "计划已就绪。在计划预览中选择本周或下周打印，然后按日期完成纸面复习。"
+            ReviewStage.SCAN -> "计划已打印。完成本周复习后，用「扫描回读」拍照录回纸面填涂。"
+            ReviewStage.CONFIRM -> "从「扫描回读」页进入「确认」页，逐行核对识别结果并提交。"
+        }
     }
-
-/** 主区块按钮：未生成时是“生成”，已有计划时是“预览并打印”。 */
-internal fun planPrimaryActionLabel(week: PlanWeek, status: PlanStatus?): String =
-    if (status == null) "生成${week.title}" else "预览并打印${week.title}"
-
-/** 次区块是紧凑文本入口，已有计划时只说“预览”。 */
-internal fun planSecondaryActionLabel(week: PlanWeek, status: PlanStatus?): String =
-    if (status == null) "生成${week.title}" else "预览${week.title}"
 
 /**
- * 主区块的状态说明。
- *
- * 下周区块只有在升为主区块（本周已完成）时才会展示说明，因此
- * “下周未生成”的文案直接承接“本周已完成，提前准备下周”的语境。
+ * 常用操作里的入口。枚举顺序就是未被引导时的固定顺序；
+ * 被引导的入口会被移到首位，其余顺序不变。
  */
-internal fun planStatusMessage(week: PlanWeek, status: PlanStatus?): String = when (status) {
-    null -> if (week == PlanWeek.CURRENT) {
-        "按本周到期的知识点生成计划，打印到纸上开始复习。"
-    } else {
-        "本周计划已完成，提前生成并打印下周计划。"
-    }
+internal enum class HomeAction(val title: String) {
+    RECORD("录入题目"),
+    LIBRARY("管理题库"),
+    PLAN("预览计划"),
+    SCAN("扫描回读"),
+}
 
-    PlanStatus.GENERATED -> "${week.title}已生成，打印后按日期完成复习。"
-    PlanStatus.PRINTED -> "${week.title}已打印。按日期完成复习，完成后拍照回读。"
-    PlanStatus.COMPLETED -> if (week == PlanWeek.CURRENT) {
-        "本周计划已完成，可以生成下周计划或查看复习进度。"
-    } else {
-        "下周计划已完成。"
-    }
+/** 当前环节对应的操作入口。 */
+internal fun guidedHomeAction(highlight: HomeHighlight): HomeAction = when (highlight) {
+    HomeHighlight.RECORD -> HomeAction.RECORD
+    HomeHighlight.PLAN -> HomeAction.PLAN
+    HomeHighlight.SCAN -> HomeAction.SCAN
+}
 
-    PlanStatus.SUPERSEDED -> "${week.title}已被新的计划替代，请查看最新计划。"
+/** 首位是被引导的入口，后面按固定顺序排列其余入口。 */
+internal fun orderedHomeActions(highlight: HomeHighlight): List<HomeAction> {
+    val guided = guidedHomeAction(highlight)
+    return listOf(guided) + HomeAction.entries.filter { it != guided }
 }
