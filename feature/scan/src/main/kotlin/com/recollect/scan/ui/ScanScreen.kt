@@ -150,11 +150,11 @@ fun ScanScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            text = "拍摄整页打印稿，系统会自动定位并识别填涂与笔记，最后由你逐题确认。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // Text(
+        //     text = "拍摄整页打印稿，系统会自动定位并识别填涂与笔记，最后由你逐题确认。",
+        //     style = MaterialTheme.typography.bodySmall,
+        //     color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // )
 
         if (cameraGranted) {
             ScanCameraPane(
@@ -268,14 +268,14 @@ fun ScanScreen(
             )
         }
 
-        if (state.session == null && !state.loading && !state.busy) {
-            Text(
-                text = "还没有识别到打印页。请拍摄带四角标记与二维码的打印稿；" +
-                    "也可以从相册选择已有照片。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        // if (state.session == null && !state.loading && !state.busy) {
+        //     Text(
+        //         text = "还没有识别到打印页。请拍摄带四角标记与二维码的打印稿；" +
+        //             "也可以从相册选择已有照片。",
+        //         style = MaterialTheme.typography.bodySmall,
+        //         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        //     )
+        // }
     }
 }
 
