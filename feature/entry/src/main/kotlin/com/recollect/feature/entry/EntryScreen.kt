@@ -41,6 +41,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +71,8 @@ fun EntryScreen(
     onCreatePlan: () -> Unit,
     onCreateQuestion: () -> Unit,
     onEditQuestion: (String) -> Unit,
+    /** 首次演示用：报告「预览计划」按钮的位置，供黑底蒙层聚焦。 */
+    onPlanButtonBounds: (Rect) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     // 从编辑页返回时复用同一 ViewModel 与 LazyListState；仅在首次进入或保存后刷新列表。
@@ -91,7 +96,7 @@ fun EntryScreen(
             OutlinedTextField(
                 value = viewModel.query,
                 onValueChange = viewModel::updateQuery,
-                placeholder = { Text("搜索题号、页码或知识点") },
+                placeholder = { Text("搜索来源、页码、题号或知识点") },
                 leadingIcon = {
                     Icon(
                         painter = painterResource(R.drawable.ic_search),
@@ -247,6 +252,9 @@ fun EntryScreen(
                     onClick = {
                         viewModel.clearActionError()
                         onCreatePlan()
+                    },
+                    modifier = Modifier.onGloballyPositioned {
+                        onPlanButtonBounds(it.boundsInRoot())
                     },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,

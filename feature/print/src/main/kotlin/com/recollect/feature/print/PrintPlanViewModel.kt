@@ -198,6 +198,44 @@ class PrintPlanViewModel(
         }
     }
 
+    /**
+     * 首次演示用：直接把当前布局当作「已打印」记录，不调起系统打印。
+     *
+     * 演示已经根据同一份 [PrintPlanInput] 生成了可扫描的打印稿图片；
+     * 这里复用与「已打印」完全相同的 [PrintSnapshotWriter] 回写路径，
+     * 让题目得到 pageId/qrPayload、计划进入 PRINTED，随后才能被扫描页识别。
+     */
+    suspend fun recordDemoPrinted(): Boolean {
+        val current = state as? PrintPlanUiState.Content ?: return false
+        return try {
+            when (snapshotWriter.save(current.input.planId, current.input.printSnapshots())) {
+                PrintSnapshotWriteResult.SAVED -> {
+                    state = current.copy(
+                        message = "演示打印稿已准备。",
+                        messageIsError = false,
+                    )
+                    true
+                }
+
+                PrintSnapshotWriteResult.IGNORED_NOT_ACTIVE -> {
+                    state = current.copy(
+                        message = "本次计划已被新的计划替代，无法继续演示。",
+                        messageIsError = true,
+                    )
+                    false
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            state = current.copy(
+                message = e.message ?: "准备演示打印稿失败，请重试。",
+                messageIsError = true,
+            )
+            false
+        }
+    }
+
     /** 用户确认没有打印：丢弃快照，不写库。 */
     fun declinePrinted() {
         pendingSnapshots = null

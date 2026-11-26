@@ -60,8 +60,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -71,6 +75,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.recollect.app.navigation.AppNavigator
 import com.recollect.app.navigation.AppRoute
+import com.recollect.app.onboarding.DemoDataResult
+import com.recollect.app.onboarding.DemoSheetRenderer
+import com.recollect.app.onboarding.DemoStopMode
+import com.recollect.app.onboarding.DemoTarget
+import com.recollect.app.onboarding.DemoTourOverlay
+import com.recollect.app.onboarding.DemoTourState
+import com.recollect.app.onboarding.DemoTourStop
+import com.recollect.app.onboarding.blocksInteraction
 import com.recollect.app.ui.theme.RecollectTheme
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.repository.PlanStatus
@@ -86,11 +98,14 @@ import com.recollect.feature.entry.EntryScreen
 import com.recollect.feature.entry.EntryViewModel
 import com.recollect.feature.entry.KnowledgePointLibraryScreen
 import com.recollect.feature.entry.KnowledgePointLibraryViewModel
+import com.recollect.feature.entry.QuestionEditPrefill
 import com.recollect.feature.entry.QuestionEditScreen
+import com.recollect.feature.entry.QuestionEditTourTarget
 import com.recollect.feature.entry.QuestionEditViewModel
 import com.recollect.feature.entry.SourceTagLibraryScreen
 import com.recollect.feature.entry.SourceTagLibraryViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
+import com.recollect.feature.planning.PlanPreviewUiState
 import com.recollect.feature.planning.PlanPreviewViewModel
 import com.recollect.feature.planning.PrintJob
 import com.recollect.feature.planning.currentWeekSettings
@@ -102,6 +117,7 @@ import com.recollect.feature.print.AndroidPrintLauncher
 import com.recollect.feature.print.PrintPlanInput
 import com.recollect.feature.print.PrintPlanScreen
 import com.recollect.feature.print.PrintPlanViewModel
+import com.recollect.scan.ui.DemoScanSheet
 import com.recollect.scan.ui.ScanScreen
 import com.recollect.scan.ui.ScanViewModel
 import androidx.lifecycle.Lifecycle
@@ -133,6 +149,30 @@ fun AppRoot(
     val current = navigator.current
     val canPop = navigator.canPop
 
+    // 首次复习演示（2026-11-26 用户要求）：用户亲手完成录入 → 生成 → 打印 → 扫描 → 确认。
+    // 演示前把当前数据库导出成快照、只种入演示用知识点/来源标签；结束或跳过时覆盖导入快照还原。
+    var demoTourState by remember(container) {
+        mutableStateOf<DemoTourState>(DemoTourState.Inactive)
+    }
+    val demoTourActive = demoTourState.blocksInteraction
+    // 各真实控件的屏幕坐标，供黑底蒙层挖出可点击窗口。
+    var demoTargets by remember(container) {
+        mutableStateOf<Map<DemoTarget, Rect>>(emptyMap())
+    }
+    // 顶部说明条下方的内容区：外层盒子顶部用于摆放说明条，内层用于「确认」整页聚焦。
+    var demoContentTopPx by remember(container) { mutableStateOf(0f) }
+    var demoContentBounds by remember(container) { mutableStateOf<Rect?>(null) }
+    var demoBarHeightPx by remember(container) { mutableStateOf(0) }
+    var demoConfirmSubmitted by remember(container) { mutableStateOf(false) }
+    var demoSheet by remember(container) { mutableStateOf<DemoScanSheet?>(null) }
+    // 手动重看演示时，欢迎卡额外提示「您的数据不会丢失」。
+    var demoPreserveDataNotice by remember(container) { mutableStateOf(false) }
+    val demoDensity = LocalDensity.current
+    val demoBarHeightDp = with(demoDensity) { demoBarHeightPx.toDp() }
+    val reportDemoTarget: (DemoTarget, Rect) -> Unit = { target, rect ->
+        demoTargets = demoTargets + (target to rect)
+    }
+
     // 录入/编辑题目页的表单用 `imePadding` 自己避让键盘（保留顶栏）；系统默认会把整个
     // 窗口平移（本机解析为 adjustPan），与表单的 imePadding 叠加后会在输入框下方留下
     // 一大块空白。因此只在该页显式要求 adjustResize（不让系统平移）；其余页面没有做
@@ -157,6 +197,9 @@ fun AppRoot(
     BackHandler(enabled = canPop) {
         navigator.pop()
     }
+
+    // 演示期间吞掉返回键，避免用户误退出自动漫游（跳过着陆点由卡片按钮提供）。
+    BackHandler(enabled = demoTourActive) { /* 只拦截，不处理 */ }
 
     // R-03：PrintManager 封装在 launcher 中；ViewModel 只依赖 PrintLauncher 端口。
     val printContext = LocalContext.current
@@ -309,6 +352,193 @@ fun AppRoot(
     }
     val entryListState = rememberLazyListState()
 
+    // ---- 首次复习演示状态机（2026-11-26 用户要求）----
+    val demoStore = container.firstRunDemoStore
+    val demoScope = rememberCoroutineScope()
+
+    // 演示种子只包含两个知识点和一个来源标签；题号、页码、时长等由 prefill 填进表单，
+    // 用户仍然需要亲手点「保存」，题目才会真正进入题库。
+    val demoPrefill = remember {
+        QuestionEditPrefill(
+            questionNumber = "12",
+            sourcePageCode = 42,
+            sourcePageLabel = "人教版九年级数学上册",
+            knowledgePointIds = listOf("demo-kp-01"),
+            estimatedReviewMinutes = 6,
+        )
+    }
+
+    // 演示数据变化（种入最小数据 / 还原快照）后，让首页统计与各页面缓存全部失效重读。
+    val refreshAfterDemoDataChange: () -> Unit = {
+        homeRefreshKey++
+        dataRevision++
+        entryViewModel.markNeedsRefresh()
+        planPreviewGeneration++
+        container.printPlanSession.update(null)
+    }
+
+    fun resetDemoPresentationState() {
+        demoTargets = emptyMap()
+        demoConfirmSubmitted = false
+        demoSheet = null
+        demoBarHeightPx = 0
+        demoContentBounds = null
+    }
+
+    // 结束或跳过演示：回到首页、覆盖导入启动前快照，成功后才记为已完成。
+    // 不展示「演示结束」页，也不弹清理 Toast；还原完成后直接回到空首页。
+    val restoreDemoData: () -> Unit = {
+        demoTourState = DemoTourState.Restoring
+        // 先回首页，释放扫描页、打印页与确认页的临时状态。
+        navigator.resetTo(AppRoute.Home)
+        demoScope.launch {
+            when (val result = demoStore.restore()) {
+                is DemoDataResult.Success -> {
+                    dailyReviewMinutes = quietly { container.settingsRepository.dailyReviewMinutes() }
+                        ?: AppSettings.DEFAULT_DAILY_REVIEW_MINUTES
+                    refreshAfterDemoDataChange()
+                    demoStore.markCompleted()
+                    DemoSheetRenderer.clear(printContext)
+                    resetDemoPresentationState()
+                    demoPreserveDataNotice = false
+                    demoTourState = DemoTourState.Inactive
+                }
+                is DemoDataResult.Failure ->
+                    demoTourState = DemoTourState.RestoreFailed(result.message)
+            }
+        }
+    }
+
+    val demoStop = (demoTourState as? DemoTourState.Running)?.stop
+
+    val setDemoStop: (DemoTourStop) -> Unit = { stop ->
+        demoTourState = DemoTourState.Running(stop)
+    }
+
+    // 只有文字说明段由说明条上的「下一步」推进；操作段等真实按钮回调。
+    val advanceDemoText: () -> Unit = {
+        val stop = demoStop
+        if (stop?.mode == DemoStopMode.NEXT) {
+            stop.next()?.let(setDemoStop)
+        }
+    }
+
+    // 打印页点「使用演示打印稿」后：用同一份计划渲染已填涂的打印稿，再进入扫描页。
+    val prepareDemoSheetAndOpenScan: () -> Unit = {
+        val input = container.printPlanSession.latest?.toPrintPlanInput()
+        if (input == null) {
+            demoTourState = DemoTourState.SheetFailed("计划已失效，请返回重新生成计划。")
+        } else {
+            demoTourState = DemoTourState.PreparingScanSheet
+            demoScope.launch {
+                try {
+                    val sheet = DemoSheetRenderer.render(printContext, input)
+                    demoSheet = DemoScanSheet(
+                        image = sheet.image,
+                        imageLocation = sheet.imageLocation,
+                    )
+                    setDemoStop(DemoTourStop.SCAN_SHEET)
+                    navigator.resetTo(AppRoute.Scan)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    demoTourState = DemoTourState.SheetFailed(
+                        e.message ?: "演示打印稿生成失败，请重试。",
+                    )
+                }
+            }
+        }
+    }
+
+    val dismissDemoOverlay: () -> Unit = {
+        resetDemoPresentationState()
+        demoPreserveDataNotice = false
+        demoTourState = DemoTourState.Inactive
+    }
+
+    // 黑底蒙层的聚焦窗口：欢迎卡不挖洞；确认步覆盖整块内容区，其余聚焦真实控件。
+    val demoTourSpotlight: Rect? = when (val state = demoTourState) {
+        is DemoTourState.Running -> when (state.stop.target) {
+            DemoTarget.WELCOME -> null
+            // 提交成功后整页压暗，只保留顶部说明条与「开始使用」，不再留内容区镂空。
+            DemoTarget.CONFIRM_CONTENT -> if (demoConfirmSubmitted) {
+                null
+            } else {
+                demoContentBounds
+            }
+            else -> demoTargets[state.stop.target]
+        }
+        else -> null
+    }
+
+    // 计划页目标要等自动生成完成；尚未就绪时说明条显示等待文案。
+    val demoBodyOverride: String? = when {
+        demoStop == DemoTourStop.PLAN_PRINT &&
+            planPreviewViewModel.state !is PlanPreviewUiState.Content ->
+            "正在按知识点生成计划，请稍候…"
+        else -> null
+    }
+
+    /**
+     * 开始一次演示。[replay] 为 true 表示用户从设置里的「使用引导」手动重看：
+     * 当前数据库会被快照，演示期间临时使用示例数据，结束后原样还原。
+     */
+    val startDemo: (Boolean) -> Unit = { replay ->
+        demoTourState = DemoTourState.Preparing
+        demoPreserveDataNotice = replay
+        demoScope.launch {
+            val pending = if (demoStore.hasPendingSnapshot()) {
+                demoStore.restore()
+            } else {
+                DemoDataResult.Success
+            }
+            if (pending is DemoDataResult.Failure) {
+                demoTourState = DemoTourState.RestoreFailed(pending.message)
+                return@launch
+            }
+            DemoSheetRenderer.clear(printContext)
+            when (val prepared = demoStore.prepare()) {
+                is DemoDataResult.Success -> {
+                    dailyReviewMinutes = quietly { container.settingsRepository.dailyReviewMinutes() }
+                        ?: AppSettings.DEFAULT_DAILY_REVIEW_MINUTES
+                    refreshAfterDemoDataChange()
+                    resetDemoPresentationState()
+                    navigator.resetTo(AppRoute.Home)
+                    demoTourState = DemoTourState.Running(DemoTourStop.WELCOME)
+                }
+                is DemoDataResult.Failure -> {
+                    // 演示数据未写入（导入单事务失败会整体回滚），直接跳过演示，避免每次启动重试。
+                    demoStore.markCompleted()
+                    demoTourState = DemoTourState.PrepareFailed(prepared.message)
+                }
+            }
+        }
+    }
+
+    // 首次启动与「使用引导」共用同一套开始逻辑；这里只处理冷启动。
+    // 若上次演示在进程被杀时中断，无论引导是否已完成，都先还原用户数据。
+    LaunchedEffect(Unit) {
+        val hadPending = demoStore.hasPendingSnapshot()
+        val pending = if (hadPending) {
+            demoStore.restore()
+        } else {
+            DemoDataResult.Success
+        }
+        if (pending is DemoDataResult.Failure) {
+            demoTourState = DemoTourState.RestoreFailed(pending.message)
+            return@LaunchedEffect
+        }
+        if (hadPending) {
+            // 上次演示（包括手动重看）中断：已还原用户数据，立即刷新所有缓存。
+            dailyReviewMinutes = quietly { container.settingsRepository.dailyReviewMinutes() }
+                ?: AppSettings.DEFAULT_DAILY_REVIEW_MINUTES
+            refreshAfterDemoDataChange()
+        }
+        if (demoStore.isCompleted()) return@LaunchedEffect
+        if (current != AppRoute.Home || !importUri.isNullOrBlank()) return@LaunchedEffect
+        startDemo(false)
+    }
+
     // 导入成功：提示后让所有展示数据的页面失效。
     // 首页统计与题库立即重读；知识点/来源/进度页的 ViewModel 以 dataRevision 为键重建；
     // 计划预览丢弃缓存并清空打印交接，避免继续打印导入前的旧计划。
@@ -388,8 +618,22 @@ fun AppRoot(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
+                        .padding(padding)
+                        // 记录内容区顶部：演示说明条从这里开始摆放。
+                        .onGloballyPositioned {
+                            if (demoTourActive) demoContentTopPx = it.boundsInRoot().top
+                        },
                 ) {
+                    // 演示期间给顶部说明条留出高度，真实页面从说明条下方开始；
+                    // 这样聚焦窗口不会被说明条盖住，确认页也能完整滚动与点击。
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = if (demoTourActive) demoBarHeightDp else 0.dp)
+                            .onGloballyPositioned {
+                                if (demoTourActive) demoContentBounds = it.boundsInRoot()
+                            },
+                    ) {
                     when (val route = current) {
                         AppRoute.Home -> HomeScreen(
                             thisWeekPlanStatus = thisWeekPlanStatus,
@@ -401,6 +645,10 @@ fun AppRoot(
                             onSaveDailyReviewMinutes = saveDailyReviewMinutes,
                             onEntry = { navigator.push(AppRoute.Entry) },
                             onCreateQuestion = {
+                                // 首次演示：用户点中「录入题目」后，把聚焦切到预填好的表单。
+                                if (demoStop == DemoTourStop.HOME_RECORD) {
+                                    setDemoStop(DemoTourStop.FORM_NUMBER)
+                                }
                                 // 从首页进入：保存成功后强制进入题库页（见 QuestionEdit 分支）。
                                 navigator.push(AppRoute.QuestionEdit(null, fromHome = true))
                             },
@@ -412,6 +660,12 @@ fun AppRoot(
                             // 导出改为悬浮在首页之上的设置风格弹窗，不进入页面返回栈。
                             onImport = { importPicker.launch(IMPORT_MIME_TYPES) },
                             onExport = { showBackupDialog = true },
+                            onGuide = { startDemo(true) },
+                            onRecordCardBounds = {
+                                if (demoTourActive) reportDemoTarget(DemoTarget.HOME_RECORD, it)
+                            },
+                            focusRecordCard = demoTourActive &&
+                                demoStop == DemoTourStop.HOME_RECORD,
                         )
 
                         AppRoute.Entry -> {
@@ -420,10 +674,20 @@ fun AppRoot(
                             EntryScreen(
                                 viewModel = entryViewModel,
                                 listState = entryListState,
-                                onCreatePlan = { openPlanPreview() },
+                                onCreatePlan = {
+                                    if (demoStop == DemoTourStop.ENTRY_PLAN) {
+                                        setDemoStop(DemoTourStop.PLAN_PRINT)
+                                    }
+                                    openPlanPreview()
+                                },
                                 onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
                                 onEditQuestion = { questionId ->
                                     navigator.push(AppRoute.QuestionEdit(questionId))
+                                },
+                                onPlanButtonBounds = {
+                                    if (demoTourActive) {
+                                        reportDemoTarget(DemoTarget.ENTRY_PLAN, it)
+                                    }
                                 },
                             )
                         }
@@ -453,7 +717,44 @@ fun AppRoot(
                                 sourceTagViewModel = sourceTagViewModel,
                                 knowledgePointViewModel = knowledgePointViewModel,
                                 questionId = route.questionId,
+                                prefill = if (demoTourActive && route.questionId == null) {
+                                    demoPrefill
+                                } else {
+                                    null
+                                },
+                                tourFocus = if (demoTourActive) {
+                                    when (demoStop) {
+                                        DemoTourStop.FORM_NUMBER -> QuestionEditTourTarget.NUMBER
+                                        DemoTourStop.FORM_PAGE_CODE -> QuestionEditTourTarget.PAGE_CODE
+                                        DemoTourStop.FORM_MINUTES -> QuestionEditTourTarget.MINUTES
+                                        DemoTourStop.FORM_SOURCE -> QuestionEditTourTarget.SOURCE
+                                        DemoTourStop.FORM_KNOWLEDGE -> QuestionEditTourTarget.KNOWLEDGE
+                                        DemoTourStop.FORM_SAVE -> QuestionEditTourTarget.SAVE
+                                        else -> null
+                                    }
+                                } else {
+                                    null
+                                },
+                                onTourTarget = { target, rect ->
+                                    if (demoTourActive) {
+                                        reportDemoTarget(
+                                            when (target) {
+                                                QuestionEditTourTarget.NUMBER -> DemoTarget.FORM_NUMBER
+                                                QuestionEditTourTarget.PAGE_CODE -> DemoTarget.FORM_PAGE_CODE
+                                                QuestionEditTourTarget.MINUTES -> DemoTarget.FORM_MINUTES
+                                                QuestionEditTourTarget.SOURCE -> DemoTarget.FORM_SOURCE
+                                                QuestionEditTourTarget.KNOWLEDGE -> DemoTarget.FORM_KNOWLEDGE
+                                                QuestionEditTourTarget.SAVE -> DemoTarget.FORM_SAVE
+                                            },
+                                            rect,
+                                        )
+                                    }
+                                },
                                 onSaved = {
+                                    // 首次演示：保存后进入题库页，聚焦「预览计划」。
+                                    if (demoTourActive && demoStop == DemoTourStop.FORM_SAVE) {
+                                        setDemoStop(DemoTourStop.ENTRY_PLAN)
+                                    }
                                     // 两种入口都先提示保存成功（绿色对勾 +「保存成功」）。
                                     showSaveSuccessToast(printContext)
                                     // 静默更新题库列表数据，但不重置滚动位置。
@@ -500,7 +801,17 @@ fun AppRoot(
 
                         AppRoute.PlanPreview -> PlanPreviewScreen(
                             viewModel = planPreviewViewModel,
-                            onPrint = { navigator.push(AppRoute.Print) },
+                            onPrint = {
+                                if (demoStop == DemoTourStop.PLAN_PRINT) {
+                                    setDemoStop(DemoTourStop.PRINT_DEMO)
+                                }
+                                navigator.push(AppRoute.Print)
+                            },
+                            onPrintButtonBounds = {
+                                if (demoTourActive) {
+                                    reportDemoTarget(DemoTarget.PLAN_PRINT, it)
+                                }
+                            },
                         )
 
                         AppRoute.Print -> {
@@ -519,6 +830,13 @@ fun AppRoot(
                                     showPrintCompleteToast(printContext)
                                     navigator.resetTo(AppRoute.Home)
                                 },
+                                demoMode = demoTourActive,
+                                onDemoPrint = prepareDemoSheetAndOpenScan,
+                                onDemoPrintButtonBounds = {
+                                    if (demoTourActive) {
+                                        reportDemoTarget(DemoTarget.PRINT_DEMO, it)
+                                    }
+                                },
                             )
                         }
 
@@ -534,7 +852,28 @@ fun AppRoot(
                             ScanScreen(
                                 viewModel = viewModel,
                                 onOpenConfirm = { sessionId ->
+                                    if (demoStop == DemoTourStop.SCAN_CONFIRM) {
+                                        setDemoStop(DemoTourStop.CONFIRM)
+                                    }
                                     navigator.push(AppRoute.Confirm(sessionId))
+                                },
+                                // 演示使用预生成的打印稿，不打开相机，也不请求权限。
+                                autoRequestCamera = !demoTourActive,
+                                demoSheet = if (demoTourActive) demoSheet else null,
+                                demoScanButtonBounds = {
+                                    if (demoTourActive) {
+                                        reportDemoTarget(DemoTarget.SCAN_SHEET, it)
+                                    }
+                                },
+                                confirmButtonBounds = {
+                                    if (demoTourActive) {
+                                        reportDemoTarget(DemoTarget.SCAN_CONFIRM, it)
+                                    }
+                                },
+                                onSessionReady = {
+                                    if (demoStop == DemoTourStop.SCAN_SHEET) {
+                                        setDemoStop(DemoTourStop.SCAN_CONFIRM)
+                                    }
                                 },
                             )
                         }
@@ -564,8 +903,14 @@ fun AppRoot(
                             ConfirmScreen(
                                 viewModel = viewModel,
                                 onConfirmed = {
-                                    showConfirmCompleteToast(printContext)
-                                    navigator.resetTo(AppRoute.Home)
+                                    if (demoTourActive) {
+                                        // 演示：停留在确认页，整页压暗并让「开始使用」变为可用；
+                                        // 用户点击后才还原数据库。
+                                        demoConfirmSubmitted = true
+                                    } else {
+                                        showConfirmCompleteToast(printContext)
+                                        navigator.resetTo(AppRoute.Home)
+                                    }
                                 },
                             )
                         }
@@ -576,6 +921,7 @@ fun AppRoot(
                         ) {
                             Text(routeTitle(route))
                         }
+                    }
                     }
                 }
             }
@@ -602,6 +948,24 @@ fun AppRoot(
                     onDismiss = { showBackupDialog = false },
                 )
             }
+
+            // 首次复习演示的黑底聚焦层：作为根级最后一个子节点叠加在所有页面之上。
+            // 蒙层只压暗高亮区域之外；用户亲自点击真实控件，操作成功后由状态机推进。
+            DemoTourOverlay(
+                state = demoTourState,
+                spotlight = demoTourSpotlight,
+                contentTopPx = demoContentTopPx,
+                canFinish = demoConfirmSubmitted,
+                bodyOverride = demoBodyOverride,
+                preserveDataNotice = demoPreserveDataNotice,
+                onNext = advanceDemoText,
+                onSkip = restoreDemoData,
+                onUse = { if (demoConfirmSubmitted) restoreDemoData() },
+                onRetryRestore = restoreDemoData,
+                onRetrySheet = prepareDemoSheetAndOpenScan,
+                onDismiss = dismissDemoOverlay,
+                onBarHeightChanged = { demoBarHeightPx = it },
+            )
         }
     }
 }
@@ -636,7 +1000,23 @@ private fun HomeScreen(
     onAbout: () -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
+    /** 设置面板的「使用引导」：重新播放演示，并在结束后恢复当前用户数据。 */
+    onGuide: () -> Unit,
+    /** 首次演示用：把「录入题目」快捷卡的位置交给黑底聚焦层。 */
+    onRecordCardBounds: (Rect) -> Unit = {},
+    /** 首次演示用：把「录入题目」所在快捷卡区滚动到说明条下方的可见区域。 */
+    focusRecordCard: Boolean = false,
 ) {
+    val listState = rememberLazyListState()
+    // 快捷卡区是 LazyColumn 的第 3 个 item（概览、流程、快捷卡）。
+    // 演示开始滚到快捷卡；演示结束回到顶部，避免停留在一个为演示滚动的中间位置。
+    LaunchedEffect(focusRecordCard) {
+        if (focusRecordCard) {
+            listState.animateScrollToItem(2)
+        } else {
+            listState.scrollToItem(0)
+        }
+    }
     val stage = currentReviewStage(questionCount, thisWeekPlanStatus)
     val highlight = homeHighlight(stage)
     val cycleComplete = thisWeekPlanStatus == PlanStatus.COMPLETED
@@ -653,6 +1033,7 @@ private fun HomeScreen(
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
+        state = listState,
         // 首页按「概览入口 → 流程 → 快捷操作 → 统计 → 设置」组织。
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -681,6 +1062,7 @@ private fun HomeScreen(
                 onCreateQuestion = onCreateQuestion,
                 onCreatePlan = onCreatePlan,
                 onScan = onScan,
+                onRecordCardBounds = onRecordCardBounds,
             )
         }
         item {
@@ -691,6 +1073,7 @@ private fun HomeScreen(
                     onAbout = onAbout,
                     onImport = onImport,
                     onExport = onExport,
+                    onGuide = onGuide,
                 )
             }
         }
@@ -795,6 +1178,7 @@ private fun FlowGuideCard(
     currentStage: ReviewStage,
     cycleComplete: Boolean,
     guidance: String,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val hint = if (cycleComplete) {
@@ -803,6 +1187,7 @@ private fun FlowGuideCard(
         "第 ${currentStage.ordinal + 1} / ${ReviewStage.entries.size} 步"
     }
     Surface(
+        modifier = modifier,
         shape = MaterialTheme.shapes.large,
         color = colors.surfaceContainerLow,
         border = BorderStroke(1.dp, colors.outlineVariant),
@@ -901,6 +1286,7 @@ private fun QuickActionsGrid(
     onCreateQuestion: () -> Unit,
     onCreatePlan: () -> Unit,
     onScan: () -> Unit,
+    onRecordCardBounds: (Rect) -> Unit,
 ) {
     val actions = orderedHomeActions(highlight)
     val guided = guidedHomeAction(highlight)
@@ -920,7 +1306,16 @@ private fun QuickActionsGrid(
                     QuickActionCard(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            .then(
+                                if (action == HomeAction.RECORD) {
+                                    Modifier.onGloballyPositioned {
+                                        onRecordCardBounds(it.boundsInRoot())
+                                    }
+                                } else {
+                                    Modifier
+                                },
+                            ),
                         iconRes = iconRes,
                         title = action.title,
                         highlighted = action == guided,
@@ -943,6 +1338,7 @@ private fun HomeSettingsPanel(
     onAbout: () -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
+    onGuide: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -980,6 +1376,12 @@ private fun HomeSettingsPanel(
                 )
                 HomeSettingsAction(
                     modifier = Modifier.weight(1f),
+                    iconRes = R.drawable.ic_guide,
+                    title = "使用引导",
+                    onClick = onGuide,
+                )
+                HomeSettingsAction(
+                    modifier = Modifier.weight(1f),
                     iconRes = R.drawable.ic_info,
                     title = "关于",
                     onClick = onAbout,
@@ -1002,7 +1404,8 @@ private fun HomeSettingsAction(
         modifier = modifier
             .clip(MaterialTheme.shapes.small)
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 12.dp),
+            // 四个入口等分时可用宽度更窄，不设水平内边距，保证 1.3 倍字号下标签完整。
+            .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1022,7 +1425,7 @@ private fun HomeSettingsAction(
         }
         Text(
             text = title,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

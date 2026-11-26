@@ -32,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -70,6 +73,12 @@ fun PrintPlanScreen(
     viewModel: PrintPlanViewModel,
     /** 打印确认或 PDF 分享完成（页面重新获得焦点后）回调；由 app 层退回首页并提示。 */
     onPrintCompleted: () -> Unit = {},
+    /** 首次演示：不调起系统打印，用已生成的演示打印稿继续回读。 */
+    demoMode: Boolean = false,
+    /** 演示打印快照写入成功后的回调；由 app 层准备扫描稿并进入扫描页。 */
+    onDemoPrint: () -> Unit = {},
+    /** 首次演示用：报告演示打印按钮的位置，供黑底蒙层聚焦。 */
+    onDemoPrintButtonBounds: (Rect) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     // 分享面板会暂时让应用失焦；回到本页后再根据分享结果决定是否退回首页。
@@ -130,6 +139,35 @@ fun PrintPlanScreen(
                         },
                         onDecline = { viewModel.declinePrinted() },
                         onReprint = { viewModel.print() },
+                    )
+                } else if (demoMode) {
+                    // 首次演示已经根据同一份计划生成了可扫描的打印稿；
+                    // 这里不打开系统打印对话框，只记录打印快照并继续。
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                if (viewModel.recordDemoPrinted()) onDemoPrint()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .onGloballyPositioned {
+                                onDemoPrintButtonBounds(it.boundsInRoot())
+                            },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_print),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("使用演示打印稿")
+                    }
+                    Text(
+                        text = "演示中不连接打印机；这张打印稿已经按演示计划生成，接下来直接扫描回读。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     Button(

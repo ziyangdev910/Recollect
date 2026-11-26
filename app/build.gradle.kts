@@ -88,6 +88,9 @@ kotlin {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // DemoBankAssetTest 直接读取首次演示的示例题库；登记为输入，改资产后测试不会命中旧缓存。
+    inputs.file(layout.projectDirectory.file("src/main/assets/demo/seed.json"))
+        .withPropertyName("firstRunDemoBank")
 }
 
 dependencies {

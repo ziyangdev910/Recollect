@@ -2,6 +2,8 @@ package com.recollect.feature.entry
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +39,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.recollect.common.UiState
@@ -57,9 +62,15 @@ fun QuestionEditScreen(
     knowledgePointViewModel: KnowledgePointLibraryViewModel,
     questionId: String?,
     onSaved: () -> Unit,
+    /** 首次演示用：新建题目时预先填好的示例题。 */
+    prefill: QuestionEditPrefill? = null,
+    /** 首次演示用：当前要聚焦的表单区域；变化时自动滚动到该区域。 */
+    tourFocus: QuestionEditTourTarget? = null,
+    /** 首次演示用：报告聚焦区域在根窗口中的位置，供黑底蒙层挖出窗口。 */
+    onTourTarget: (QuestionEditTourTarget, Rect) -> Unit = { _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
-    LaunchedEffect(viewModel, questionId) { viewModel.load(questionId) }
+    LaunchedEffect(viewModel, questionId, prefill) { viewModel.load(questionId, prefill) }
 
     when (val state = viewModel.state) {
         UiState.Loading -> Box(
@@ -96,6 +107,8 @@ fun QuestionEditScreen(
             knowledgePointViewModel = knowledgePointViewModel,
             content = state.data,
             onSaved = onSaved,
+            tourFocus = tourFocus,
+            onTourTarget = onTourTarget,
         )
     }
 }
@@ -108,8 +121,29 @@ private fun QuestionForm(
     knowledgePointViewModel: KnowledgePointLibraryViewModel,
     content: QuestionEditContent,
     onSaved: () -> Unit,
+    tourFocus: QuestionEditTourTarget?,
+    onTourTarget: (QuestionEditTourTarget, Rect) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+
+    // 首次演示：逐段聚焦表单，并在聚焦区域变化时把它滚动到顶部可见。
+    val numberRequester = remember { BringIntoViewRequester() }
+    val pageCodeRequester = remember { BringIntoViewRequester() }
+    val minutesRequester = remember { BringIntoViewRequester() }
+    val sourceRequester = remember { BringIntoViewRequester() }
+    val knowledgeRequester = remember { BringIntoViewRequester() }
+    val saveRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(tourFocus) {
+        when (tourFocus) {
+            QuestionEditTourTarget.NUMBER -> numberRequester.bringIntoView()
+            QuestionEditTourTarget.PAGE_CODE -> pageCodeRequester.bringIntoView()
+            QuestionEditTourTarget.MINUTES -> minutesRequester.bringIntoView()
+            QuestionEditTourTarget.SOURCE -> sourceRequester.bringIntoView()
+            QuestionEditTourTarget.KNOWLEDGE -> knowledgeRequester.bringIntoView()
+            QuestionEditTourTarget.SAVE -> saveRequester.bringIntoView()
+            null -> Unit
+        }
+    }
 
     var questionNumber by remember(content) { mutableStateOf(content.questionNumber) }
     // 页码编号用文本保存：带来源时允许键盘输入（含清空中间态），无来源时只读 + +/−。
@@ -200,7 +234,12 @@ private fun QuestionForm(
                 label = { Text("题号") },
                 placeholder = { Text("T-1") },
                 singleLine = true,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .bringIntoViewRequester(numberRequester)
+                    .onGloballyPositioned {
+                        onTourTarget(QuestionEditTourTarget.NUMBER, it.boundsInRoot())
+                    },
             )
 
             // 带来源时叫「页码编号」：可直接用键盘输入；无来源时叫「试卷编号」：只读，靠右侧 +/− 调整。
@@ -216,7 +255,12 @@ private fun QuestionForm(
                 singleLine = true,
                 readOnly = !hasSource,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .bringIntoViewRequester(pageCodeRequester)
+                    .onGloballyPositioned {
+                        onTourTarget(QuestionEditTourTarget.PAGE_CODE, it.boundsInRoot())
+                    },
                 trailingIcon = {
                     // 文本框右侧上下堆叠的 +/−，与输入区等高。
                     Column(
@@ -268,7 +312,12 @@ private fun QuestionForm(
                 singleLine = true,
                 isError = !reviewMinutesValid,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .bringIntoViewRequester(minutesRequester)
+                    .onGloballyPositioned {
+                        onTourTarget(QuestionEditTourTarget.MINUTES, it.boundsInRoot())
+                    },
             )
         }
         if (hasSource && currentPageCode < 1) {
@@ -287,139 +336,159 @@ private fun QuestionForm(
         }
 
         // 来源：与知识点一样从标签库单选（可空），点击已选标签可取消选择。
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(sourceRequester)
+                .onGloballyPositioned {
+                    onTourTarget(QuestionEditTourTarget.SOURCE, it.boundsInRoot())
+                },
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "来源（可不选）",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = { showSourceManager = true }) { Text("管理来源") }
-        }
-        val selectedSourceName = sourceTags.firstOrNull { it.id == selectedSourceId }?.name
-            ?: legacySourceName
-        // 旧题目的自由文本来源可能不在标签库中：保留为可取消选中的临时标签。
-        val hasLegacyChip = legacySourceName.isNotBlank() &&
-            sourceTags.none { it.name == legacySourceName }
-        if (sourceTags.isEmpty() && !hasLegacyChip) {
-            Text(
-                text = "来源标签库为空。请先到来源标签库添加标签，再回来选择。",
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else {
-            FlowRow(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                sourceTags.forEach { tag ->
-                    val selected = tag.id == selectedSourceId
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            if (selected) {
-                                selectedSourceId = null
-                                applyDefaultCodeForSource(hasSource = false)
-                            } else {
-                                selectedSourceId = tag.id
-                                legacySourceName = ""
-                                applyDefaultCodeForSource(hasSource = true)
-                            }
-                        },
-                        label = { Text(tag.name) },
-                    )
-                }
-                if (hasLegacyChip) {
-                    val selected = selectedSourceId == null
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            if (selected) {
-                                legacySourceName = ""
-                                applyDefaultCodeForSource(hasSource = false)
-                            }
-                        },
-                        label = { Text(legacySourceName) },
-                    )
-                }
+                Text(
+                    text = "来源（可不选）",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { showSourceManager = true }) { Text("管理来源") }
             }
-            Text(
-                text = "已选来源：${selectedSourceName.ifBlank { "未选择" }}",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            val selectedSourceName = sourceTags.firstOrNull { it.id == selectedSourceId }?.name
+                ?: legacySourceName
+            // 旧题目的自由文本来源可能不在标签库中：保留为可取消选中的临时标签。
+            val hasLegacyChip = legacySourceName.isNotBlank() &&
+                sourceTags.none { it.name == legacySourceName }
+            if (sourceTags.isEmpty() && !hasLegacyChip) {
+                Text(
+                    text = "来源标签库为空。请先到来源标签库添加标签，再回来选择。",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    sourceTags.forEach { tag ->
+                        val selected = tag.id == selectedSourceId
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                if (selected) {
+                                    selectedSourceId = null
+                                    applyDefaultCodeForSource(hasSource = false)
+                                } else {
+                                    selectedSourceId = tag.id
+                                    legacySourceName = ""
+                                    applyDefaultCodeForSource(hasSource = true)
+                                }
+                            },
+                            label = { Text(tag.name) },
+                        )
+                    }
+                    if (hasLegacyChip) {
+                        val selected = selectedSourceId == null
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                if (selected) {
+                                    legacySourceName = ""
+                                    applyDefaultCodeForSource(hasSource = false)
+                                }
+                            },
+                            label = { Text(legacySourceName) },
+                        )
+                    }
+                }
+                Text(
+                    text = "已选来源：${selectedSourceName.ifBlank { "未选择" }}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(knowledgeRequester)
+                .onGloballyPositioned {
+                    onTourTarget(QuestionEditTourTarget.KNOWLEDGE, it.boundsInRoot())
+                },
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "知识点标签（最多选 ${EntryDraft.MAX_KNOWLEDGE_POINTS} 个）",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = { showKnowledgeManager = true }) { Text("管理知识点") }
-        }
-        // 分类筛选选项卡放在「知识点标签」标题之下、标签列表之上；
-        // 列表只显示当前分类下的知识点（2026-11-23 用户要求）。
-        KnowledgeCategoryFilterRow(
-            categories = knowledgeCategories,
-            selectedCategoryId = knowledgeFilterId,
-            onSelect = { knowledgeFilterId = it },
-        )
-        // 分割线明确区分「上方筛选项」与「下方知识点条目」（2026-11-23 用户要求）。
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 2.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-        if (knowledgeTags.isEmpty()) {
-            Text(
-                text = "知识点标签库为空。请点击「管理知识点」添加标签，再回来关联。",
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else if (filteredKnowledgeTags.isEmpty()) {
-            Text(
-                text = "当前分类下暂无知识点，可切换其他分类或「全部」。",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        } else {
-            FlowRow(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                filteredKnowledgeTags.forEach { tag ->
-                    val selected = tag.id in selectedIds
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            if (selected) {
-                                selectedIds.remove(tag.id)
-                                selectionLimitReached = false
-                            } else if (selectedIds.size < EntryDraft.MAX_KNOWLEDGE_POINTS) {
-                                selectedIds.add(tag.id)
-                                selectionLimitReached = false
-                            } else {
-                                selectionLimitReached = true
-                            }
-                        },
-                        label = { Text(tag.name) },
-                    )
-                }
+                Text(
+                    text = "知识点标签（最多选 ${EntryDraft.MAX_KNOWLEDGE_POINTS} 个）",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { showKnowledgeManager = true }) { Text("管理知识点") }
             }
-            Text(
-                text = "已选 ${selectedIds.size} / ${EntryDraft.MAX_KNOWLEDGE_POINTS}",
-                style = MaterialTheme.typography.bodySmall,
+            // 分类筛选选项卡放在「知识点标签」标题之下、标签列表之上；
+            // 列表只显示当前分类下的知识点（2026-11-23 用户要求）。
+            KnowledgeCategoryFilterRow(
+                categories = knowledgeCategories,
+                selectedCategoryId = knowledgeFilterId,
+                onSelect = { knowledgeFilterId = it },
             )
-        }
-        if (selectionLimitReached) {
-            Text(
-                text = "单题最多关联 ${EntryDraft.MAX_KNOWLEDGE_POINTS} 个知识点，请拆分为多道题目。",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+            // 分割线明确区分「上方筛选项」与「下方知识点条目」（2026-11-23 用户要求）。
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 2.dp),
+                color = MaterialTheme.colorScheme.outlineVariant,
             )
+            if (knowledgeTags.isEmpty()) {
+                Text(
+                    text = "知识点标签库为空。请点击「管理知识点」添加标签，再回来关联。",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else if (filteredKnowledgeTags.isEmpty()) {
+                Text(
+                    text = "当前分类下暂无知识点，可切换其他分类或「全部」。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    filteredKnowledgeTags.forEach { tag ->
+                        val selected = tag.id in selectedIds
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                if (selected) {
+                                    selectedIds.remove(tag.id)
+                                    selectionLimitReached = false
+                                } else if (selectedIds.size < EntryDraft.MAX_KNOWLEDGE_POINTS) {
+                                    selectedIds.add(tag.id)
+                                    selectionLimitReached = false
+                                } else {
+                                    selectionLimitReached = true
+                                }
+                            },
+                            label = { Text(tag.name) },
+                        )
+                    }
+                }
+                Text(
+                    text = "已选 ${selectedIds.size} / ${EntryDraft.MAX_KNOWLEDGE_POINTS}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (selectionLimitReached) {
+                Text(
+                    text = "单题最多关联 ${EntryDraft.MAX_KNOWLEDGE_POINTS} 个知识点，请拆分为多道题目。",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
 
         viewModel.actionError?.let { message ->
@@ -449,7 +518,11 @@ private fun QuestionForm(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .height(48.dp)
+                .bringIntoViewRequester(saveRequester)
+                .onGloballyPositioned {
+                    onTourTarget(QuestionEditTourTarget.SAVE, it.boundsInRoot())
+                },
         ) {
             Text(if (viewModel.saving) "保存中…" else "保存")
         }

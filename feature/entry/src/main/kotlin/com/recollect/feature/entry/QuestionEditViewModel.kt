@@ -15,6 +15,31 @@ import com.recollect.data.room.repository.SourceTagItem
 import com.recollect.data.room.repository.SourceTagLibraryRepository
 import kotlinx.coroutines.CancellationException
 
+/**
+ * 首次复习演示预先填好的表单内容（2026-11-26 用户要求）。
+ *
+ * 只在新建题目时使用：用户打开录入页即可看到一道来自初中教辅的示例题，
+ * 只需按引导确认字段并点击「保存」，不需要自己从空白表单开始填。
+ * 知识点与来源标签由演示种子预先创建，id 与名称固定。
+ */
+data class QuestionEditPrefill(
+    val questionNumber: String,
+    val sourcePageCode: Int,
+    val sourcePageLabel: String,
+    val knowledgePointIds: List<String>,
+    val estimatedReviewMinutes: Int,
+)
+
+/** 录入页中首次演示会逐段聚焦的位置。 */
+enum class QuestionEditTourTarget {
+    NUMBER,
+    PAGE_CODE,
+    MINUTES,
+    SOURCE,
+    KNOWLEDGE,
+    SAVE,
+}
+
 /** 录入/编辑页的初始内容；[questionId] 为 null 表示新建。 */
 data class QuestionEditContent(
     val questionId: String?,
@@ -61,8 +86,11 @@ class QuestionEditViewModel(
         actionError = null
     }
 
-    /** 加载标签库与待编辑题目；[questionId] 为 null 时使用默认页码编号与空表单。 */
-    suspend fun load(questionId: String?) {
+    /**
+     * 加载标签库与待编辑题目；[questionId] 为 null 时使用默认页码编号与空表单。
+     * [prefill] 只用于新建：首次演示把示例题预先填进表单。
+     */
+    suspend fun load(questionId: String?, prefill: QuestionEditPrefill? = null) {
         state = try {
             val tags = libraryRepository.tags()
             val categories = categoryRepository.categories()
@@ -72,13 +100,14 @@ class QuestionEditViewModel(
             val content = if (questionId == null) {
                 QuestionEditContent(
                     questionId = null,
-                    questionNumber = "",
-                    sourcePageCode = defaultWithoutSource,
+                    questionNumber = prefill?.questionNumber.orEmpty(),
+                    sourcePageCode = prefill?.sourcePageCode ?: defaultWithoutSource,
                     defaultSourcePageCodeWithoutSource = defaultWithoutSource,
                     defaultSourcePageCodeWithSource = defaultWithSource,
-                    sourcePageLabel = "",
-                    estimatedReviewMinutes = EntryDraft.DEFAULT_REVIEW_MINUTES,
-                    selectedKnowledgePointIds = emptyList(),
+                    sourcePageLabel = prefill?.sourcePageLabel.orEmpty(),
+                    estimatedReviewMinutes = prefill?.estimatedReviewMinutes
+                        ?: EntryDraft.DEFAULT_REVIEW_MINUTES,
+                    selectedKnowledgePointIds = prefill?.knowledgePointIds.orEmpty(),
                     tags = tags,
                     knowledgeCategories = categories,
                     sourceTags = sourceTags,

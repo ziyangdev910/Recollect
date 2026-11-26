@@ -39,6 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +63,8 @@ import kotlinx.coroutines.launch
 fun PlanPreviewScreen(
     viewModel: PlanPreviewViewModel,
     onPrint: () -> Unit = {},
+    /** 首次演示用：报告「打印计划」按钮的位置，供黑底蒙层聚焦。 */
+    onPrintButtonBounds: (Rect) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var showRegenerateConfirm by remember { mutableStateOf(false) }
@@ -101,6 +106,7 @@ fun PlanPreviewScreen(
                     pageCount = state.pages.size,
                     questionCount = state.pages.sumOf { it.questionLabels.size },
                     onPrint = onPrint,
+                    onPrintButtonBounds = onPrintButtonBounds,
                 )
 
                 Row(
@@ -270,6 +276,7 @@ private fun PlanSummaryCard(
     pageCount: Int,
     questionCount: Int,
     onPrint: () -> Unit,
+    onPrintButtonBounds: (Rect) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -299,7 +306,10 @@ private fun PlanSummaryCard(
                 onClick = onPrint,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(48.dp)
+                    .onGloballyPositioned {
+                        onPrintButtonBounds(it.boundsInRoot())
+                    },
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = colors.primary,
                     contentColor = colors.onPrimary,

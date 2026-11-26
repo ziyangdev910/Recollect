@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,11 +39,26 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.recollect.scan.io.GalleryMediaRefresher
 import kotlinx.coroutines.launch
+
+/**
+ * 首次演示用的打印稿：一张已填涂的 A4 图片，以及识别引擎读取它的 URI。
+ *
+ * 图片只用于页面预览；识别仍走 `ScanViewModel.onImageSelected` 与真实 ScanEngine。
+ */
+data class DemoScanSheet(
+    val image: ImageBitmap,
+    val imageLocation: String,
+)
 
 /**
  * 扫描回读页（app.md「Scan」、scan-pipeline.md）。
@@ -58,6 +74,19 @@ import kotlinx.coroutines.launch
 fun ScanScreen(
     viewModel: ScanViewModel,
     onOpenConfirm: (sessionId: String) -> Unit,
+    /**
+     * 首次演示会直接切到本页讲解，而不打算真的拍照；
+     * 传 false 可避免一进入就弹系统相机权限框打断黑底演示。
+     */
+    autoRequestCamera: Boolean = true,
+    /** 首次演示：扫描框内直接展示已填涂的打印稿，不打开相机。 */
+    demoSheet: DemoScanSheet? = null,
+    /** 首次演示用：报告「识别这张打印稿」按钮的位置。 */
+    demoScanButtonBounds: (Rect) -> Unit = {},
+    /** 首次演示用：报告「进入确认页」按钮的位置。 */
+    confirmButtonBounds: (Rect) -> Unit = {},
+    /** 首次演示用：识别结果写入会话后通知外层切换到「进入确认页」聚焦。 */
+    onSessionReady: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -83,8 +112,9 @@ fun ScanScreen(
     }
 
     // 首次进入只自动请求一次；拒绝后由权限卡片上的按钮再次请求。
-    LaunchedEffect(Unit) {
-        if (!cameraGranted && !autoRequested) {
+    // 演示模式展示已生成的打印稿，不打开相机，也不请求权限。
+    LaunchedEffect(autoRequestCamera, demoSheet) {
+        if (autoRequestCamera && demoSheet == null && !cameraGranted && !autoRequested) {
             autoRequested = true
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
@@ -143,6 +173,11 @@ fun ScanScreen(
 
     val state = viewModel.state
 
+    // 演示：识别结果写入会话后，把焦点从「识别」切到「进入确认页」。
+    LaunchedEffect(state.session?.sessionId) {
+        if (state.session != null) onSessionReady()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -156,7 +191,17 @@ fun ScanScreen(
         //     color = MaterialTheme.colorScheme.onSurfaceVariant,
         // )
 
-        if (cameraGranted) {
+        if (demoSheet != null) {
+            // 演示识别成功后收起打印稿预览，把结果卡与「进入确认页」放到首屏。
+            if (state.session == null) {
+                DemoSheetCard(
+                    sheet = demoSheet,
+                    busy = state.busy,
+                    onScan = { scope.launch { viewModel.onImageSelected(demoSheet.imageLocation) } },
+                    onButtonBounds = demoScanButtonBounds,
+                )
+            }
+        } else if (cameraGranted) {
             ScanCameraPane(
                 busy = state.busy,
                 galleryRefreshing = refreshingGallery,
@@ -215,6 +260,7 @@ fun ScanScreen(
             SessionCard(
                 session = session,
                 onOpenConfirm = { onOpenConfirm(session.sessionId) },
+                onButtonBounds = confirmButtonBounds,
             )
         }
 
@@ -279,6 +325,66 @@ fun ScanScreen(
     }
 }
 
+/**
+ * 首次演示的扫描框：直接展示已填涂的打印稿，按钮触发真实识别管线（不打开相机）。
+ */
+@Composable
+private fun DemoSheetCard(
+    sheet: DemoScanSheet,
+    busy: Boolean,
+    onScan: () -> Unit,
+    onButtonBounds: (Rect) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "演示打印稿",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = "这张 A4 打印稿已按示例题生成，并在填涂栏里填好涂。",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+            // 按钮放在图片上方，保证说明条下方的可视区域内一定能点到。
+            Button(
+                onClick = onScan,
+                enabled = !busy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .onGloballyPositioned { onButtonBounds(it.boundsInRoot()) },
+            ) {
+                Text(if (busy) "正在识别…" else "识别这张打印稿")
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(170.dp),
+                shape = MaterialTheme.shapes.small,
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.outlineVariant),
+            ) {
+                Image(
+                    bitmap = sheet.image,
+                    contentDescription = "已填涂的演示打印稿",
+                    modifier = Modifier.fillMaxSize().padding(6.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun CameraPermissionCard(
     denied: Boolean,
@@ -319,6 +425,7 @@ private fun CameraPermissionCard(
 private fun SessionCard(
     session: ScanSessionSummary,
     onOpenConfirm: () -> Unit,
+    onButtonBounds: (Rect) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -371,7 +478,8 @@ private fun SessionCard(
                 onClick = onOpenConfirm,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(48.dp)
+                    .onGloballyPositioned { onButtonBounds(it.boundsInRoot()) },
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = colors.primary,
                     contentColor = colors.onPrimary,

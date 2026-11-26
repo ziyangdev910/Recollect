@@ -1,6 +1,7 @@
 package com.recollect.app
 
 import android.content.Context
+import com.recollect.app.onboarding.DemoDataStore
 import com.recollect.common.CrockfordPlanIdGenerator
 import com.recollect.data.room.RecollectDatabase
 import com.recollect.data.room.export.DatabaseExporter
@@ -132,6 +133,19 @@ class AppContainer(context: Context) {
     /** 读取 SAF / 分享意图传入的备份文件；`ContentResolver` 只停留在 app 层。 */
     val backupFileReader: BackupFileReader by lazy {
         AndroidBackupFileReader(applicationContext)
+    }
+
+    /**
+     * 首次复习演示的数据管理（2026-11-26 用户要求）：
+     * 演示前导出当前数据库快照、载入 assets 中的初中示例题库，结束后覆盖导入快照还原。
+     * 复用现有备份导出/导入端口，不新增存储依赖。
+     */
+    internal val firstRunDemoStore: DemoDataStore by lazy {
+        DemoDataStore(
+            context = applicationContext,
+            exporter = databaseExporter,
+            importer = databaseImporter,
+        )
     }
 
     private fun resolveAppVersionName(): String = try {
