@@ -186,6 +186,11 @@ class ScanViewModel(
         state = state.copy(message = message, messageIsError = isError)
     }
 
+    /** 用户重新发起拍照/相册选择时清掉上一条页面提示，避免旧提示滞留。 */
+    fun clearMessage() {
+        state = state.copy(message = null, messageIsError = false)
+    }
+
     /** 用户确认错误后回到拍照状态；重拍/相册按钮始终可用。 */
     fun dismissError() {
         state = state.copy(error = null)

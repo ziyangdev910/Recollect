@@ -40,6 +40,7 @@ import java.io.File
 @Composable
 fun ScanCameraPane(
     busy: Boolean,
+    galleryRefreshing: Boolean,
     onCaptured: (String) -> Unit,
     onPickFromGallery: () -> Unit,
     onError: (String) -> Unit,
@@ -146,10 +147,10 @@ fun ScanCameraPane(
             }
             OutlinedButton(
                 onClick = onPickFromGallery,
-                enabled = !busy,
+                enabled = !busy && !galleryRefreshing,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("从相册选择")
+                Text(if (galleryRefreshing) "刷新中…" else "从相册选择")
             }
         }
     }

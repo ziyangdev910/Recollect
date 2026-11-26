@@ -2,6 +2,7 @@ package com.recollect.scan.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.recollect.scan.io.GalleryMediaRefresher
 import kotlinx.coroutines.launch
 
 /**
@@ -88,16 +90,55 @@ fun ScanScreen(
         }
     }
 
+    val galleryRefresher = remember(context) {
+        GalleryMediaRefresher(context.applicationContext)
+    }
+    var refreshingGallery by remember { mutableStateOf(false) }
+
     val pickLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
         if (uri != null) scope.launch { viewModel.onImageSelected(uri.toString()) }
     }
 
+    // 系统照片选择器只读 MediaStore，打开前先补扫公共存储中的图片；
+    // 权限被拒绝时只跳过刷新，仍照常打开选择器。
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        scope.launch {
+            if (granted) {
+                runCatching { galleryRefresher.refresh() }
+            } else {
+                viewModel.showMessage(
+                    "未授予相册读取权限，无法自动刷新相册；仍可选择已入库的图片。",
+                    isError = false,
+                )
+            }
+            refreshingGallery = false
+            pickLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
+        }
+    }
+
     val openGallery: () -> Unit = {
-        pickLauncher.launch(
-            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-        )
+        if (!refreshingGallery && !viewModel.state.busy) {
+            viewModel.clearMessage()
+            refreshingGallery = true
+            val permission = galleryReadPermission()
+            if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+                scope.launch {
+                    runCatching { galleryRefresher.refresh() }
+                    refreshingGallery = false
+                    pickLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                }
+            } else {
+                galleryPermissionLauncher.launch(permission)
+            }
+        }
     }
 
     val state = viewModel.state
@@ -118,6 +159,7 @@ fun ScanScreen(
         if (cameraGranted) {
             ScanCameraPane(
                 busy = state.busy,
+                galleryRefreshing = refreshingGallery,
                 onCaptured = { location -> scope.launch { viewModel.onImageSelected(location) } },
                 onPickFromGallery = openGallery,
                 onError = { message -> viewModel.showMessage(message) },
@@ -131,12 +173,12 @@ fun ScanScreen(
             )
             OutlinedButton(
                 onClick = openGallery,
-                enabled = !state.busy,
+                enabled = !state.busy && !refreshingGallery,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
             ) {
-                Text("从相册选择")
+                Text(if (refreshingGallery) "正在刷新相册…" else "从相册选择")
             }
         }
 
@@ -423,3 +465,11 @@ private fun MessageCard(message: String, isError: Boolean) {
 private fun onPageIdInput(change: (String) -> Unit): (String) -> Unit = { value ->
     change(value.filter { it == '-' || (it in '0'..'9') || (it in 'A'..'Z') || (it in 'a'..'z') })
 }
+
+/** 自动补扫相册所需的读取权限：Android 13 起改用按类型的媒体权限。 */
+private fun galleryReadPermission(): String =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_IMAGES
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }

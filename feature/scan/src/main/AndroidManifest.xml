@@ -6,6 +6,15 @@
       拒绝时页面保留相册选图作为回退（app.md「权限与文件」）。
     -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!--
+      打开系统相册选择器前自动补扫公共存储中的图片，需要读取外部存储：
+      Android 12 及以下用 READ_EXTERNAL_STORAGE，Android 13 起改用 READ_MEDIA_IMAGES。
+      用户拒绝时只退化为「不刷新相册」，仍可正常使用系统选择器。
+    -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <uses-feature
         android:name="android.hardware.camera.any"
