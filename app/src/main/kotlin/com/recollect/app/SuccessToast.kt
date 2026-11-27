@@ -26,6 +26,11 @@ fun showPrintCompleteToast(context: Context) = showSuccessToast(context, "打印
 /** 确认页提交完成后退回首页：绿色对勾 +「确认完成」。 */
 fun showConfirmCompleteToast(context: Context) = showSuccessToast(context, "确认完成")
 
+/** 操作失败时的纯文字提示（例如分类下仍有知识点、无法删除）。 */
+fun showErrorToast(context: Context, message: String) {
+    Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
+}
+
 private fun showSuccessToast(context: Context, message: String) {
     val density = context.resources.displayMetrics.density
     fun dp(value: Int): Int = (value * density).toInt()

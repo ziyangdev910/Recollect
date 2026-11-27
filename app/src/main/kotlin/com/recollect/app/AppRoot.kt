@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +22,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -203,8 +207,12 @@ fun AppRoot(
     BackHandler(enabled = current == AppRoute.Home && homeEditing) {
         homeEditing = false
     }
+    // 离开首页去其他页面时退出编辑；但进入「编辑封面 / 添加分类」页再返回首页时
+    // 保留原先的抖动、可拖动编辑态（2026-11-27 用户要求）。
     LaunchedEffect(current) {
-        if (current != AppRoute.Home) homeEditing = false
+        if (current != AppRoute.Home && current !is AppRoute.CategoryCreate) {
+            homeEditing = false
+        }
     }
 
     // 演示期间吞掉返回键，避免用户误退出自动漫游（跳过着陆点由卡片按钮提供）。
@@ -589,7 +597,9 @@ fun AppRoot(
                 },
                 topBar = {
                     // 扫描页按 reference/CaptureWindow.png 做全屏取景，不显示应用标题栏。
-                    if (current !is AppRoute.Scan && current !is AppRoute.CategoryCreate) {
+                    // 「添加分类 / 编辑封面」已改为盖在整页之上的全屏新页面，这里保留首页顶栏，
+                    // 避免顶栏收起/恢复造成内容位移。
+                    if (current !is AppRoute.Scan) {
                         TopAppBar(
                             title = {
                                 // 2026-11-26 用户要求：仅在首页标题「拾知」的右下角以
@@ -669,8 +679,10 @@ fun AppRoot(
                                 if (demoTourActive) demoContentBounds = it.boundsInRoot()
                             },
                     ) {
-                    when (val route = current) {
-                        AppRoute.Home -> HomeScreen(
+                    // 首页在「添加分类 / 编辑封面」页打开期间保持组合：返回时原样露出，
+                    // 抖动动画与编辑态不会重建，也不会出现一帧退回展示态。
+                    if (current == AppRoute.Home || current is AppRoute.CategoryCreate) {
+                        HomeScreen(
                             categories = homeCategories,
                             editing = homeEditing,
                             onEditingChange = { homeEditing = it },
@@ -698,6 +710,24 @@ fun AppRoot(
                                     ),
                                 )
                             },
+                            onDeleteCategory = { category ->
+                                // 分类下无题目时由首页确认浮窗放行；仓储仍会拒绝仍有知识点的分类，
+                                // 失败时保持首页数据并提示原因。
+                                settingsScope.launch {
+                                    try {
+                                        container.knowledgeCategoryRepository.delete(category.id)
+                                        homeCategories = homeCategories?.filterNot { it.id == category.id }
+                                        homeRefreshKey++
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        showErrorToast(
+                                            printContext,
+                                            e.message ?: "删除分类失败，请重试。",
+                                        )
+                                    }
+                                }
+                            },
                             onOpenNotebook = { categoryId, name ->
                                 navigator.push(
                                     AppRoute.Entry(categoryId = categoryId, categoryName = name),
@@ -720,6 +750,10 @@ fun AppRoot(
                             focusRecordButton = demoTourActive &&
                                 demoStop == DemoTourStop.HOME_RECORD,
                         )
+                    }
+
+                    when (val route = current) {
+                        AppRoute.Home -> Unit
 
                         is AppRoute.Entry -> {
                             // 导入成功时 markNeedsRefresh 已置位；当前正停留题库页时也立即重读。
@@ -857,31 +891,7 @@ fun AppRoot(
                             ReviewProgressScreen(viewModel)
                         }
 
-                        is AppRoute.CategoryCreate -> {
-                            val editTarget = route.categoryId?.let { id ->
-                                CategoryEditTarget(
-                                    categoryId = id,
-                                    name = route.name.orEmpty(),
-                                    coverTone = route.coverTone ?: 0,
-                                    coverIcon = route.coverIcon ?: "book",
-                                )
-                            }
-                            val viewModel = remember(container, route) {
-                                CategoryCreateViewModel(
-                                    repository = container.knowledgeCategoryRepository,
-                                    editTarget = editTarget,
-                                )
-                            }
-                            CategoryCreateScreen(
-                                viewModel = viewModel,
-                                onClose = { navigator.pop() },
-                                onCreated = {
-                                    // 分类创建/保存后首页重新读取分类、封面与顺序。
-                                    homeRefreshKey++
-                                    navigator.pop()
-                                },
-                            )
-                        }
+                        is AppRoute.CategoryCreate -> Unit
 
                         AppRoute.PlanPreview -> PlanPreviewScreen(
                             viewModel = planPreviewViewModel,
@@ -982,6 +992,49 @@ fun AppRoot(
                             Text(routeTitle(route))
                         }
                     }
+                    }
+                }
+            }
+
+            // 「添加分类 / 编辑封面」是盖在整页之上的全屏新页面：不占用 Scaffold 的内容内边距，
+            // 因此进入时顶栏不会收起、内容不会上移；首页仍在下方保持组合，返回时原样露出。
+            (current as? AppRoute.CategoryCreate)?.let { categoryRoute ->
+                val editTarget = categoryRoute.categoryId?.let { id ->
+                    CategoryEditTarget(
+                        categoryId = id,
+                        name = categoryRoute.name.orEmpty(),
+                        coverTone = categoryRoute.coverTone ?: 0,
+                        coverIcon = categoryRoute.coverIcon ?: "book",
+                    )
+                }
+                val viewModel = remember(container, categoryRoute) {
+                    CategoryCreateViewModel(
+                        repository = container.knowledgeCategoryRepository,
+                        editTarget = editTarget,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        // 挡住下方首页：空点击也会消费，空白区域不会打开卡片或被拖动。
+                        .pointerInput(Unit) { detectTapGestures { } },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .navigationBarsPadding(),
+                    ) {
+                        CategoryCreateScreen(
+                            viewModel = viewModel,
+                            onClose = { navigator.pop() },
+                            onCreated = {
+                                // 分类创建/保存后首页重新读取分类、封面与顺序。
+                                homeRefreshKey++
+                                navigator.pop()
+                            },
+                        )
                     }
                 }
             }

@@ -8,7 +8,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,7 +16,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,12 +37,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,21 +51,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import org.ziyangdev910.recollect.R
 
@@ -88,8 +83,8 @@ internal data class HomeCategory(
  * 知识点分类作为错题本排成三列卡片网格；底部胶囊栏固定「录入 / 打印计划 / 扫描回读」。
  * 设置、复习进度、知识点与分类管理等入口收进顶部「更多」菜单（由 `AppRoot` 渲染）。
  *
- * 长按分类卡片会压暗其余背景并弹出「编辑封面 / 调整顺序」；调整顺序模式下卡片轻微抖动，
- * 可拖动卡片改变顺序（2026-11-27 用户要求）。
+ * 长按分类卡片直接进入编辑态：卡片轻微抖动、可拖动改变顺序，右上角出现「编辑封面」笔按钮
+ * 与「删除分类」红叉按钮；不再弹出长按菜单，点击顶栏「完成」退出编辑态（2026-11-27 用户要求）。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -99,6 +94,7 @@ internal fun HomeScreen(
     onEditingChange: (Boolean) -> Unit,
     onReorder: (List<String>) -> Unit,
     onEditCover: (HomeCategory, OfficialCover) -> Unit,
+    onDeleteCategory: (HomeCategory) -> Unit,
     onOpenNotebook: (categoryId: String?, name: String) -> Unit,
     onAddCategory: () -> Unit,
     onCreateQuestion: () -> Unit,
@@ -110,33 +106,41 @@ internal fun HomeScreen(
     focusRecordButton: Boolean = false,
 ) {
     val gridState = rememberLazyGridState()
-    var actionCategory by remember { mutableStateOf<HomeCategory?>(null) }
-    var actionBounds by remember { mutableStateOf<Rect?>(null) }
-    var rootBounds by remember { mutableStateOf(Rect.Zero) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var pressedId by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    // 正在等待确认删除的分类；不为 null 时弹出紧凑的确认/拦截浮窗。
+    var deleteTarget by remember { mutableStateOf<HomeCategory?>(null) }
     // 编辑模式下使用本地顺序，拖拽换位时立即交换并播放动画；退出编辑后回到数据库顺序。
-    var editingOrder by remember { mutableStateOf<List<HomeCategory>?>(null) }
+    // 进入编辑的一帧内就用当前分类填充，避免网格先渲染空列表再跳回顶部。
+    var editingOrder by remember(editing) {
+        mutableStateOf(if (editing) categories.orEmpty() else null)
+    }
 
-    // 进出编辑模式时清理长按菜单与拖拽状态。
-    LaunchedEffect(editing) {
-        actionCategory = null
-        if (editing) {
-            editingOrder = categories.orEmpty()
-        } else {
+    // 进入/退出编辑态，以及分类在编辑期间发生变化（例如删除成功后首页重读）时，
+    // 同步本地顺序：保留拖拽后的相对次序，移除已不存在的分类，追加新分类。
+    LaunchedEffect(editing, categories) {
+        if (!editing) {
             editingOrder = null
             draggingId = null
             pressedId = null
             dragOffset = Offset.Zero
+            deleteTarget = null
+            return@LaunchedEffect
+        }
+        val source = categories.orEmpty()
+        val current = editingOrder
+        editingOrder = if (current == null) {
+            source
+        } else {
+            val byId = source.associateBy { it.id }
+            val kept = current.mapNotNull { byId[it.id] }
+            val keptIds = kept.mapTo(mutableSetOf()) { it.id }
+            kept + source.filter { it.id !in keptIds }
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onGloballyPositioned { rootBounds = it.boundsInRoot() },
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
             state = gridState,
@@ -211,51 +215,34 @@ internal fun HomeScreen(
                                 pressedId = null
                                 dragOffset = Offset.Zero
                             },
+                            onEditCover = {
+                                onEditCover(
+                                    category,
+                                    resolveOfficialCover(
+                                        name = category.name,
+                                        coverTone = category.coverTone,
+                                        coverIcon = category.coverIcon,
+                                        fallbackTone = defaultToneFor(category.name),
+                                    ),
+                                )
+                            },
+                            onDelete = { deleteTarget = category },
                         )
                     }
                 }
             } else {
                 items(categories, key = { it.id }) { category ->
-                    val fallbackTone = defaultToneFor(category.name)
-                    var cardBounds by remember(category.id) { mutableStateOf(Rect.Zero) }
-                    Box(
-                        modifier = Modifier.onGloballyPositioned {
-                            cardBounds = it.boundsInRoot()
-                        },
-                    ) {
-                        NotebookCard(
-                            title = category.name,
-                            subtitle = "${category.questionCount} 题",
-                            toneIndex = categoryTone(category),
-                            iconRes = categoryIcon(category),
-                            modifier = Modifier.combinedClickable(
-                                onClick = { onOpenNotebook(category.id, category.name) },
-                                onLongClick = {
-                                    actionCategory = category
-                                    actionBounds = cardBounds
-                                },
-                            ),
-                        )
-                        if (actionCategory?.id == category.id) {
-                            CategoryActionMenu(
-                                onEditCover = {
-                                    val cover = resolveOfficialCover(
-                                        name = category.name,
-                                        coverTone = category.coverTone,
-                                        coverIcon = category.coverIcon,
-                                        fallbackTone = fallbackTone,
-                                    )
-                                    actionCategory = null
-                                    onEditCover(category, cover)
-                                },
-                                onReorder = {
-                                    actionCategory = null
-                                    onEditingChange(true)
-                                },
-                                onDismiss = { actionCategory = null },
-                            )
-                        }
-                    }
+                    NotebookCard(
+                        title = category.name,
+                        subtitle = "${category.questionCount} 题",
+                        toneIndex = categoryTone(category),
+                        iconRes = categoryIcon(category),
+                        modifier = Modifier.combinedClickable(
+                            onClick = { onOpenNotebook(category.id, category.name) },
+                            // 长按直接进入编辑态（抖动 + 拖拽 + 卡片操作按钮），不再弹菜单。
+                            onLongClick = { onEditingChange(true) },
+                        ),
+                    )
                 }
             }
             if (!editing) {
@@ -294,19 +281,135 @@ internal fun HomeScreen(
             focusRecordButton = focusRecordButton,
         )
 
-        // 长按：压暗其余页面，但保留被长按卡片的镂空，突出当前卡片。
-        val action = actionCategory
-        val bounds = actionBounds
-        if (!editing && action != null && bounds != null) {
-            LongPressScrim(
-                hole = Rect(
-                    left = bounds.left - rootBounds.left,
-                    top = bounds.top - rootBounds.top,
-                    right = bounds.right - rootBounds.left,
-                    bottom = bounds.bottom - rootBounds.top,
-                ),
-                onDismiss = { actionCategory = null },
-            )
+        // 删除确认浮窗：只有分类中没有题目时才允许删除；有题目时只提示原因。
+        val target = deleteTarget
+        if (editing && target != null) {
+            if (target.questionCount > 0) {
+                CompactDialog(
+                    title = "无法删除",
+                    message = "「${target.name}」中还有 ${target.questionCount} 道题，请先删除或移走这些题目。",
+                    dismissLabel = "知道了",
+                    onDismiss = { deleteTarget = null },
+                )
+            } else {
+                CompactDialog(
+                    title = "删除分类？",
+                    message = "「${target.name}」将从首页移除，此操作不可撤销。",
+                    confirmLabel = "删除",
+                    destructive = true,
+                    onConfirm = {
+                        deleteTarget = null
+                        onDeleteCategory(target)
+                    },
+                    onDismiss = { deleteTarget = null },
+                )
+            }
+        }
+    }
+}
+
+/** 编辑态卡片右上角的两个圆形操作按钮：白底笔（编辑封面）、红底白叉（删除分类）。 */
+@Composable
+private fun CategoryEditActions(
+    onEditCover: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            onClick = onEditCover,
+            modifier = Modifier.size(21.dp),
+            shape = CircleShape,
+            color = Color.White,
+            contentColor = Color(0xFF20231D),
+            border = BorderStroke(0.75.dp, Color.Black.copy(alpha = 0.16f)),
+            shadowElevation = 1.5.dp,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_edit_cover),
+                    contentDescription = "编辑封面",
+                    modifier = Modifier.size(11.dp),
+                )
+            }
+        }
+        Surface(
+            onClick = onDelete,
+            modifier = Modifier.size(21.dp),
+            shape = CircleShape,
+            color = Color(0xFFD93A32),
+            contentColor = Color.White,
+            shadowElevation = 1.5.dp,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_close),
+                    contentDescription = "删除分类",
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 紧凑的操作浮窗：宽度固定、内边距小，用于删除确认与不可删除提示。 */
+@Composable
+private fun CompactDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+    confirmLabel: String? = null,
+    onConfirm: (() -> Unit)? = null,
+    dismissLabel: String = "取消",
+    destructive: Boolean = false,
+) {
+    val colors = MaterialTheme.colorScheme
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.width(280.dp),
+            shape = MaterialTheme.shapes.large,
+            color = colors.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(dismissLabel)
+                    }
+                    if (onConfirm != null && confirmLabel != null) {
+                        TextButton(onClick = onConfirm) {
+                            Text(
+                                text = confirmLabel,
+                                color = if (destructive) colors.error else colors.primary,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -319,68 +422,11 @@ private fun categoryTone(category: HomeCategory): Int =
 private fun categoryIcon(category: HomeCategory): Int =
     coverIconRes(category.coverIcon) ?: subjectIconRes(category.name)
 
-/** 长按卡片的操作菜单：编辑封面 / 调整顺序。 */
-@Composable
-private fun CategoryActionMenu(
-    onEditCover: () -> Unit,
-    onReorder: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    DropdownMenu(
-        expanded = true,
-        onDismissRequest = onDismiss,
-    ) {
-        DropdownMenuItem(
-            text = { Text("编辑封面") },
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.ic_edit_cover),
-                    contentDescription = null,
-                )
-            },
-            onClick = onEditCover,
-        )
-        DropdownMenuItem(
-            text = { Text("调整顺序") },
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.ic_reorder),
-                    contentDescription = null,
-                )
-            },
-            onClick = onReorder,
-        )
-    }
-}
-
-/** 压暗整页，只保留被长按卡片处的圆角镂空；点击镂空外关闭菜单。 */
-@Composable
-private fun LongPressScrim(
-    hole: Rect,
-    onDismiss: () -> Unit,
-) {
-    Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(onDismiss) {
-                detectTapGestures { onDismiss() }
-            },
-    ) {
-        val corner = 18.dp.toPx()
-        val path = Path().apply {
-            fillType = PathFillType.EvenOdd
-            addRect(Rect(0f, 0f, size.width, size.height))
-            addRoundRect(RoundRect(hole, CornerRadius(corner)))
-        }
-        drawPath(path, Color.Black.copy(alpha = 0.18f))
-    }
-}
-
 /** 抖动的平滑回转曲线（约 5Hz，半周期 100ms）。 */
 private val JiggleEasing = CubicBezierEasing(0.37f, 0f, 0.63f, 1f)
 
 /**
- * 调整顺序模式下的卡片：5Hz 平滑抖动，按住略微放大；
+ * 编辑态下的卡片：5Hz 平滑抖动，按住略微放大；右上角依次放置「编辑封面」与「删除分类」按钮。
  * 拖动过程中卡片中心进入另一张卡片时立即交换，松手只负责落库。
  */
 @Composable
@@ -398,6 +444,8 @@ private fun EditableCategoryCard(
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
+    onEditCover: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val transition = rememberInfiniteTransition(label = "jiggle-${category.id}")
     val angle by transition.animateFloat(
@@ -450,6 +498,15 @@ private fun EditableCategoryCard(
             subtitle = "${category.questionCount} 题",
             toneIndex = toneIndex,
             iconRes = iconRes,
+            // 为右上角的两个操作按钮留出空间，标题与题数整体下移。
+            contentTopPadding = 29.dp,
+        )
+        CategoryEditActions(
+            onEditCover = onEditCover,
+            onDelete = onDelete,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 4.dp, end = 4.dp),
         )
     }
 }
@@ -508,6 +565,7 @@ private fun NotebookCard(
     iconRes: Int,
     modifier: Modifier = Modifier,
     outlined: Boolean = false,
+    contentTopPadding: Dp = 12.dp,
 ) {
     val dark = isSystemInDarkTheme()
     val tone = notebookTone(toneIndex, dark)
@@ -530,7 +588,7 @@ private fun NotebookCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = contentTopPadding, bottom = 12.dp),
             ) {
                 Text(
                     text = title,
