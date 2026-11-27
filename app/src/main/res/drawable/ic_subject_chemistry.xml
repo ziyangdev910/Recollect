@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Material Icons: science（化学） -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M19.8,18.4L14,10.67V6.5l1.35,-1.35C15.71,4.78 15.38,4 14.85,4H9.15C8.62,4 8.29,4.78 8.65,5.15L10,6.5v4.17L4.2,18.4C3.71,19.14 4.24,20 5.14,20h13.72C19.76,20 20.29,19.14 19.8,18.4z" />
+</vector>

@@ -9,7 +9,14 @@ import androidx.compose.runtime.mutableStateListOf
  */
 sealed interface AppRoute {
     data object Home : AppRoute
-    data object Entry : AppRoute
+    /**
+     * 错题本页面。[categoryId] 为 null 表示「全部错题」；否则只显示该知识点分类下的题目。
+     * [categoryName] 用作导航栏标题。
+     */
+    data class Entry(
+        val categoryId: String? = null,
+        val categoryName: String? = null,
+    ) : AppRoute
     /**
      * 录入/编辑题目页。[fromHome] 表示从首页「录入题目」入口进入（只用于新建）：
      * 保存成功后强制进入题库页，而不是关闭当前页返回上一页。
@@ -21,8 +28,16 @@ sealed interface AppRoute {
     data object KnowledgePoints : AppRoute
     data object SourceTags : AppRoute
     data object Progress : AppRoute
+    /**
+     * 添加分类 / 编辑封面。[categoryId] 为 null 时为新建；否则预填该分类并保存。
+     */
+    data class CategoryCreate(
+        val categoryId: String? = null,
+        val name: String? = null,
+        val coverTone: Int? = null,
+        val coverIcon: String? = null,
+    ) : AppRoute
     data object PlanPreview : AppRoute
-    data object Print : AppRoute
     data object Scan : AppRoute
     data class Confirm(val sessionId: String) : AppRoute
     data object Settings : AppRoute

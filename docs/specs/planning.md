@@ -117,7 +117,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ### 固定流程
 
-1. 读取 `PlanningSettings`；`planStartDate` 默认为今天所在自然周的周一（`today.with(previousOrSame(MONDAY))`，C-098），`planEndDate = planStartDate + 6`；`dailyAvailableMinutes` 缺失按 60 分钟/天。首页另有紧随其后的下一自然周窗口（`nextWeekSettings`），只提供本周与下周两个入口，不允许生成更远的周。
+1. 读取 `PlanningSettings`；`planStartDate`/`planEndDate` 由「打印计划」页的日期范围决定（2026-11-27 用户要求）：默认填入本周（今天所在自然周，`today.with(previousOrSame(MONDAY))`）或下周（紧随其后的自然周）——本周计划 COMPLETED 时填下周，否则填本周；用户可调整任意连续日期范围，最多 7 天，不允许超过 7 天；`dailyAvailableMinutes` 缺失按 60 分钟/天。
 2. 读取 `KnowledgePointRepository.states()`、`QuestionRepository.schedulerQuestions()/questionNumbers()/sourcePages()`、`PlanRepository.pendingCoolingOverrides()`（题号与来源页码用于预览标识与打印元数据）。
 3. 调用 `Scheduler.plan(..., dateRange = planStartDate..planEndDate, coolingOverrides = 未消费事件 questionId 集合)`。
 4. 对每个 `PlannedQuestion`：
@@ -142,25 +142,26 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## PlanSession 与本周计划复用（C-097）
 
-- `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED/COMPLETED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。计划窗口由预览页顶部的「本周计划 / 下周计划」选项决定（2026-11-26 用户要求），预览页不自行顺延到更远的周（C-098）。
+- `PlanSession.open(settings)`：先查 `PlanRepository.activePlan(planStartDate, planEndDate)`；存在 GENERATED/PRINTED/COMPLETED 计划时用 `LoadPlanUseCase` 重建 `PrintJob` 与预览，**不生成新计划号**；不存在时才调用 `GeneratePlanUseCase.execute`。计划范围由「打印计划」页底部悬浮栏的日期范围决定（2026-11-27 用户要求，最多 7 天）；预览页不自行顺延到更远的日期（C-098 的“不自动顺延”语义保留，窗口粒度改为用户选择的范围）。
 - `PlanSession.regenerate(settings)`：仅由用户在预览页显式确认后调用；把当前计划号传给 `PlanGenerator.regenerate(settings, previousPlanId)`，新计划保存事务内把旧计划标记为 SUPERSEDED。
 - `LoadPlanUseCase` 只读取 `plan` 头、`plan_page` 与 `plan.renderMeta`/题块几何重建 `PlannedPage`、`RenderableQuestion` 与附件文本；不重新调度、不重新分页。缺元数据/几何时直接失败，不按当前题库猜测。预览的题目标识从 `renderMeta.sourcePage + questionNumber` 重建；推迟卡片从 `plan.deferred` 重建，旧快照缺 `sourcePage` 时仅用 `QuestionRepository.sourcePages()` 做展示兜底（不改写快照、不影响打印）。
 - `GeneratePlanUseCase` 在保存前冻结 `PlanRenderMeta`（题号、来源页、知识点名称、行数、附件数与附件文本）并传入 `PlanDraft`；`weekStartDate/weekEndDate` 取 `PlanningSettings` 的计划窗口。
-- `PlanPreviewViewModel` 首次进入调用 `refreshIfNeeded`（open），从打印页返回复用当前状态；`regenerate()` 才生成新计划号并清空旧打印任务。
+- `PlanPreviewViewModel` 首次进入调用 `refreshIfNeeded`（open），从分享面板返回复用当前状态；`regenerate()` 才生成新计划号并清空旧打印任务。
 
-## 预览默认周与题库变更提示（2026-11-26）
+## 预览默认日期范围与题库变更提示（2026-11-27）
 
-- `PlanSession.activePlan(settings)` 暴露该窗口当前的活动计划（含 `createdAt`）：预览页首次进入时读取本周窗口的计划状态，本周计划 COMPLETED（完成确认）则默认选中「下周计划」，否则默认选中「本周计划」。
-- 打开已有计划时判断题库是否与生成时不同：任一未归档题目在计划 `createdAt` 之后被新增/编辑（`Question.updatedAt` 晚于计划 `createdAt`），或计划中已排入/推迟/告警的题目已不在未归档题库（被归档），则提示「题库已更新，是否重新生成计划？」。确认后走 `regenerate()`；取消则保持当前计划，同一周不再重复询问。
-- 计划只排入当天到期的题目，未到期题目本就不在计划中，因此**不得**用“全部题库 vs 计划题目”的集合差异判断变化，避免每次打开都误报。
+- `PlanSession.activePlan(settings)` 暴露该范围当前的活动计划（含 `createdAt`）：生成页首次进入时读取本周窗口的计划状态，本周计划 COMPLETED（完成确认）则默认填入下一自然周，否则填入今天所在自然周；用户可在日期范围卡中调整起止日期（最多 7 天）。
+- 打开已有计划时判断题库是否与生成时不同：任一未归档题目在计划 `createdAt` 之后被新增/编辑（`Question.updatedAt` 晚于计划 `createdAt`），或计划中已排入/推迟/告警的题目已不在未归档题库（被归档），则提示「题库已更新，是否重新生成计划？」。确认后走 `regenerate()`；取消则保持当前计划，同一日期范围不再重复询问。
+- 计划只排入范围内到期的题目，未到期题目本就不在计划中，因此**不得**用“全部题库 vs 计划题目”的集合差异判断变化，避免每次打开都误报。
 - `StoredPlan.createdAt` 与 `EntrySummary.updatedAt` 只用于该判断；`Question.updatedAt` 仅在用户新建/编辑时更新，打印快照、归档、调度等系统写回不改变它。
+- 生成成功后，页面通过 `PlanDocumentGateway.preview(printJob)` 渲染与分享 PDF 相同的 A4 布局页图，打印稿预览占满页面主体；日期范围与唯一导出操作「分享 PDF」（`share`）位于页面底部悬浮栏，不再提供系统打印页（2026-11-27 用户要求）。
 
 ## 计划完成判定（C-099）
 
 - `PlanStatus.COMPLETED` 由确认提交驱动，不按日期自动判定：当一份计划的所有 `plan_page` 页都已在 `confirmation_decision_log` 中出现，且本次提交没有整题跳过时，`RoomFeedbackRepository.saveDecisions` 在**同一事务**内把计划状态从 GENERATED/PRINTED 迁移为 COMPLETED。
 - 判定比较的是页集合（`plan_page.pageId` ⊆ `confirmation_decision_log.pageId`），不是行数；其他计划或残留日志不会让计划提前完成。
 - 已被显式替代（SUPERSEDED）或已经 COMPLETED 的计划不会被改写；有整题跳过时本次不判定，留待修复后的重试。
-- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：预览页仍能查看/重印已完成计划。首页不再展示本周/下周计划卡，C-100 的“主次区块交换”随计划卡一起移除；计划窗口改由预览页顶部的「本周计划 / 下周计划」选项选择（2026-11-26 用户要求）。
+- `PlanRepository.activePlan` / `PlanDao.activeForWeek` 把 COMPLETED 视为可用计划：生成页仍能查看/重新分享已完成计划。首页不再展示计划卡（2026-11-26），计划范围改由生成页顶部的日期范围卡选择（2026-11-27 用户要求）。
 - 已完成计划允许重印：`savePrintSnapshots` 可为 COMPLETED 写题目快照，但 `markPrinted` 只把 GENERATED/PRINTED 置为 PRINTED，不得把 COMPLETED 降级。
 
 ## ID、时区与默认设置
@@ -168,7 +169,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 - `planId`：6 位 Crockford Base32（去掉 I/L/O/U），由 `PlanIdGenerator` 生成；与 `PlanPage.planId` 冲突时重试 3 次，仍冲突则失败。该格式与全局唯一性是 `PagePlanner` 的前置条件，分页器只拼接、不校验（C-069 方案 A）。
 - `pageId`：`"{planId}-{pageNumber:02d}"`，`pageNumber` 由 `PagePlanner` 从 1 连续分配；超过 99 时 `PagePlanner` 返回 `PaginationResult.Failure(PaginationFailureCode.PLAN_TOO_LONG, ...)`，`GeneratePlanUseCase` 转 `PlanGenerationException`，不写库。
 - 业务日期用 `LocalDate`（设备本地时区）；审计/事件时间用 `Instant`（UTC）。生成计划时记录当时的本地日期；跨时区不自动改写已生成计划。
-- 默认每日可用 60 分钟；用户可按星期调整。`planStartDate` 默认为今天所在自然周的周一，`planEndDate = planStartDate + 6`（周一到周日），允许用户改选任意连续 1～7 天。
+- 默认每日可用 60 分钟；用户可按星期调整。默认日期范围为本周或下周（根据本周计划是否 COMPLETED 选择），允许用户改选任意连续 1～7 天（2026-11-27 用户要求）。
 - 扫描窗口：`planEndDate + 1` 到 `planEndDate + 7`；窗口内为正常批量；超过 `planEndDate + 7` 标 `LATE_BATCH`。扫描早于 `planEndDate` 时，未来日期行只能标 `NOT_REVIEWED`（C-041）。
 - `Question.lastReviewedDate` 由 `ApplyFeedbackUseCase` 在确认后写，规划层不写；规划层只写 `lastScheduledDate`（计划日）。
 

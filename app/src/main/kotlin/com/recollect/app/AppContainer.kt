@@ -46,6 +46,7 @@ import com.recollect.feature.backup.BackupSharer
 import com.recollect.feature.planning.DefaultPlanSession
 import com.recollect.feature.planning.GeneratePlanUseCase
 import com.recollect.feature.planning.LoadPlanUseCase
+import com.recollect.feature.planning.PlanDocumentGateway
 import com.recollect.feature.planning.PlanSession
 import com.recollect.feature.print.AndroidKnowledgeTextMeasurer
 import com.recollect.feature.print.PlanPdfSharer
@@ -69,9 +70,7 @@ import com.recollect.scan.usecase.ScanPageUseCase
 import com.recollect.scheduler.DefaultScheduler
 import com.recollect.scheduler.Scheduler
 import java.time.Clock
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 
 /**
@@ -89,9 +88,6 @@ class AppContainer(context: Context) {
 
     /** 业务时钟；ViewModel 只用它取“今天”，不持有 Context。 */
     val clock: Clock = Clock.systemDefaultZone()
-
-    /** 打印快照回写等短任务的进程级作用域。 */
-    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** 计划页到打印页的内存交接；进程重建后需重新生成计划。 */
     val printPlanSession = PrintPlanSession()
@@ -120,6 +116,18 @@ class AppContainer(context: Context) {
 
     /** 周计划 PDF 的系统分享（微信、QQ 等）；与备份分享同一套 `FileProvider`（R-03）。 */
     val planPdfSharer: PlanPdfSharer by lazy { AndroidPlanPdfSharer(applicationContext) }
+
+    /**
+     * 「生成计划」页的打印稿预览与分享（2026-11-27 用户要求）。
+     * 与分享 PDF 使用同一份 A4 布局；页面内实时渲染、唯一操作是分享。
+     */
+    val planDocumentGateway: PlanDocumentGateway by lazy {
+        AndroidPlanDocumentGateway(
+            context = applicationContext,
+            pdfSharer = planPdfSharer,
+            snapshotWriter = printSnapshotWriter,
+        )
+    }
 
     /** 覆盖式导入：解析、校验与单事务恢复都在 data:room，app 层只负责装配。 */
     val databaseImporter: DatabaseImporter by lazy {

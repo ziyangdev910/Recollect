@@ -172,11 +172,13 @@ class PlanPreviewViewModelTest {
     }
 
     @Test
-    fun `selecting the next week loads a different week window`() = runBlocking {
+    fun `selecting a new date range reopens that range and caps it at seven days`() = runBlocking {
         val requestedStarts = mutableListOf<LocalDate>()
+        val requestedEnds = mutableListOf<LocalDate>()
 
         fun planned(settings: PlanningSettings): PlanGenerationOutcome.Planned {
             requestedStarts += settings.planStartDate
+            requestedEnds += settings.planEndDate
             return PlanGenerationOutcome.Planned(
                 printJob = PrintJob(
                     planId = "ABC123",
@@ -205,17 +207,18 @@ class PlanPreviewViewModelTest {
         val viewModel = PlanPreviewViewModel(
             session = session,
             clock = clock,
-            settingsFactory = { week, today -> week.settingsFor(today) },
         )
 
         viewModel.refresh()
-        assertEquals(PlanWeek.CURRENT, viewModel.week)
+        assertEquals(currentWeekSettings(today).planStartDate, viewModel.startDate)
         val currentStart = requestedStarts.single()
 
-        viewModel.selectWeek(PlanWeek.NEXT)
+        viewModel.selectRange(currentStart.plusWeeks(1), currentStart.plusWeeks(2))
 
-        assertEquals(PlanWeek.NEXT, viewModel.week)
-        assertEquals(2, requestedStarts.size, "切换周必须重新打开该窗口的计划")
+        assertEquals(currentStart.plusWeeks(1), viewModel.startDate)
+        // 最多 7 天：结束日被收回到开始日 +6 天。
+        assertEquals(currentStart.plusWeeks(1).plusDays(6), viewModel.endDate)
+        assertEquals(2, requestedStarts.size, "切换日期范围必须重新打开该范围的计划")
         assertEquals(currentStart.plusWeeks(1), requestedStarts.last())
         assertTrue(viewModel.state is PlanPreviewUiState.Content)
     }
@@ -307,7 +310,8 @@ class PlanPreviewViewModelTest {
                 outcome = plannedOutcome(questionIds = listOf("q1")),
             ),
             clock = clock,
-            initialWeek = PlanWeek.CURRENT,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
             currentQuestionBank = {
                 mapOf(
                     "q1" to planCreatedAt.minusSeconds(60),
@@ -330,7 +334,8 @@ class PlanPreviewViewModelTest {
                 outcome = plannedOutcome(questionIds = listOf("q1")),
             ),
             clock = clock,
-            initialWeek = PlanWeek.CURRENT,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
             // q2 未到期、本就不在计划里：不能因此误报“题库已更新”。
             currentQuestionBank = {
                 mapOf(
@@ -354,7 +359,8 @@ class PlanPreviewViewModelTest {
                 outcome = plannedOutcome(questionIds = listOf("q1")),
             ),
             clock = clock,
-            initialWeek = PlanWeek.CURRENT,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
             currentQuestionBank = {
                 mapOf("q2" to planCreatedAt.minusSeconds(60))
             },
@@ -374,7 +380,8 @@ class PlanPreviewViewModelTest {
                 outcome = plannedOutcome(questionIds = listOf("q1")),
             ),
             clock = clock,
-            initialWeek = PlanWeek.CURRENT,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
             currentQuestionBank = {
                 mapOf("q1" to now.plusSeconds(60))
             },
@@ -394,12 +401,17 @@ class PlanPreviewViewModelTest {
                 outcome = plannedOutcome(questionIds = listOf("q1")),
             ),
             clock = clock,
-            initialWeek = null,
+            initialStartDate = null,
+            initialEndDate = null,
         )
 
         viewModel.refreshIfNeeded()
 
-        assertEquals(PlanWeek.NEXT, viewModel.week, "本周已完成确认时默认进入下周计划")
+        assertEquals(
+            nextWeekSettings(today).planStartDate,
+            viewModel.startDate,
+            "本周已完成确认时默认填入下周日期范围",
+        )
     }
 
     @Test
@@ -411,12 +423,17 @@ class PlanPreviewViewModelTest {
                 outcome = plannedOutcome(questionIds = listOf("q1")),
             ),
             clock = clock,
-            initialWeek = null,
+            initialStartDate = null,
+            initialEndDate = null,
         )
 
         viewModel.refreshIfNeeded()
 
-        assertEquals(PlanWeek.CURRENT, viewModel.week, "本周未完成确认时默认进入本周计划")
+        assertEquals(
+            currentWeekSettings(today).planStartDate,
+            viewModel.startDate,
+            "本周未完成确认时默认填入本周日期范围",
+        )
     }
 
     private fun storedPlan(createdAt: Instant, status: PlanStatus): StoredPlan = StoredPlan(

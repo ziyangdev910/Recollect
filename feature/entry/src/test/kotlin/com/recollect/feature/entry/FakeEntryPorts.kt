@@ -107,14 +107,42 @@ internal class FakeCategoryRepository(
 
     override suspend fun categories(): List<KnowledgeCategoryItem> = stored.toList()
 
-    override suspend fun create(name: String): KnowledgeCategoryItem {
+    override suspend fun create(
+        name: String,
+        coverTone: Int?,
+        coverIcon: String?,
+    ): KnowledgeCategoryItem {
         val item = KnowledgeCategoryItem(
             id = "cat-${stored.size + 1}",
             name = name.trim(),
             linkedKnowledgePointCount = 0,
+            coverTone = coverTone,
+            coverIcon = coverIcon,
         )
         stored += item
         return item
+    }
+
+    override suspend fun updateDetails(
+        categoryId: String,
+        name: String,
+        coverTone: Int?,
+        coverIcon: String?,
+    ) {
+        val index = stored.indexOfFirst { it.id == categoryId }
+        stored[index] = stored[index].copy(
+            name = name.trim(),
+            coverTone = coverTone,
+            coverIcon = coverIcon,
+        )
+    }
+
+    override suspend fun reorder(categoryIds: List<String>) {
+        val byId = stored.associateBy { it.id }
+        stored.clear()
+        categoryIds.mapNotNull { byId[it] }.forEachIndexed { index, item ->
+            stored += item.copy(sortOrder = index)
+        }
     }
 
     override suspend fun rename(categoryId: String, name: String) {

@@ -69,7 +69,6 @@ class DemoBankAssetTest {
                 DemoTourStop.FORM_SAVE,
                 DemoTourStop.ENTRY_PLAN,
                 DemoTourStop.PLAN_PRINT,
-                DemoTourStop.PRINT_DEMO,
                 DemoTourStop.SCAN_SHEET,
                 DemoTourStop.SCAN_CONFIRM,
                 DemoTourStop.CONFIRM,
@@ -80,7 +79,7 @@ class DemoBankAssetTest {
         assertEquals(DemoTourStop.HOME_RECORD, DemoTourStop.WELCOME.next())
         assertEquals("欢迎使用拾知！", DemoTourStop.WELCOME.title)
         assertEquals(
-            listOf(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4, 4, 5),
+            listOf(1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 4, 5),
             stops.map { it.stage.number },
         )
         assertEquals("第 1 / 5 步", DemoTourStop.FORM_NUMBER.stage.progressLabel)

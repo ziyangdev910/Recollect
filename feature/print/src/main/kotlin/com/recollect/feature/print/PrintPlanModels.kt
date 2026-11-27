@@ -53,28 +53,10 @@ fun PrintPlanInput.printSnapshots(): List<PrintedQuestionSnapshot> =
     ).printSnapshots()
 
 /**
- * 调起系统打印的端口；实现持有 Context/PrintManager，ViewModel 只依赖本接口（R-03）。
- *
- * C-094 方案 B：文档写出成功只通过 [onDocumentGenerated] 把快照交给 ViewModel，
- * 由用户在页面上确认「已打印」后再调用 [PrintSnapshotWriter] 落库。
- */
-fun interface PrintLauncher {
-    fun launch(
-        input: PrintPlanInput,
-        onDocumentGenerated: (List<PrintedQuestionSnapshot>) -> Unit,
-    ): PrintLaunchResult
-}
-
-sealed interface PrintLaunchResult {
-    data object Launched : PrintLaunchResult
-    data class Failed(val message: String) : PrintLaunchResult
-}
-
-/**
  * 导出并分享 PDF 的端口；实现持有 `Context`/`FileProvider`/`Intent`，ViewModel 只依赖本接口（R-03）。
  *
- * 分享成功后由 `PrintPlanViewModel` 走与「已打印」相同的快照回写路径：
- * 分享出去的 PDF 就是可回读的打印稿，计划标记为 PRINTED，首页标签随之更新。
+ * 分享成功后由 app 层的 `PlanDocumentGateway` 走与「已打印」相同的快照回写路径：
+ * 分享出去的 PDF 就是可回读的打印稿，计划标记为 PRINTED。
  */
 fun interface PlanPdfSharer {
     suspend fun share(input: PrintPlanInput): PdfShareOutcome

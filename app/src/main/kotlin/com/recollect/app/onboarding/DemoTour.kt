@@ -31,7 +31,6 @@ internal enum class DemoTarget {
     FORM_SAVE,
     ENTRY_PLAN,
     PLAN_PRINT,
-    PRINT_DEMO,
     SCAN_SHEET,
     SCAN_CONFIRM,
 
@@ -71,7 +70,7 @@ internal enum class DemoTourStop(
     HOME_RECORD(
         stage = DemoTourStage.RECORD,
         title = "第 1 步 · 录入题目",
-        body = "点击高亮的「录入题目」，我们用一道初中数学示例题开始。",
+        body = "点击高亮的「录入」，我们用一道初中数学示例题开始。",
         mode = DemoStopMode.WAIT_TAP,
         target = DemoTarget.HOME_RECORD,
     ),
@@ -120,24 +119,17 @@ internal enum class DemoTourStop(
     ENTRY_PLAN(
         stage = DemoTourStage.PLAN,
         title = "第 2 步 · 生成计划",
-        body = "题目已进入题库。点击高亮的「预览计划」，让拾知按知识点到期情况排出一份计划。",
+        body = "题目已进入题库。点击高亮的「打印」，让拾知按知识点到期情况排出一份计划。",
         mode = DemoStopMode.WAIT_TAP,
         target = DemoTarget.ENTRY_PLAN,
     ),
     PLAN_PRINT(
-        stage = DemoTourStage.PLAN,
-        title = "计划已生成",
-        body = "到期的知识点已被排进本周计划。点击高亮的「打印计划」，查看 A4 打印稿。",
-        mode = DemoStopMode.WAIT_TAP,
-        target = DemoTarget.PLAN_PRINT,
-    ),
-    PRINT_DEMO(
         stage = DemoTourStage.PRINT,
         title = "第 3 步 · 打印计划",
-        body = "演示时不连接打印机，点击「使用演示打印稿」继续。",
+        body = "计划已生成，可打印的 PDF 已经渲染在页面里。演示时不连接打印机，点击「演示打印稿」继续。",
         mode = DemoStopMode.WAIT_TAP,
-        target = DemoTarget.PRINT_DEMO,
-        tip = "真实使用时，点击这里会打开系统打印面板；同时提供借助微信等平台分享PDF打印稿的功能。",
+        target = DemoTarget.PLAN_PRINT,
+        tip = "真实使用时，点击「分享 PDF」把打印稿发送到微信、QQ 等平台，打印后即可拍照回读。",
     ),
     SCAN_SHEET(
         stage = DemoTourStage.SCAN,
@@ -150,7 +142,7 @@ internal enum class DemoTourStop(
     SCAN_CONFIRM(
         stage = DemoTourStage.SCAN,
         title = "识别完成",
-        body = "拾知读出了填涂结果。点击「进入确认页」，逐题校对这份计划的识别结果。",
+        body = "拾知读出了填涂结果。点击「完成，进入确认页」，逐题校对这份计划的识别结果。",
         mode = DemoStopMode.WAIT_TAP,
         target = DemoTarget.SCAN_CONFIRM,
     ),

@@ -42,6 +42,73 @@ class EntryViewModel(
     /** 新建/编辑保存后置位；返回题库页时据此静默更新列表，而不重置滚动位置。 */
     private var needsRefresh = false
 
+    /**
+     * 当前错题本对应的知识点分类（null 为「全部错题」）。
+     *
+     * 错题本页的筛选条件放在 ViewModel：进入编辑页再返回时页面分支会重建，
+     * 但 ViewModel 由 `AppRoot` 持有，搜索与筛选条件因此不会丢失；只有切换到
+     * 另一个分类错题本时才重置（2026-11-27 用户要求）。
+     */
+    var notebookCategoryId by mutableStateOf<String?>(null)
+        private set
+
+    var sourceFilter by mutableStateOf<String?>(null)
+        private set
+
+    var knowledgeFilter by mutableStateOf<String?>(null)
+        private set
+
+    /** true 为「最近录入」，false 为「最早录入」。 */
+    var newestFirst by mutableStateOf(true)
+        private set
+
+    /** true 时按知识点分类分组（「知识分类」选项卡），false 为「全部错题」。 */
+    var groupByKnowledge by mutableStateOf(false)
+        private set
+
+    /** 搜索框是否展开；同样跨编辑页保留。 */
+    var searchVisible by mutableStateOf(false)
+        private set
+
+    /** 切换错题本；分类变化时清空搜索与筛选，同一错题本内保留。 */
+    fun selectNotebook(categoryId: String?) {
+        if (notebookCategoryId == categoryId) return
+        notebookCategoryId = categoryId
+        sourceFilter = null
+        knowledgeFilter = null
+        newestFirst = true
+        groupByKnowledge = false
+        searchVisible = false
+        updateQuery("")
+    }
+
+    fun updateSourceFilter(value: String?) {
+        sourceFilter = value
+    }
+
+    fun updateKnowledgeFilter(value: String?) {
+        knowledgeFilter = value
+    }
+
+    fun toggleTimeOrder() {
+        newestFirst = !newestFirst
+    }
+
+    fun updateGroupByKnowledge(value: Boolean) {
+        groupByKnowledge = value
+    }
+
+    fun toggleSearchVisible() {
+        searchVisible = !searchVisible
+    }
+
+    fun clearFilters() {
+        sourceFilter = null
+        knowledgeFilter = null
+        newestFirst = true
+        updateQuery("")
+    }
+
     fun clearActionError() {
         actionError = null
     }

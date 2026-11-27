@@ -367,6 +367,33 @@ object RecollectMigrations {
         }
     }
 
+
+    /**
+     * v14 → v15：给知识点分类增加可选封面（2026-11-27 用户要求）。
+     *
+     * 两列都可空；旧分类保持 null，界面按分类名称派生默认封面。
+     */
+    val MIGRATION_14_15: Migration = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `knowledge_category` ADD COLUMN `coverTone` INTEGER")
+            db.execSQL("ALTER TABLE `knowledge_category` ADD COLUMN `coverIcon` TEXT")
+        }
+    }
+
+
+    /**
+     * v15 → v16：给知识点分类增加排序字段（2026-11-27 用户要求）。
+     *
+     * 旧分类统一为 0，`all()` 仍按 `createdAt` 兜底，保持原有展示顺序。
+     */
+    val MIGRATION_15_16: Migration = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `knowledge_category` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -381,5 +408,7 @@ object RecollectMigrations {
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
+        MIGRATION_14_15,
+        MIGRATION_15_16,
     )
 }

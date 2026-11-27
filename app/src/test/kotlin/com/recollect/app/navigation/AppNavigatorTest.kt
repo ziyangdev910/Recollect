@@ -16,14 +16,14 @@ class AppNavigatorTest {
 
         assertFalse(navigator.canPop)
 
-        navigator.push(AppRoute.Entry)
+        navigator.push(AppRoute.Entry(categoryId = "cat-math", categoryName = "数学"))
         assertTrue(navigator.canPop)
         navigator.push(AppRoute.Settings)
         assertTrue(navigator.canPop)
         assertEquals(AppRoute.Settings, navigator.current)
 
         assertTrue(navigator.pop())
-        assertEquals(AppRoute.Entry, navigator.current)
+        assertEquals(AppRoute.Entry(categoryId = "cat-math", categoryName = "数学"), navigator.current)
         assertTrue(navigator.canPop)
 
         assertTrue(navigator.pop())

@@ -9,7 +9,7 @@ import com.recollect.data.room.entity.KnowledgeCategory
 @Dao
 interface KnowledgeCategoryDao {
 
-    @Query("SELECT * FROM knowledge_category ORDER BY createdAt ASC, id ASC")
+    @Query("SELECT * FROM knowledge_category ORDER BY sortOrder ASC, createdAt ASC, id ASC")
     suspend fun all(): List<KnowledgeCategory>
 
     @Query("SELECT * FROM knowledge_category WHERE id = :id")

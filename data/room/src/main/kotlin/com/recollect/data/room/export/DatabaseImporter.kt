@@ -337,6 +337,11 @@ class RoomDatabaseImporter(
             id = row.string("id", context),
             name = row.string("name", context),
             createdAt = row.instant("createdAt", context),
+            // v15 之前的备份没有封面；null 表示按分类名称派生默认封面。
+            coverTone = row.optionalInt("coverTone", context),
+            coverIcon = row.optionalString("coverIcon", context),
+            // v16 之前的备份没有排序；0 让 all() 回退到 createdAt。
+            sortOrder = row.optionalInt("sortOrder", context) ?: 0,
         )
     }
 

@@ -124,6 +124,8 @@ flowchart TD
 
 > Room 是全集，其余是子集；转换函数在 `data/room`，`core/model` 只放纯 DTO/枚举与 `KnowledgeRowsCodec`（含调度 DTO，C-046 方案 A、C-053）；id 唯一与关联完整由 `data/room` 保证（C-056）。`source_tag`（schema v9）只服务录入时的来源候选，`Question.sourcePage` 保存标签名称；来源不参与调度、分页与打印布局。`knowledge_category`（schema v13）只服务知识点的分类展示与筛选，不参与调度、分页与打印布局；分类随备份导出/导入，旧备份缺失时补默认 11 个分类并把知识点归入「语文」。`Question.updatedAt` 与 `KnowledgePoint.updatedAt`（schema v14）只服务题库与知识点列表的倒序展示，不参与调度、分页与打印布局；迁移时旧数据回填为 `createdAt`，旧备份缺失时同样回退为 `createdAt`。Print 消费 `PrintJob`，Confirm 消费 `PendingFeedback`/`ConfirmedDecision`，不自行查库分页。
 
+> 2026-11-27 界面重做不改变上述数据形态：`EntrySummary` 新增 `categoryIds`（由关联知识点的 `categoryId` 投影，供首页错题本计数与错题本页按分类筛选，不参与调度、分页与打印）；首页与错题本页只消费该投影。`PlanDocumentGateway`（`feature:planning`）只定义打印稿预览/分享/演示回写端口，app 层 `AndroidPlanDocumentGateway` 将 `PrintJob` 映射为 `PrintPlanInput`，复用 `PrintLayoutBuilder`/`PrintRenderer` 渲染页图并复用 `AndroidPlanPdfSharer`/`PrintSnapshotWriter` 分享与回写；页面与 ViewModel 不直接持有 `Context`（R-03）。
+
 ## 5. 最小状态集
 
 - **每个知识点 10 个**：`id`、`currentTier`、`continuousScore`、`nextDueDate`、`dormant`、`activeQuestionCount`（以上 `plan()` 读取）+ `effectiveFeedbackCount`、`difficulty`、`halfLifeDays`、`createdAt`（仅状态更新 UseCase 读取，不参与候选/装箱）。

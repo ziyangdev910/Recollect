@@ -1,5 +1,6 @@
 package com.recollect.data.room.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -20,6 +21,22 @@ data class KnowledgeCategory(
     @PrimaryKey val id: String,
     val name: String,
     val createdAt: Instant,
+    /**
+     * 首页错题本卡片的封面配色下标（0..5）；null 表示按分类顺序/名称自动派生。
+     * schema v15 新增（2026-11-27 用户要求）。
+     */
+    val coverTone: Int? = null,
+    /**
+     * 首页错题本卡片的封面图标 key（如 `book`、`calculator`）；null 表示按分类名称自动派生。
+     * 存字符串而不是资源 id，保证跨构建与备份稳定。
+     */
+    val coverIcon: String? = null,
+    /**
+     * 首页错题本卡片的拖拽排序；越小越靠前（schema v16，2026-11-27 用户要求）。
+     * 旧分类默认 0，排序回退到 `createdAt`，不改变原有顺序。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val sortOrder: Int = 0,
 )
 
 /**

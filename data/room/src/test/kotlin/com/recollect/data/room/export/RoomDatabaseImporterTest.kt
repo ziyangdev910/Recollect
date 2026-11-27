@@ -179,7 +179,7 @@ class RoomDatabaseImporterTest {
     )
 
     private fun backupJson(
-        schemaVersion: Int = 14,
+        schemaVersion: Int = 16,
         withHistory: Boolean = false,
         withCategories: Boolean = true,
     ): String {

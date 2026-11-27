@@ -58,6 +58,9 @@ import com.recollect.data.room.migration.RecollectMigrations
  * 旧知识点统一归入「语文」，空库创建时种入 11 个默认分类（2026-11-23 用户要求）；
  * v14 给题目与知识点增加 `updatedAt`（用户修改时间），题库与知识点列表据此倒序展示
  * （2026-11-24 用户要求）。旧数据的 `updatedAt` 回填为 `createdAt`。
+ * v15 给知识点分类增加可选封面 `coverTone`/`coverIcon`，供首页错题本卡片与「添加分类」页使用
+ * （2026-11-27 用户要求）；旧分类保持 null，由界面按名称自动派生封面。
+ * v16 给知识点分类增加 `sortOrder`，支持首页长按拖动调整错题本顺序（2026-11-27 用户要求）。
  * 不允许 destructive migration。
  */
 @Database(
@@ -127,7 +130,7 @@ abstract class RecollectDatabase : RoomDatabase() {
 
     companion object {
         /** Room schema 版本；备份 JSON 的 `roomSchemaVersion` 直接取此值（backup.md）。 */
-        const val SCHEMA_VERSION = 14
+        const val SCHEMA_VERSION = 16
 
         const val DATABASE_NAME = "recollect.db"
 

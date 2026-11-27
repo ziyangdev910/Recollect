@@ -607,6 +607,17 @@
 - **用户可见变化**：本周最后一页确认提交后，首页主卡直接变成“下周计划”，通栏按钮是“生成/预览并打印下周计划”；本周计划退到卡片下半部分，带“已完成”胶囊，仍可点“预览本周计划”。工作日提前完成同样会切换；周末但本周未读完时不会切换，首页仍提醒本周补回读。
 - **遗留**：只有本周 COMPLETED 才切换；若本周未回读完成，即使日期已到周末也不切换，这是刻意保留“提醒补回读”的行为。
 
+### C-101 界面重做与计划窗口改为日期范围（已裁决：按用户 2026-11-27 要求执行）
+
+- **关联决策/规格**：C-097、C-098；`docs/specs/app.md`、`planning.md`、`entry.md`。
+- **用户要求**：首页按参考图重做为知识点分类错题本网格；错题本页按参考图重排并去掉「复习」；「生成计划」页改为可选日期范围（默认按本周/下周判断填入），删除独立打印页、页面内渲染 PDF 并只保留分享；扫描回读页改为全屏多页录入。
+- **裁决**：C-097 的“范围内已有计划即复用、显式重新生成才替代旧计划”保持不变，窗口粒度由固定“本周/下周”两个选项改为用户选择的连续日期范围（最多 7 天）；默认范围仍按本周计划 COMPLETED → 下周、否则本周填入。删除系统打印与「已打印」确认，分享 PDF 即视为文档已导出并按原快照路径写回 pageId/QR。
+- **落地位置**：`app/.../HomeScreen.kt`、`AppRoot.kt`、`navigation/AppNavigator.kt`；`feature/entry/.../EntryScreen.kt`；`feature/planning/.../PlanPreviewViewModel.kt`、`PlanPreviewScreen.kt`、`PlanDocumentGateway.kt`；`app/.../AndroidPlanDocumentGateway.kt`、`PlanPrintMapping.kt`；`feature/scan/.../ScanScreen.kt`、`ScanCameraPane.kt`；`data:room` 的 `EntrySummary.categoryIds`。
+- **测试/验证**：`./gradlew test`、`assembleDebug verifyCorePurity`、`:app:assembleRelease` 通过；`emulator-5554` 验证首页、错题本、生成计划日期选择与 PDF 预览/分享、扫描页与交互式演示全流程；截图 `evidence/screens/2026-11-27-*.png`。
+- **规格同步**：已回写 `docs/specs/app.md`、`planning.md`、`entry.md`、`CLAUDE.md`、`docs/architecture/overview.md`、`docs/prompts.md`。
+- **用户可见变化**：首页变成分类错题本网格和固定的「录入 / 打印计划 / 扫描回读」；错题本内可按来源/知识点/录入时间筛选，底部只剩录入与打印；生成计划时可以自选最多 7 天的范围，直接在页面里看到打印稿并分享 PDF；扫描页为全屏取景、可连续拍多页后一次进入确认。
+- **遗留**：系统打印入口删除；如后续恢复，需要重新引入打印页或新的打印端口。生成页 PDF 页图由同一布局直接渲染为位图，不经过 `PdfRenderer`，视觉与分享 PDF 一致。
+
 ## 已裁决但待验证（非新冲突）
 
 - C-050 的 `Double` 内部算术与 `Float` 边界转换，需在 `ApplyFeedbackUseCase` 实现后用 U-01～U-19 验证。

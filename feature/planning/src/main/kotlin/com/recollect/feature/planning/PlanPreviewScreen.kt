@@ -1,12 +1,14 @@
 package com.recollect.feature.planning
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,19 +20,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,163 +43,242 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.launch
 
 /**
- * PlanPreview 页面（app.md）：显示计划页与 overflow/文字提示。
+ * 「打印计划」页（app.md）：选择计划日期范围 → 生成计划 → 页面内实时渲染可打印 PDF → 分享。
  *
- * 只展示中文标签与 `message`，不展示分页内部代码（C-065 方案 B）；
- * 空计划显示可读空态并保留提示（C-060/C-061/C-062）。
- *
- * 2026-11-25 排版调整：顶部固定「计划号 + 打印」主卡；每日安排改成「日期栏 + 题目标签」的时间轴卡片，
- * 被推迟与需要处理的问题用语义色分区，生成入口降到页面底部，避免与打印主操作争夺注意力。
+ * 2026-11-27 用户要求：不再区分「本周计划 / 下周计划」两个固定窗口，改为可选日期范围
+ * （最多 7 天），本周/下周的判断只用于填入默认范围；删除独立打印页，只保留分享 PDF。
+ * 计划日期与分享按钮固定在页面底部悬浮栏，打印稿预览占满其余页面。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlanPreviewScreen(
     viewModel: PlanPreviewViewModel,
-    onPrint: () -> Unit = {},
-    /** 首次演示用：报告「打印计划」按钮的位置，供黑底蒙层聚焦。 */
-    onPrintButtonBounds: (Rect) -> Unit = {},
+    /** 分享面板返回且快照写入成功；由 app 层退回首页并提示「打印完成」。 */
+    onShareCompleted: () -> Unit = {},
+    /** 首次演示：不分享 PDF，改用已生成的演示打印稿继续回读。 */
+    demoMode: Boolean = false,
+    onDemoPrint: () -> Unit = {},
+    /** 首次演示用：报告打印/分享主按钮的位置，供黑底蒙层聚焦。 */
+    onPrimaryActionBounds: (Rect) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var showRegenerateConfirm by remember { mutableStateOf(false) }
-    // 只在本次计划实例首次进入时加载/生成；从打印页返回预览时复用原计划，不刷新计划号。
+    var showDateRangeDialog by remember { mutableStateOf(false) }
+    // 只在本次计划实例首次进入时加载/生成；返回本页时复用原计划，不刷新计划号。
     LaunchedEffect(viewModel) { viewModel.refreshIfNeeded() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        WeekSelector(
-            selected = viewModel.week,
-            onSelect = { week -> scope.launch { viewModel.selectWeek(week) } },
-        )
-
-        when (val state = viewModel.state) {
-            PlanPreviewUiState.Loading -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "正在按知识点到期情况生成计划…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+    // 分享面板会暂时让应用失焦；回到本页后再根据分享结果决定是否退回首页。
+    var shareReturned by remember { mutableStateOf(false) }
+    var completed by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && viewModel.shareLaunched) {
+                shareReturned = true
             }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(shareReturned, viewModel.shareRecorded) {
+        if (!completed && shareReturned && viewModel.shareRecorded) {
+            completed = true
+            onShareCompleted()
+        }
+    }
 
-            is PlanPreviewUiState.Content -> {
-                PlanSummaryCard(
-                    planId = state.planId,
-                    pageCount = state.pages.size,
-                    questionCount = state.pages.sumOf { it.questionLabels.size },
-                    onPrint = onPrint,
-                    onPrintButtonBounds = onPrintButtonBounds,
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "每日安排",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "共 ${state.pages.size} 页",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                // Column 会给非 weighted 子项无界高度；LazyColumn 必须拿到有界高度。
-                LazyColumn(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // 打印稿预览一直铺到页面底部，底部只叠加透明的悬浮胶囊栏。
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (val state = viewModel.state) {
+                PlanPreviewUiState.Loading -> Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    items(state.pages, key = { it.pageNumber }) { page ->
-                        PlanPageCard(page)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "正在按知识点到期情况生成计划…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    if (state.deferred.isNotEmpty()) {
-                        item { DeferredList(state.deferred) }
+                }
+
+                is PlanPreviewUiState.Content -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "打印稿预览",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "计划 ${state.planId} · ${state.pages.size} 页 · " +
+                                "${state.pages.sumOf { it.questionLabels.size }} 题",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    if (state.warnings.isNotEmpty()) {
-                        item { WarningList(state.warnings) }
+
+                    // Column 会给非 weighted 子项无界高度；LazyColumn 必须拿到有界高度。
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        // 列表末尾留出悬浮胶囊栏的高度，最后一张打印稿可以滚到胶囊栏上方。
+                        contentPadding = PaddingValues(bottom = 84.dp),
+                    ) {
+                        when (val pdf = state.pdfPreview) {
+                            PlanPdfPreviewState.Loading, PlanPdfPreviewState.Unavailable -> item {
+                                PdfPreviewPlaceholder()
+                            }
+
+                            is PlanPdfPreviewState.Failed -> item {
+                                PdfPreviewFailed(pdf.message)
+                            }
+
+                            is PlanPdfPreviewState.Ready -> items(
+                                pdf.pages,
+                                key = { it.hashCode() },
+                            ) { page ->
+                                PdfPageImage(page)
+                            }
+                        }
+                        if (state.deferred.isNotEmpty()) {
+                            item { DeferredList(state.deferred) }
+                        }
+                        if (state.warnings.isNotEmpty()) {
+                            item { WarningList(state.warnings) }
+                        }
+                        item {
+                            // 显式重新生成：新计划号会替代该范围的当前计划；默认路径只复用已有计划。
+                            TextButton(
+                                onClick = { showRegenerateConfirm = true },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = REGENERATE_PLAN_LABEL,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
-                    item {
-                        // 显式重新生成：新计划号会替代该窗口的当前计划；默认路径只复用已有计划。
-                        TextButton(
-                            onClick = { showRegenerateConfirm = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = viewModel.week.regenerateLabel,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                }
+
+                is PlanPreviewUiState.Empty -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    EmptyPlanCard(state.message)
+                    DeferredList(state.deferred)
+                    WarningList(state.warnings)
+                    TextButton(
+                        onClick = { showRegenerateConfirm = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = REGENERATE_PLAN_LABEL,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                is PlanPreviewUiState.Error -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = state.error.message,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                    if (state.error.retryable) {
+                        Button(onClick = { scope.launch { viewModel.refresh() } }) {
+                            Text("重试")
                         }
                     }
                 }
             }
-
-            is PlanPreviewUiState.Empty -> Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                EmptyPlanCard(state.message)
-                DeferredList(state.deferred)
-                WarningList(state.warnings)
-                TextButton(
-                    onClick = { showRegenerateConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = viewModel.week.regenerateLabel,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            is PlanPreviewUiState.Error -> Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = state.error.message,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
-                )
-                if (state.error.retryable) {
-                    Button(onClick = { scope.launch { viewModel.refresh() } }) {
-                        Text("重试")
-                    }
-                }
-            }
         }
+
+        // 透明悬浮胶囊栏：日期起止 + 上箭头与分享按钮浮在打印稿之上，不占页面底部的矩形区域。
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            viewModel.shareMessage?.let { message ->
+                MessageCard(message = message, isError = viewModel.shareMessageIsError)
+            }
+            PlanBottomBar(
+                startDate = viewModel.startDate,
+                endDate = viewModel.endDate,
+                onEditDates = { showDateRangeDialog = true },
+                contentReady = viewModel.state is PlanPreviewUiState.Content,
+                sharing = viewModel.sharing,
+                demoMode = demoMode,
+                onShare = { scope.launch { viewModel.sharePdf() } },
+                onDemoPrint = onDemoPrint,
+                onPrimaryActionBounds = onPrimaryActionBounds,
+            )
+        }
+    }
+
+    if (showDateRangeDialog) {
+        PlanDateRangeDialog(
+            startDate = viewModel.startDate,
+            endDate = viewModel.endDate,
+            onDismiss = { showDateRangeDialog = false },
+            onConfirm = { start, end ->
+                showDateRangeDialog = false
+                scope.launch { viewModel.selectRange(start, end) }
+            },
+        )
     }
 
     // 打开已有计划时，若题库在计划生成后发生变化，先询问是否重新生成。
@@ -224,7 +307,7 @@ fun PlanPreviewScreen(
     if (showRegenerateConfirm) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
-            title = { Text(viewModel.week.regenerateLabel) },
+            title = { Text(REGENERATE_PLAN_LABEL) },
             text = {
                 Text(
                     "将生成新的计划号。旧计划仍可回读，但不再是最新计划；" +
@@ -248,151 +331,311 @@ fun PlanPreviewScreen(
     }
 }
 
-/** 顶部周选择栏：本周/下周各自加载或生成对应窗口的计划。 */
+/** 透明悬浮胶囊栏：排版与首页底部三个按钮一致，左侧日期范围 + 上箭头，右侧分享/演示操作。 */
 @Composable
-private fun WeekSelector(
-    selected: PlanWeek,
-    onSelect: (PlanWeek) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        PlanWeek.entries.forEach { week ->
-            FilterChip(
-                selected = week == selected,
-                onClick = { onSelect(week) },
-                label = { Text(week.tabLabel) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-/** 计划摘要卡：计划号、页数/题数与唯一的打印主操作。 */
-@Composable
-private fun PlanSummaryCard(
-    planId: String,
-    pageCount: Int,
-    questionCount: Int,
-    onPrint: () -> Unit,
-    onPrintButtonBounds: (Rect) -> Unit,
+private fun PlanBottomBar(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    onEditDates: () -> Unit,
+    contentReady: Boolean,
+    sharing: Boolean,
+    demoMode: Boolean,
+    onShare: () -> Unit,
+    onDemoPrint: () -> Unit,
+    onPrimaryActionBounds: (Rect) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
-        border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.18f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Column {
-                Text(
-                    text = "计划 $planId",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = colors.onPrimaryContainer,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "共 $pageCount 页 · $questionCount 题",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onPrimaryContainer.copy(alpha = 0.75f),
-                )
-            }
-            Button(
-                onClick = onPrint,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .onGloballyPositioned {
-                        onPrintButtonBounds(it.boundsInRoot())
-                    },
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = colors.primary,
-                    contentColor = colors.onPrimary,
-                ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_print),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("打印计划")
-            }
-        }
-    }
-}
-
-/** 单页安排：左侧日期栏，右侧题目标识。 */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PlanPageCard(page: PlanPreviewPage) {
-    val colors = MaterialTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+    // 与首页底部一致的悬浮胶囊：胶囊自身悬浮于打印稿之上，周围保持透明，
+    // 内部两个操作项使用无填充的图标 + 文字样式。
+    Surface(
+        shape = CircleShape,
+        color = colors.surface,
         border = BorderStroke(1.dp, colors.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shadowElevation = 10.dp,
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.Top,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                modifier = Modifier.width(44.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = page.date.dayOfMonth.toString(),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = colors.primary,
-                )
-                Text(
-                    text = "${page.date.monthValue}月",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                )
-                Text(
-                    text = weekdayLabel(page.date.dayOfWeek),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                )
-            }
-            Box(
+            // 日期起止 + 向上的小箭头：提示点击此处可以修改计划日期范围。
+            Row(
                 modifier = Modifier
-                    .width(1.dp)
-                    .height(56.dp)
-                    .background(colors.outlineVariant),
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .clip(CircleShape)
+                    .clickable(onClick = onEditDates)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Column {
                     Text(
-                        text = "第 ${page.pageNumber} 页",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "${page.questionLabels.size} 题",
+                        text = "计划日期",
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.onSurfaceVariant,
                     )
+                    Text(
+                        text = "${startDate.monthValue}/${startDate.dayOfMonth} – " +
+                            "${endDate.monthValue}/${endDate.dayOfMonth}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                    )
                 }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    painter = painterResource(R.drawable.ic_expand_less),
+                    contentDescription = "修改日期",
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            PillDivider()
+            val primaryEnabled = if (demoMode) contentReady else contentReady && !sharing
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(
+                        enabled = primaryEnabled,
+                        onClick = { if (demoMode) onDemoPrint() else onShare() },
+                    )
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .onGloballyPositioned { onPrimaryActionBounds(it.boundsInRoot()) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    painter = painterResource(
+                        if (demoMode) R.drawable.ic_print else R.drawable.ic_share,
+                    ),
+                    contentDescription = null,
+                    tint = if (primaryEnabled) {
+                        colors.onSurface
+                    } else {
+                        colors.onSurfaceVariant.copy(alpha = 0.4f)
+                    },
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = when {
+                        demoMode -> "演示打印稿"
+                        sharing -> "生成中…"
+                        else -> "分享 PDF"
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (primaryEnabled) {
+                        colors.onSurface
+                    } else {
+                        colors.onSurfaceVariant.copy(alpha = 0.4f)
+                    },
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(18.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
+
+/**
+ * 修改计划日期范围：日历直接嵌在「计划日期」卡片里，点「开始」或「结束」切换当前编辑的一端，
+ * 再在下方日历中点选日期；确认后重新打开该范围的计划（最多 7 天）。
+ */
+@Composable
+private fun PlanDateRangeDialog(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalDate, LocalDate) -> Unit,
+) {
+    var draftStart by remember(startDate) { mutableStateOf(startDate) }
+    var draftEnd by remember(endDate) { mutableStateOf(endDate) }
+    var activeField by remember { mutableStateOf(DateField.START) }
+    val days = ChronoUnit.DAYS.between(draftStart, draftEnd).toInt() + 1
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "计划日期",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "共 $days 天（最多 7 天）",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    page.questionLabels.forEach { label ->
-                        QuestionLabelChip(label)
+                    DateFieldButton(
+                        label = "开始",
+                        date = draftStart,
+                        modifier = Modifier.weight(1f),
+                        selected = activeField == DateField.START,
+                        onClick = { activeField = DateField.START },
+                    )
+                    Text(
+                        text = "至",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    DateFieldButton(
+                        label = "结束",
+                        date = draftEnd,
+                        modifier = Modifier.weight(1f),
+                        selected = activeField == DateField.END,
+                        onClick = { activeField = DateField.END },
+                    )
+                }
+
+                InlinePlanCalendar(
+                    activeField = activeField,
+                    startDate = draftStart,
+                    endDate = draftEnd,
+                    onStartChange = { date ->
+                        // 修改开始日时保持原来的天数，超过 7 天则收回。
+                        val span = ChronoUnit.DAYS.between(draftStart, draftEnd)
+                        draftStart = date
+                        draftEnd = date.plusDays(span.coerceIn(0, MAX_PLAN_DAYS - 1))
+                    },
+                    onEndChange = { date ->
+                        draftEnd = date.coerceIn(
+                            draftStart,
+                            draftStart.plusDays(MAX_PLAN_DAYS - 1),
+                        )
+                    },
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) { Text("取消") }
+                    TextButton(
+                        onClick = { onConfirm(draftStart, draftEnd) },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) { Text("确定") }
+                }
+            }
+        }
+    }
+}
+
+/** 卡片内嵌日历：按当前编辑的一端限制可选范围，并在选中日期时直接更新草稿。 */
+@Composable
+private fun InlinePlanCalendar(
+    activeField: DateField,
+    startDate: LocalDate,
+    endDate: LocalDate,
+    onStartChange: (LocalDate) -> Unit,
+    onEndChange: (LocalDate) -> Unit,
+) {
+    val today = LocalDate.now()
+    // 开始日可在近一个月到未来两个月内选；结束日被限制在开始日 + 6 天内（范围最多 7 天）。
+    val selectableFirst = if (activeField == DateField.START) {
+        today.minusDays(31)
+    } else {
+        startDate
+    }
+    val selectableLast = if (activeField == DateField.START) {
+        today.plusDays(62)
+    } else {
+        startDate.plusDays(MAX_PLAN_DAYS - 1)
+    }
+    val selectedDate = if (activeField == DateField.START) startDate else endDate
+    // 切换编辑的一端时回到该日期所在月份。
+    var displayMonth by remember(activeField) { mutableStateOf(YearMonth.from(selectedDate)) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "${displayMonth.year}年${displayMonth.monthValue}月",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            MonthArrow(
+                label = "‹",
+                enabled = displayMonth > YearMonth.from(selectableFirst),
+                onClick = { displayMonth = displayMonth.minusMonths(1) },
+            )
+            MonthArrow(
+                label = "›",
+                enabled = displayMonth < YearMonth.from(selectableLast),
+                onClick = { displayMonth = displayMonth.plusMonths(1) },
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf("日", "一", "二", "三", "四", "五", "六").forEach { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        val firstOfMonth = displayMonth.atDay(1)
+        val leadingBlanks = firstOfMonth.dayOfWeek.value % 7
+        val days = (1..displayMonth.lengthOfMonth()).map { displayMonth.atDay(it) }
+        val cells = List(leadingBlanks) { null as LocalDate? } +
+            days.map { it as LocalDate? }
+        val padded = cells + List((7 - cells.size % 7) % 7) { null }
+        padded.chunked(7).forEach { week ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(34.dp),
+            ) {
+                week.forEach { date ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (date != null) {
+                            DayCell(
+                                date = date,
+                                selected = date == selectedDate,
+                                today = date == today,
+                                enabled = !date.isBefore(selectableFirst) &&
+                                    !date.isAfter(selectableLast),
+                                onClick = {
+                                    if (activeField == DateField.START) {
+                                        onStartChange(date)
+                                    } else {
+                                        onEndChange(date)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -401,28 +644,162 @@ private fun PlanPageCard(page: PlanPreviewPage) {
 }
 
 @Composable
-private fun QuestionLabelChip(label: String) {
+private fun MonthArrow(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = colors.surfaceVariant,
-        contentColor = colors.onSurfaceVariant,
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (enabled) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.3f),
         )
     }
 }
 
-/**
- * 被推迟题目：让“首页显示 N 题、计划只有 N-1 题”有可读解释。
- *
- * 只展示中文标签与说明，不暴露调度器内部原因代码。
- */
+@Composable
+private fun DayCell(
+    date: LocalDate,
+    selected: Boolean,
+    today: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .then(
+                if (today && !selected) {
+                    Modifier.border(1.dp, colors.primary, CircleShape)
+                } else {
+                    Modifier
+                },
+            )
+            .background(if (selected) colors.primary else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = date.dayOfMonth.toString(),
+            style = MaterialTheme.typography.labelLarge,
+            color = when {
+                selected -> colors.onPrimary
+                enabled -> colors.onSurface
+                else -> colors.onSurfaceVariant.copy(alpha = 0.35f)
+            },
+        )
+    }
+}
+
+private enum class DateField { START, END }
+
+@Composable
+private fun DateFieldButton(
+    label: String,
+    date: LocalDate,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) colors.primaryContainer else colors.surfaceVariant,
+        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+        border = if (selected) {
+            BorderStroke(1.dp, colors.primary.copy(alpha = 0.35f))
+        } else {
+            null
+        },
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) colors.primary else colors.onSurfaceVariant,
+            )
+            Text(
+                text = "${date.monthValue}月${date.dayOfMonth}日 ${weekdayLabel(date.dayOfWeek)}",
+                style = MaterialTheme.typography.titleSmall,
+                color = if (selected) colors.onPrimaryContainer else colors.onSurface,
+            )
+        }
+    }
+}
+
+/** 单页打印稿：与分享 PDF 使用同一份布局，白底纸张样式。 */
+@Composable
+private fun PdfPageImage(page: ImageBitmap) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Image(
+            bitmap = page,
+            contentDescription = "打印稿预览页",
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun PdfPreviewPlaceholder() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "正在渲染可打印 PDF…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PdfPreviewFailed(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(14.dp),
+        )
+    }
+}
+
+/** 被推迟题目：让“计划里少排了哪些题、为什么”有可读解释。 */
 @Composable
 private fun DeferredList(deferred: List<PlanPreviewDeferred>) {
     if (deferred.isEmpty()) return
@@ -530,6 +907,25 @@ private fun EmptyPlanCard(message: String) {
                 color = colors.onSecondaryContainer.copy(alpha = 0.85f),
             )
         }
+    }
+}
+
+/** 分享结果：成功用主色容器，失败用错误容器。 */
+@Composable
+private fun MessageCard(message: String, isError: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = if (isError) colors.errorContainer else colors.primaryContainer,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (isError) colors.onErrorContainer else colors.onPrimaryContainer,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+        )
     }
 }
 

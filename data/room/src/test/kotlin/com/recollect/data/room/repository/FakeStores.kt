@@ -444,7 +444,7 @@ internal class FakeQuestionLookupRepository(private val stores: InMemoryStores) 
 internal class FakeKnowledgeCategoryDao(private val stores: InMemoryStores) : KnowledgeCategoryDao {
     override suspend fun all(): List<KnowledgeCategory> =
         stores.knowledgeCategories.values.sortedWith(
-            compareBy<KnowledgeCategory> { it.createdAt }.thenBy { it.id },
+            compareBy<KnowledgeCategory> { it.sortOrder }.thenBy { it.createdAt }.thenBy { it.id },
         )
 
     override suspend fun byId(id: String): KnowledgeCategory? = stores.knowledgeCategories[id]

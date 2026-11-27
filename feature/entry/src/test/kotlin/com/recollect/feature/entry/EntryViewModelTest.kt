@@ -4,6 +4,7 @@ import com.recollect.common.UiState
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -59,6 +60,37 @@ class EntryViewModelTest {
         viewModel.refreshIfNeeded()
         assertEquals(2, repository.summaryCalls, "保存后应静默刷新一次")
         assertEquals(2, (viewModel.state as UiState.Content).data.questions.size)
+    }
+
+    @Test
+    fun `filters survive the edit screen and reset when switching notebooks`() {
+        val viewModel = EntryViewModel(FakeEntryRepository())
+
+        viewModel.selectNotebook("cat-math")
+        viewModel.updateQuery("T-1")
+        viewModel.updateSourceFilter("作业本")
+        viewModel.updateKnowledgeFilter("函数")
+        viewModel.updateGroupByKnowledge(true)
+        viewModel.toggleSearchVisible()
+        viewModel.toggleTimeOrder()
+
+        // 进入编辑页再返回：错题本未变，搜索与筛选必须保留。
+        viewModel.selectNotebook("cat-math")
+        assertEquals("T-1", viewModel.query)
+        assertEquals("作业本", viewModel.sourceFilter)
+        assertEquals("函数", viewModel.knowledgeFilter)
+        assertTrue(viewModel.groupByKnowledge)
+        assertTrue(viewModel.searchVisible)
+        assertFalse(viewModel.newestFirst)
+
+        // 切换到另一个错题本：全部重置为默认视图。
+        viewModel.selectNotebook("cat-english")
+        assertEquals("", viewModel.query)
+        assertNull(viewModel.sourceFilter)
+        assertNull(viewModel.knowledgeFilter)
+        assertFalse(viewModel.groupByKnowledge)
+        assertFalse(viewModel.searchVisible)
+        assertTrue(viewModel.newestFirst)
     }
 
     @Test

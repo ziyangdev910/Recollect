@@ -62,6 +62,59 @@ class KnowledgeCategoryRepositoryTest {
     }
 
     @Test
+    fun `create keeps the selected cover`() = runBlocking {
+        val repository = repository(Fixture())
+
+        val created = repository.create(
+            name = "数学",
+            coverTone = 2,
+            coverIcon = "calculator",
+        )
+
+        assertEquals(2, created.coverTone)
+        assertEquals("calculator", created.coverIcon)
+        val stored = repository.categories().single { it.id == created.id }
+        assertEquals(2, stored.coverTone)
+        assertEquals("calculator", stored.coverIcon)
+    }
+
+    @Test
+    fun `reorder rewrites sort order and rejects incomplete sets`() = runBlocking {
+        val repository = repository(Fixture())
+        val first = repository.create("语文")
+        val second = repository.create("数学")
+        val third = repository.create("英语")
+
+        repository.reorder(listOf(third.id, first.id, second.id))
+
+        assertEquals(
+            listOf("英语", "语文", "数学"),
+            repository.categories().map { it.name },
+        )
+        assertFailsWith<IllegalArgumentException> {
+            repository.reorder(listOf(first.id))
+        }
+    }
+
+    @Test
+    fun `update details changes name and cover`() = runBlocking {
+        val repository = repository(Fixture())
+        val created = repository.create("数学")
+
+        repository.updateDetails(
+            categoryId = created.id,
+            name = "高等数学",
+            coverTone = 3,
+            coverIcon = "bolt",
+        )
+
+        val updated = repository.categories().single { it.id == created.id }
+        assertEquals("高等数学", updated.name)
+        assertEquals(3, updated.coverTone)
+        assertEquals("bolt", updated.coverIcon)
+    }
+
+    @Test
     fun `duplicate category names are rejected`() = runBlocking {
         val fixture = Fixture()
         val repository = repository(fixture)

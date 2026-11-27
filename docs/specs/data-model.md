@@ -12,7 +12,7 @@
 
 ## 实体
 
-### KnowledgeCategory（知识点分类，schema v13）
+### KnowledgeCategory（知识点分类，schema v13 / 封面 v15）
 
 ```kotlin
 @Entity(
@@ -22,7 +22,10 @@
 data class KnowledgeCategory(
     @PrimaryKey val id: String,
     val name: String,
-    val createdAt: Instant              // 兼作展示顺序：默认分类按用户给定顺序，后建分类排在最末
+    val createdAt: Instant,             // 兼作展示顺序：默认分类按用户给定顺序，后建分类排在最末
+    val coverTone: Int? = null,         // 首页错题本卡片底色下标（0..5）；null = 按顺序自动派生（v15）
+    val coverIcon: String? = null,      // 首页错题本卡片图标 key；null = 按分类名自动派生（v15）
+    val sortOrder: Int = 0              // 首页卡片顺序，越小越靠前（v16）
 )
 ```
 
@@ -31,6 +34,7 @@ data class KnowledgeCategory(
 - 名称唯一（去首尾空格后比较）；允许新增、重命名、删除。仍有知识点归属（含休眠知识点）的分类不可删除；分类删除后 id 不复用。
 - 空库创建时由 `RoomDatabase` 的 `onCreate` 回调种入默认分类；v12→v13 迁移同样种入，`createdAt` 逐项递增以保持给定顺序。
 - 随备份导出/导入（`knowledgeCategories`）；旧备份缺少分类时补默认 11 个分类，并把缺失/失效分类的知识点归入「语文」。
+- v15 新增可选封面：`coverTone`/`coverIcon` 由「添加分类」页写入，首页据此渲染错题本卡片；旧分类保持 null，由界面按分类名称自动派生，不改变原有外观。图标以稳定字符串 key 持久化，不存资源 id。
 
 ### KnowledgePoint
 
@@ -401,6 +405,8 @@ data class KnowledgeNumberSequence(
 - schema v12：新增 `app_settings` 单行表（`id INTEGER PRIMARY KEY`、`dailyReviewMinutes INTEGER NOT NULL`），迁移时写入 `(1, 60)`。
 - schema v13：新增 `knowledge_category` 表（`id` 主键、`name` 唯一索引、`createdAt`），迁移时按给定顺序种入 11 个默认分类；`knowledge_point` 增加 `categoryId TEXT NOT NULL DEFAULT 'cat-chinese'`，现有知识点因此全部归入「语文」，无需逐行回填。分类下仍有知识点时不得删除分类。
 - schema v14：`question` 与 `knowledge_point` 增加 `updatedAt INTEGER NOT NULL DEFAULT 0`，迁移时回填为各自的 `createdAt`；仅用于题库与知识点列表的倒序展示，不参与调度、分页与打印布局（2026-11-24 用户要求）。
+- schema v15：`knowledge_category` 增加可空列 `coverTone INTEGER` 与 `coverIcon TEXT`；旧分类保持 null，由首页按分类名称自动派生封面（2026-11-27 用户要求）。
+- schema v16：`knowledge_category` 增加 `sortOrder INTEGER NOT NULL DEFAULT 0`；首页长按「调整顺序」后写回 0..N-1，`all()` 按 `sortOrder, createdAt, id` 排序，旧分类的 0 仍回退到创建顺序（2026-11-27 用户要求）。
 - `plan_page` 增加 `knowledgeRows` 列：迁移时默认空数组 `[]`；旧稿没有快照时不得按当前关联 + `number` 升序重算，应视为「无快照」并在回读/确认时阻断，提示重新生成计划并按新稿打印，同时记录警告（C-072 方案 A）。
 - 导出 JSON 的范围以 `backup.md` 的白名单为准，不再表述为「全部实体」；`PendingFeedback`、`ScanSession` 与 `CoolingOverrideEvent` 不导出（C-031/C-040/C-008）。
 

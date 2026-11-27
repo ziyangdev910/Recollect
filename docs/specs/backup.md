@@ -105,7 +105,7 @@ data class ImportReport(
 - 导出：`IDLE → PICK_TARGET → EXPORTING → DONE/ERROR`；SAF 选择目标文件；失败保留本地数据。
 - 2026-11-22 用户要求的「导出并分享数据库」入口：Home「设置」面板中的「导出数据库」等宽入口打开
   悬浮在首页上方的导出弹窗（同日按用户要求与导入图标互换：导出显示原导入的上传图形；2026-11-26 用户要求
-  把入口从顶部导航栏移入设置面板，与「导入数据库」「使用引导」「关于」并排各占四分之一宽度，并把独立的
+  把入口从顶部导航栏移入首页设置面板（2026-11-27 起进一步收进顶栏「更多」菜单），并把独立的
   `AppRoute.Backup` 页面改为设置风格弹窗——Material 3 `AlertDialog`，样式同「每日复习时长」设置弹窗，
   底部「关闭」与系统返回键均可关闭，不进入路由返回栈，不显示返回图标）；弹窗状态机
   `IDLE → EXPORTING → EXPORTED/ERROR`。`EXPORTED` 展示文件名、大小与
@@ -120,7 +120,7 @@ data class ImportReport(
   - `IMPORTING` 单事务；失败回滚并显示错误。
 - 2026-11-22 用户要求的「导入数据库」入口与实现状态机：`IDLE → READING → CONFIRMING → IMPORTING → SUCCESS/ERROR`。
   - 入口一：Home「设置」面板中的「导入数据库」等宽入口（与「导出数据库」相邻，右侧图标与导出互换，
-    显示原导出的下载图形；2026-11-22 用户要求；2026-11-26 用户要求从顶部导航栏移入设置面板），
+    显示原导出的下载图形；2026-11-22 用户要求；2026-11-26 从顶部导航栏移入设置面板；2026-11-27 收进顶栏「更多」菜单），
     点击后用 SAF `ACTION_OPEN_DOCUMENT` 选择文件。
   - 入口二：系统「用其他方式打开」json 文件时显示「导入到拾知数据库」（`ACTION_VIEW` +
     `application/json`）；拾知直接读取该 content URI，跳过选择文件的步骤。该入口导入成功并显示
@@ -168,7 +168,7 @@ data class ImportReport(
 - 不做自动合并；如果用户需要合并，后续另行设计（本版不做）。
 - 恢复 `KnowledgePoint.number` 前先建墓碑/序列表；若备份内编号重复或与墓碑冲突，导入失败并列出冲突编号，不得静默重编号。
 - 恢复后校正 `KnowledgeNumberSequence.lastIssued = max(lastIssued, max(number), max(tombstone.number))`。
-- 分类：备份内 `knowledgeCategories` 为空或不含「语文」但存在旧知识点时，补默认分类；知识点 `categoryId` 缺失或指向不存在的分类时归入「语文」（2026-11-23 用户要求）。
+- 分类：备份内 `knowledgeCategories` 为空或不含「语文」但存在旧知识点时，补默认分类；知识点 `categoryId` 缺失或指向不存在的分类时归入「语文」（2026-11-23 用户要求）。v15 起分类行可带 `coverTone`/`coverIcon`，旧备份缺少时保持 null 并由界面按分类名派生封面。
 
 ### 逐字段恢复矩阵（C-023）
 
@@ -184,7 +184,7 @@ data class ImportReport(
 | KnowledgePoint | `dormant` | 恢复 | 按 `activeQuestionCount == 0` 重算 |
 | KnowledgePoint | `categoryId` | 恢复 | 恢复；缺失或指向不存在分类时归入「语文」 |
 | KnowledgePoint | `updatedAt` | 恢复 | 恢复；缺失时回退为 `createdAt`（2026-11-24 用户要求） |
-| KnowledgeCategory | `id` / `name` / `createdAt` | 恢复 | 恢复；旧备份缺失时补默认 11 个分类 |
+| KnowledgeCategory | `id` / `name` / `createdAt` / `sortOrder` / 可选 `coverTone` / `coverIcon` | 恢复（`sortOrder` 缺失为 0；封面缺失为 null，由界面按分类名派生） | 恢复；旧备份缺失时补默认 11 个分类 |
 | Question | `id` / `questionNumber` / `estimatedReviewMinutes` / `createdAt` | 恢复 | 恢复；缺失时 `estimatedReviewMinutes = 15` |
 | Question | `archived` / `archivedAt` | 恢复 | 恢复 |
 | Question | `pageId` / `qrPayload` | 恢复 | 清空为 `""`；旧打印稿失效 |

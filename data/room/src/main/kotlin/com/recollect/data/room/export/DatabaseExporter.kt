@@ -111,11 +111,18 @@ class RoomDatabaseExporter(
         )
     }
 
-    private fun com.recollect.data.room.entity.KnowledgeCategory.toJson() = jsonObject(
-        "id" to id.asJsonString(),
-        "name" to name.asJsonString(),
-        "createdAt" to createdAt.asJsonInstant(),
-    )
+    private fun com.recollect.data.room.entity.KnowledgeCategory.toJson(): JsonValue {
+        val fields = mutableListOf<Pair<String, JsonValue>>(
+            "id" to id.asJsonString(),
+            "name" to name.asJsonString(),
+            "createdAt" to createdAt.asJsonInstant(),
+            "sortOrder" to sortOrder.asJsonNumber(),
+        )
+        // v15：可选封面；旧分类为 null 时不写这两个字段，保持与旧备份一致。
+        coverTone?.let { fields += "coverTone" to it.asJsonNumber() }
+        coverIcon?.let { fields += "coverIcon" to it.asJsonString() }
+        return jsonObject(*fields.toTypedArray())
+    }
 
     private fun com.recollect.data.room.entity.KnowledgePoint.toJson() = jsonObject(
         "id" to id.asJsonString(),

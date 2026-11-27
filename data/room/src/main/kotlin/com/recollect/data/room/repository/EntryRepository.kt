@@ -62,6 +62,11 @@ data class EntrySummary(
     val knowledgeNames: List<String>,
     /** 关联标签 id，与 [knowledgeNames] 同序（按编号升序）；用于编辑回填。 */
     val knowledgePointIds: List<String> = emptyList(),
+    /**
+     * 本题关联知识点所属的分类 id（去重）；用于首页「知识点分类错题本」计数
+     * 与题库页按知识分类分组（2026-11-27 用户要求）。
+     */
+    val categoryIds: Set<String> = emptySet(),
     val estimatedReviewMinutes: Int = EntryDraft.DEFAULT_REVIEW_MINUTES,
     /** 是否已打印过复习稿；编辑时提示旧稿失效。 */
     val printed: Boolean = false,

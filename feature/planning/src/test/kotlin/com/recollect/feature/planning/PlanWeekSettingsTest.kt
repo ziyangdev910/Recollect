@@ -52,11 +52,12 @@ class PlanWeekSettingsTest {
     }
 
     @Test
-    fun `planWeek maps to the matching window`() {
+    fun `week helpers still provide the default date range`() {
         val sunday = LocalDate.of(2026, 11, 22)
-        assertEquals(currentWeekSettings(sunday), PlanWeek.CURRENT.settingsFor(sunday))
-        assertEquals(nextWeekSettings(sunday), PlanWeek.NEXT.settingsFor(sunday))
-        assertEquals("重新生成本周计划", PlanWeek.CURRENT.regenerateLabel)
-        assertEquals("重新生成下周计划", PlanWeek.NEXT.regenerateLabel)
+        assertEquals(7, currentWeekSettings(sunday).let { it.planEndDate.toEpochDay() - it.planStartDate.toEpochDay() + 1 })
+        assertEquals(7, nextWeekSettings(sunday).let { it.planEndDate.toEpochDay() - it.planStartDate.toEpochDay() + 1 })
+        // 2026-11-27 用户要求：日期范围可选，但最多 7 天，保持周计划的容量语义。
+        assertEquals(7L, MAX_PLAN_DAYS)
+        assertEquals("重新生成计划", REGENERATE_PLAN_LABEL)
     }
 }

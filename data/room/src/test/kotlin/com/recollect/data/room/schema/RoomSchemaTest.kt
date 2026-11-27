@@ -22,7 +22,7 @@ class RoomSchemaTest {
 
     private val database: Map<String, JsonValue> by lazy {
         val dir = System.getProperty("room.schema.dir")?.let(::File) ?: File("schemas")
-        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/14.json")
+        val file = dir.resolve("com.recollect.data.room.RecollectDatabase/16.json")
         assertTrue(
             file.isFile,
             "Room schema 未生成：${file.absolutePath}。需要 @Database(exportSchema = true) 与 KSP room.schemaLocation。",
@@ -39,7 +39,7 @@ class RoomSchemaTest {
 
     @Test
     fun schemaMatchesDataModel() {
-        assertEquals(14, database.required("version").asInt(), "schema 版本")
+        assertEquals(16, database.required("version").asInt(), "schema 版本")
 
         assertEquals(
             setOf(
@@ -70,6 +70,9 @@ class RoomSchemaTest {
                 "id" to Column("TEXT", true),
                 "name" to Column("TEXT", true),
                 "createdAt" to Column("INTEGER", true),
+                "coverTone" to Column("INTEGER", false),
+                "coverIcon" to Column("TEXT", false),
+                "sortOrder" to Column("INTEGER", true),
             ),
             primaryKey = listOf("id"),
             autoGenerate = false,

@@ -36,6 +36,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -107,16 +109,12 @@ import com.recollect.feature.entry.SourceTagLibraryViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
 import com.recollect.feature.planning.PlanPreviewUiState
 import com.recollect.feature.planning.PlanPreviewViewModel
+import com.recollect.feature.planning.PlanningSettings
 import com.recollect.feature.planning.PrintJob
-import com.recollect.feature.planning.currentWeekSettings
-import com.recollect.feature.planning.settingsFor
 import com.recollect.feature.progress.ReviewProgressAggregator
 import com.recollect.feature.progress.ReviewProgressScreen
 import com.recollect.feature.progress.ReviewProgressViewModel
-import com.recollect.feature.print.AndroidPrintLauncher
 import com.recollect.feature.print.PrintPlanInput
-import com.recollect.feature.print.PrintPlanScreen
-import com.recollect.feature.print.PrintPlanViewModel
 import com.recollect.scan.ui.DemoScanSheet
 import com.recollect.scan.ui.ScanScreen
 import com.recollect.scan.ui.ScanViewModel
@@ -193,22 +191,27 @@ fun AppRoot(
         }
     }
 
+    // 首页「调整顺序」模式：顶栏右侧改为「完成」，返回键先退出编辑而不是结束应用。
+    var homeEditing by remember(container) { mutableStateOf(false) }
+
     // 根路由时不拦截系统返回，交给 Activity 默认结束进程级页面。
     BackHandler(enabled = canPop) {
         navigator.pop()
     }
 
+    // 首页调整顺序时，返回键先退出编辑模式。
+    BackHandler(enabled = current == AppRoute.Home && homeEditing) {
+        homeEditing = false
+    }
+    LaunchedEffect(current) {
+        if (current != AppRoute.Home) homeEditing = false
+    }
+
     // 演示期间吞掉返回键，避免用户误退出自动漫游（跳过着陆点由卡片按钮提供）。
     BackHandler(enabled = demoTourActive) { /* 只拦截，不处理 */ }
 
-    // R-03：PrintManager 封装在 launcher 中；ViewModel 只依赖 PrintLauncher 端口。
+    // R-03：打印稿生成/分享封装在端口实现中；ViewModel 只依赖 PlanDocumentGateway。
     val printContext = LocalContext.current
-    val printLauncher = remember(printContext, container) {
-        AndroidPrintLauncher(
-            context = printContext,
-            scope = container.applicationScope,
-        )
-    }
     // 开源许可证全文打包在 assets；只在首次组合时读取一次。
     val licenseTexts = remember(printContext) { readLicenseTexts(printContext) }
 
@@ -219,6 +222,8 @@ fun AppRoot(
     // 2026-11-26 用户要求：导出数据库改为悬浮在首页之上的弹窗，用本地状态控制显示，
     // 不进入路由返回栈；关闭（返回图标/系统返回）即销毁本次 ViewModel 状态。
     var showBackupDialog by remember(container) { mutableStateOf(false) }
+    // 2026-11-27 用户要求：设置入口收进首页顶栏「更多」菜单，每日复习时长弹窗在此层管理。
+    var showDailyMinutesDialog by remember(container) { mutableStateOf(false) }
 
     // 导入数据库：两个入口（导航栏「导入数据库」与系统「用其他方式打开」）
     // 共用同一个状态机；覆盖确认、失败提示与成功 Toast 都由它驱动。
@@ -266,16 +271,19 @@ fun AppRoot(
         PlanPreviewViewModel(
             session = container.planSession,
             clock = container.clock,
-            // 默认周由预览页读取本周计划状态自动决定：本周已完成确认则进入下周。
-            initialWeek = null,
-            settingsFactory = { week, today ->
-                week.settingsFor(today).withDailyMinutes(dailyReviewMinutes)
+            // 默认日期范围由预览页读取本周计划状态自动决定：本周已完成确认则填入下周。
+            initialStartDate = null,
+            initialEndDate = null,
+            settingsFactory = { start, end, _ ->
+                PlanningSettings(planStartDate = start, planEndDate = end)
+                    .withDailyMinutes(dailyReviewMinutes)
             },
             currentQuestionBank = {
                 container.entryRepository.summaries()
                     .associate { it.questionId to it.updatedAt }
             },
             onPrintJobAvailable = { container.printPlanSession.update(it) },
+            documentGateway = container.planDocumentGateway,
         )
     }
     val settingsScope = rememberCoroutineScope()
@@ -294,15 +302,10 @@ fun AppRoot(
         }
     }
 
-    // 首页概览：本周计划状态与题目/知识点/到期统计（计划窗口的选择已移到计划预览页）。
-    // 任一统计读取失败只显示“—”，不阻塞首页入口（预览计划仍可用）。
-    var thisWeekPlanStatus by remember(container) { mutableStateOf<PlanStatus?>(null) }
-    var questionCount by remember(container) { mutableStateOf<Int?>(null) }
-    var knowledgeCount by remember(container) { mutableStateOf<Int?>(null) }
-    var overdueCount by remember(container) { mutableStateOf<Int?>(null) }
-    var dueWithinWeekCount by remember(container) { mutableStateOf<Int?>(null) }
+    // 首页错题本：全部错题数量 + 每个知识点分类的题目数（2026-11-27 用户要求）。
+    var homeCategories by remember(container) { mutableStateOf<List<HomeCategory>?>(null) }
 
-    // 首页每次重新获得焦点（回到该路由或应用从后台恢复）都重读，打印/确认完成后的状态才会立即反映。
+    // 首页每次重新获得焦点（回到该路由或应用从后台恢复）都重读，录入/导入后的数量才会立即反映。
     val lifecycleOwner = LocalLifecycleOwner.current
     var homeFocusRevision by remember(container) { mutableStateOf(0) }
     DisposableEffect(lifecycleOwner, current) {
@@ -322,24 +325,21 @@ fun AppRoot(
         // 导入会覆盖设置，homeRefreshKey 变化时一并重读。
         dailyReviewMinutes = quietly { container.settingsRepository.dailyReviewMinutes() }
             ?: AppSettings.DEFAULT_DAILY_REVIEW_MINUTES
-        val today = LocalDate.now(container.clock)
-        val thisWeek = currentWeekSettings(today)
-        thisWeekPlanStatus = quietly {
-            container.planRepository.activePlan(
-                weekStart = thisWeek.planStartDate,
-                weekEnd = thisWeek.planEndDate,
-            )?.status
+        val summaries = quietly { container.entryRepository.summaries() }
+        val categories = quietly { container.knowledgeCategoryRepository.categories() }
+        if (categories != null) {
+            homeCategories = categories.map { category ->
+                HomeCategory(
+                    id = category.id,
+                    name = category.name,
+                    questionCount = summaries?.count { category.id in it.categoryIds } ?: 0,
+                    coverTone = category.coverTone,
+                    coverIcon = category.coverIcon,
+                )
+            }
         }
-        questionCount = quietly { container.entryRepository.summaries().size }
-        knowledgeCount = quietly { container.knowledgePointLibraryRepository.tags().size }
-        val stats = quietly {
-            val rows = container.reviewProgressRepository.questions()
-            if (rows.isEmpty()) null else ReviewProgressAggregator.build(rows, today).stats
-        }
-        overdueCount = stats?.overdueQuestions
-        dueWithinWeekCount = stats?.dueWithinWeekQuestions
     }
-    // 每次从首页/题库进入预览都重建 ViewModel：默认周由预览页读取本周计划状态决定。
+    // 每次从首页/题库进入预览都重建 ViewModel：默认日期范围由预览页读取本周计划状态决定。
     val openPlanPreview: () -> Unit = {
         planPreviewGeneration += 1
         navigator.push(AppRoute.PlanPreview)
@@ -423,15 +423,22 @@ fun AppRoot(
         }
     }
 
-    // 打印页点「使用演示打印稿」后：用同一份计划渲染已填涂的打印稿，再进入扫描页。
+    // 生成页点「使用演示打印稿」后：记录打印快照，用同一份计划渲染已填涂的打印稿，再进入扫描页。
     val prepareDemoSheetAndOpenScan: () -> Unit = {
-        val input = container.printPlanSession.latest?.toPrintPlanInput()
-        if (input == null) {
+        val job = container.printPlanSession.latest
+        val input = job?.toPrintPlanInput()
+        if (job == null || input == null) {
             demoTourState = DemoTourState.SheetFailed("计划已失效，请返回重新生成计划。")
         } else {
             demoTourState = DemoTourState.PreparingScanSheet
             demoScope.launch {
                 try {
+                    if (!container.planDocumentGateway.recordDemoPrinted(job)) {
+                        demoTourState = DemoTourState.SheetFailed(
+                            "演示打印快照写入失败，请返回重新生成计划。",
+                        )
+                        return@launch
+                    }
                     val sheet = DemoSheetRenderer.render(printContext, input)
                     demoSheet = DemoScanSheet(
                         image = sheet.image,
@@ -574,45 +581,73 @@ fun AppRoot(
         }
         CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
             Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
+                // 扫描页是全屏深色取景，状态栏区域也使用同一底色。
+                containerColor = if (current is AppRoute.Scan) {
+                    Color.Black
+                } else {
+                    MaterialTheme.colorScheme.background
+                },
                 topBar = {
-                    TopAppBar(
-                        title = {
-                            // 2026-11-26 用户要求：仅在首页标题「拾知」的右下角以
-                            // 小字号、非强调色显示版本号；其余页面标题保持原样。
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(
-                                    text = routeTitle(current),
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                if (current == AppRoute.Home) {
-                                    Spacer(modifier = Modifier.width(6.dp))
+                    // 扫描页按 reference/CaptureWindow.png 做全屏取景，不显示应用标题栏。
+                    if (current !is AppRoute.Scan && current !is AppRoute.CategoryCreate) {
+                        TopAppBar(
+                            title = {
+                                // 2026-11-26 用户要求：仅在首页标题「拾知」的右下角以
+                                // 小字号、非强调色显示版本号；其余页面标题保持原样。
+                                Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        text = "v${container.appVersionName}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(bottom = 1.dp),
+                                        text = routeTitle(route = current),
+                                        fontWeight = FontWeight.SemiBold,
                                     )
+                                    if (current == AppRoute.Home) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "v${container.appVersionName}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(bottom = 1.dp),
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.background,
-                            titleContentColor = MaterialTheme.colorScheme.onBackground,
-                            navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                        navigationIcon = {
-                            if (canPop) {
-                                IconButton(onClick = { navigator.pop() }) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_arrow_back),
-                                        contentDescription = "返回",
-                                    )
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.background,
+                                titleContentColor = MaterialTheme.colorScheme.onBackground,
+                                navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                                actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                            navigationIcon = {
+                                if (canPop) {
+                                    IconButton(onClick = { navigator.pop() }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_arrow_back),
+                                            contentDescription = "返回",
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                    )
+                            },
+                            actions = {
+                                if (current == AppRoute.Home) {
+                                    if (homeEditing) {
+                                        TextButton(onClick = { homeEditing = false }) {
+                                            Text("完成")
+                                        }
+                                    } else {
+                                        HomeOverflowMenu(
+                                            dailyReviewMinutes = dailyReviewMinutes,
+                                            onProgress = { navigator.push(AppRoute.Progress) },
+                                            onKnowledge = { navigator.push(AppRoute.KnowledgePoints) },
+                                            onDailyMinutes = { showDailyMinutesDialog = true },
+                                            onImport = { importPicker.launch(IMPORT_MIME_TYPES) },
+                                            onExport = { showBackupDialog = true },
+                                            onGuide = { startDemo(true) },
+                                            onAbout = { navigator.push(AppRoute.About) },
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    }
                 },
             ) { padding ->
                 Box(
@@ -636,16 +671,41 @@ fun AppRoot(
                     ) {
                     when (val route = current) {
                         AppRoute.Home -> HomeScreen(
-                            thisWeekPlanStatus = thisWeekPlanStatus,
-                            questionCount = questionCount,
-                            knowledgeCount = knowledgeCount,
-                            overdueCount = overdueCount,
-                            dueWithinWeekCount = dueWithinWeekCount,
-                            dailyReviewMinutes = dailyReviewMinutes,
-                            onSaveDailyReviewMinutes = saveDailyReviewMinutes,
-                            onEntry = { navigator.push(AppRoute.Entry) },
+                            categories = homeCategories,
+                            editing = homeEditing,
+                            onEditingChange = { homeEditing = it },
+                            onReorder = { ids ->
+                                // 先在内存中按新顺序更新，退出编辑时不会闪回旧顺序；
+                                // 再写库并触发首页重读。
+                                homeCategories = homeCategories?.let { categories ->
+                                    val byId = categories.associateBy { it.id }
+                                    ids.mapNotNull { byId[it] }
+                                }
+                                settingsScope.launch {
+                                    quietly {
+                                        container.knowledgeCategoryRepository.reorder(ids)
+                                    }
+                                    homeRefreshKey++
+                                }
+                            },
+                            onEditCover = { category, cover ->
+                                navigator.push(
+                                    AppRoute.CategoryCreate(
+                                        categoryId = category.id,
+                                        name = category.name,
+                                        coverTone = cover.toneIndex,
+                                        coverIcon = cover.iconKey,
+                                    ),
+                                )
+                            },
+                            onOpenNotebook = { categoryId, name ->
+                                navigator.push(
+                                    AppRoute.Entry(categoryId = categoryId, categoryName = name),
+                                )
+                            },
+                            onAddCategory = { navigator.push(AppRoute.CategoryCreate()) },
                             onCreateQuestion = {
-                                // 首次演示：用户点中「录入题目」后，把聚焦切到预填好的表单。
+                                // 首次演示：用户点中「录入」后，把聚焦切到预填好的表单。
                                 if (demoStop == DemoTourStop.HOME_RECORD) {
                                     setDemoStop(DemoTourStop.FORM_NUMBER)
                                 }
@@ -653,27 +713,25 @@ fun AppRoot(
                                 navigator.push(AppRoute.QuestionEdit(null, fromHome = true))
                             },
                             onCreatePlan = { openPlanPreview() },
-                            onProgress = { navigator.push(AppRoute.Progress) },
                             onScan = { navigator.push(AppRoute.Scan) },
-                            onAbout = { navigator.push(AppRoute.About) },
-                            // 2026-11-26 用户要求：导入/导出数据库从标题栏移到设置区块；
-                            // 导出改为悬浮在首页之上的设置风格弹窗，不进入页面返回栈。
-                            onImport = { importPicker.launch(IMPORT_MIME_TYPES) },
-                            onExport = { showBackupDialog = true },
-                            onGuide = { startDemo(true) },
-                            onRecordCardBounds = {
+                            onRecordButtonBounds = {
                                 if (demoTourActive) reportDemoTarget(DemoTarget.HOME_RECORD, it)
                             },
-                            focusRecordCard = demoTourActive &&
+                            focusRecordButton = demoTourActive &&
                                 demoStop == DemoTourStop.HOME_RECORD,
                         )
 
-                        AppRoute.Entry -> {
+                        is AppRoute.Entry -> {
                             // 导入成功时 markNeedsRefresh 已置位；当前正停留题库页时也立即重读。
                             LaunchedEffect(dataRevision) { entryViewModel.refreshIfNeeded() }
                             EntryScreen(
                                 viewModel = entryViewModel,
                                 listState = entryListState,
+                                categoryId = route.categoryId,
+                                categoryNames = homeCategories
+                                    .orEmpty()
+                                    .associate { it.id to it.name },
+                                onManageKnowledge = { navigator.push(AppRoute.KnowledgePoints) },
                                 onCreatePlan = {
                                     if (demoStop == DemoTourStop.ENTRY_PLAN) {
                                         setDemoStop(DemoTourStop.PLAN_PRINT)
@@ -762,7 +820,7 @@ fun AppRoot(
                                     if (route.fromHome) {
                                         // 从首页进入：强制跳转题库页（替换当前页，
                                         // 返回键回到首页），而不是关闭当前页。
-                                        navigator.replace(AppRoute.Entry)
+                                        navigator.replace(AppRoute.Entry())
                                     } else {
                                         // 从题库页进入：保留原有逻辑，关闭当前页即可。
                                         navigator.pop()
@@ -799,46 +857,47 @@ fun AppRoot(
                             ReviewProgressScreen(viewModel)
                         }
 
+                        is AppRoute.CategoryCreate -> {
+                            val editTarget = route.categoryId?.let { id ->
+                                CategoryEditTarget(
+                                    categoryId = id,
+                                    name = route.name.orEmpty(),
+                                    coverTone = route.coverTone ?: 0,
+                                    coverIcon = route.coverIcon ?: "book",
+                                )
+                            }
+                            val viewModel = remember(container, route) {
+                                CategoryCreateViewModel(
+                                    repository = container.knowledgeCategoryRepository,
+                                    editTarget = editTarget,
+                                )
+                            }
+                            CategoryCreateScreen(
+                                viewModel = viewModel,
+                                onClose = { navigator.pop() },
+                                onCreated = {
+                                    // 分类创建/保存后首页重新读取分类、封面与顺序。
+                                    homeRefreshKey++
+                                    navigator.pop()
+                                },
+                            )
+                        }
+
                         AppRoute.PlanPreview -> PlanPreviewScreen(
                             viewModel = planPreviewViewModel,
-                            onPrint = {
-                                if (demoStop == DemoTourStop.PLAN_PRINT) {
-                                    setDemoStop(DemoTourStop.PRINT_DEMO)
-                                }
-                                navigator.push(AppRoute.Print)
+                            onShareCompleted = {
+                                showPrintCompleteToast(printContext)
+                                navigator.resetTo(AppRoute.Home)
                             },
-                            onPrintButtonBounds = {
+                            // 首次演示不打开系统分享，用「使用演示打印稿」继续回读。
+                            demoMode = demoTourActive,
+                            onDemoPrint = prepareDemoSheetAndOpenScan,
+                            onPrimaryActionBounds = {
                                 if (demoTourActive) {
                                     reportDemoTarget(DemoTarget.PLAN_PRINT, it)
                                 }
                             },
                         )
-
-                        AppRoute.Print -> {
-                            val input = container.printPlanSession.latest?.toPrintPlanInput()
-                            val viewModel = remember(container, input, printLauncher) {
-                                PrintPlanViewModel(
-                                    input = input,
-                                    launcher = printLauncher,
-                                    snapshotWriter = container.printSnapshotWriter,
-                                    pdfSharer = container.planPdfSharer,
-                                )
-                            }
-                            PrintPlanScreen(
-                                viewModel = viewModel,
-                                onPrintCompleted = {
-                                    showPrintCompleteToast(printContext)
-                                    navigator.resetTo(AppRoute.Home)
-                                },
-                                demoMode = demoTourActive,
-                                onDemoPrint = prepareDemoSheetAndOpenScan,
-                                onDemoPrintButtonBounds = {
-                                    if (demoTourActive) {
-                                        reportDemoTarget(DemoTarget.PRINT_DEMO, it)
-                                    }
-                                },
-                            )
-                        }
 
                         AppRoute.Scan -> {
                             val viewModel = remember(container) {
@@ -857,6 +916,7 @@ fun AppRoot(
                                     }
                                     navigator.push(AppRoute.Confirm(sessionId))
                                 },
+                                onClose = { navigator.pop() },
                                 // 演示使用预生成的打印稿，不打开相机，也不请求权限。
                                 autoRequestCamera = !demoTourActive,
                                 demoSheet = if (demoTourActive) demoSheet else null,
@@ -949,6 +1009,18 @@ fun AppRoot(
                 )
             }
 
+            // 顶栏「更多」菜单中的每日复习时长设置。
+            if (showDailyMinutesDialog) {
+                DailyReviewMinutesDialog(
+                    current = dailyReviewMinutes,
+                    onDismiss = { showDailyMinutesDialog = false },
+                    onConfirm = { minutes ->
+                        showDailyMinutesDialog = false
+                        saveDailyReviewMinutes(minutes)
+                    },
+                )
+            }
+
             // 首次复习演示的黑底聚焦层：作为根级最后一个子节点叠加在所有页面之上。
             // 蒙层只压暗高亮区域之外；用户亲自点击真实控件，操作成功后由状态机推进。
             DemoTourOverlay(
@@ -978,507 +1050,84 @@ private val IMPORT_MIME_TYPES = arrayOf(
 )
 
 /**
- * 首页仪表盘：复习流程 → 常用操作 → 学习概览 → 设置。
- *
- * 流程条固定在最上方，流程图下方说明当前该做什么；常用操作把当前环节对应的入口
- * 前置并高亮，其余入口保持固定顺序。统计读取失败时显示“—”，不影响任何入口。
+ * 首页顶栏「更多」菜单（2026-11-27 用户要求）：收纳复习进度、知识点管理、每日复习时长、
+ * 导入/导出数据库、使用引导与关于，主界面只保留错题本网格与底部胶囊栏。
  */
 @Composable
-private fun HomeScreen(
-    thisWeekPlanStatus: PlanStatus?,
-    questionCount: Int?,
-    knowledgeCount: Int?,
-    overdueCount: Int?,
-    dueWithinWeekCount: Int?,
+private fun HomeOverflowMenu(
     dailyReviewMinutes: Int,
-    onSaveDailyReviewMinutes: (Int) -> Unit,
-    onEntry: () -> Unit,
-    onCreateQuestion: () -> Unit,
-    onCreatePlan: () -> Unit,
     onProgress: () -> Unit,
-    onScan: () -> Unit,
-    onAbout: () -> Unit,
-    onImport: () -> Unit,
-    onExport: () -> Unit,
-    /** 设置面板的「使用引导」：重新播放演示，并在结束后恢复当前用户数据。 */
-    onGuide: () -> Unit,
-    /** 首次演示用：把「录入题目」快捷卡的位置交给黑底聚焦层。 */
-    onRecordCardBounds: (Rect) -> Unit = {},
-    /** 首次演示用：把「录入题目」所在快捷卡区滚动到说明条下方的可见区域。 */
-    focusRecordCard: Boolean = false,
-) {
-    val listState = rememberLazyListState()
-    // 快捷卡区是 LazyColumn 的第 3 个 item（概览、流程、快捷卡）。
-    // 演示开始滚到快捷卡；演示结束回到顶部，避免停留在一个为演示滚动的中间位置。
-    LaunchedEffect(focusRecordCard) {
-        if (focusRecordCard) {
-            listState.animateScrollToItem(2)
-        } else {
-            listState.scrollToItem(0)
-        }
-    }
-    val stage = currentReviewStage(questionCount, thisWeekPlanStatus)
-    val highlight = homeHighlight(stage)
-    val cycleComplete = thisWeekPlanStatus == PlanStatus.COMPLETED
-    var showDailyMinutesDialog by remember { mutableStateOf(false) }
-    if (showDailyMinutesDialog) {
-        DailyReviewMinutesDialog(
-            current = dailyReviewMinutes,
-            onDismiss = { showDailyMinutesDialog = false },
-            onConfirm = { minutes ->
-                showDailyMinutesDialog = false
-                onSaveDailyReviewMinutes(minutes)
-            },
-        )
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        state = listState,
-        // 首页按「概览入口 → 流程 → 快捷操作 → 统计 → 设置」组织。
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        item {
-            OverviewCard(
-                onProgress = onProgress,
-                questionCount = questionCount,
-                knowledgeCount = knowledgeCount,
-                overdueCount = overdueCount,
-                dueWithinWeekCount = dueWithinWeekCount,
-            )
-        }
-        item {
-            FlowGuideCard(
-                currentStage = stage,
-                cycleComplete = cycleComplete,
-                guidance = stageGuidance(stage, cycleComplete),
-            )
-        }
-        item {
-            // 快捷卡片直接跟在流程条下方，不再显示「常用操作」区块标题。
-            QuickActionsGrid(
-                highlight = highlight,
-                onEntry = onEntry,
-                onCreateQuestion = onCreateQuestion,
-                onCreatePlan = onCreatePlan,
-                onScan = onScan,
-                onRecordCardBounds = onRecordCardBounds,
-            )
-        }
-        item {
-            HomeSection(title = "设置") {
-                HomeSettingsPanel(
-                    dailyReviewMinutes = dailyReviewMinutes,
-                    onEditDailyMinutes = { showDailyMinutesDialog = true },
-                    onAbout = onAbout,
-                    onImport = onImport,
-                    onExport = onExport,
-                    onGuide = onGuide,
-                )
-            }
-        }
-    }
-}
-
-/**
- * 页面顶部的学习概览卡：与复习流程卡同一套表面样式，
- * 左侧「学习概览」、右侧透明的「查看复习进度」按钮，字号与流程卡标题行一致；
- * 四项统计（题目 / 知识点 / 已逾期 / 7 天内）并入卡内，成为首页最上方的信息区。
- */
-@Composable
-private fun OverviewCard(
-    onProgress: () -> Unit,
-    questionCount: Int?,
-    knowledgeCount: Int?,
-    overdueCount: Int?,
-    dueWithinWeekCount: Int?,
-) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = colors.surfaceContainerLow,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            // 与复习流程卡一致：标题行 20dp 高，标题与下方内容间距 14dp。
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "学习概览",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                ProgressHeaderAction(onClick = onProgress)
-            }
-            HomeStatsRow(
-                questionCount = questionCount,
-                knowledgeCount = knowledgeCount,
-                overdueCount = overdueCount,
-                dueWithinWeekCount = dueWithinWeekCount,
-            )
-        }
-    }
-}
-
-/** 首页区块标题：标题左对齐，右侧可放一个透明背景的文字按钮。 */
-@Composable
-private fun HomeSection(
-    title: String,
-    action: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
-            action?.invoke()
-        }
-        content()
-    }
-}
-
-/**
- * 「学习概览」标题右侧的进度入口：透明背景、文字贴齐区块右缘，
- * 与下方统计卡片的右边缘对齐。
- */
-@Composable
-private fun ProgressHeaderAction(onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        contentPadding = PaddingValues(0.dp),
-        colors = ButtonDefaults.textButtonColors(
-            contentColor = MaterialTheme.colorScheme.primary,
-        ),
-    ) {
-        Text(
-            text = "查看复习进度",
-            style = MaterialTheme.typography.labelSmall,
-        )
-    }
-}
-
-/**
- * 复习流程条：把「录入 → 生成 → 打印 → 扫描 → 确认」画成一条可读的路径，
- * 已完成与当前步骤用品牌色区分，帮助第一次使用的学生知道下一步做什么。
- */
-@Composable
-private fun FlowGuideCard(
-    currentStage: ReviewStage,
-    cycleComplete: Boolean,
-    guidance: String,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    val hint = if (cycleComplete) {
-        "本轮已完成"
-    } else {
-        "第 ${currentStage.ordinal + 1} / ${ReviewStage.entries.size} 步"
-    }
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = colors.surfaceContainerLow,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "复习流程",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = hint,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.primary,
-                )
-            }
-            Box(modifier = Modifier.fillMaxWidth()) {
-                // 连接线画在圆点后方，让五个环节读起来是一条路径而不是五个按钮。
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth(0.84f)
-                        .padding(top = 13.dp)
-                        .height(1.dp)
-                        .background(colors.outlineVariant),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    val currentIndex = currentStage.ordinal
-                    ReviewStage.entries.forEachIndexed { index, stage ->
-                        val active = !cycleComplete && index == currentIndex
-                        val done = cycleComplete || index < currentIndex
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when {
-                                            active -> colors.primary
-                                            done -> colors.primaryContainer
-                                            else -> colors.surfaceVariant
-                                        },
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = (index + 1).toString(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = when {
-                                        active -> colors.onPrimary
-                                        done -> colors.onPrimaryContainer
-                                        else -> colors.onSurfaceVariant
-                                    },
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = stage.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (active) colors.onSurface else colors.onSurfaceVariant,
-                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                            )
-                        }
-                    }
-                }
-            }
-            HorizontalDivider(color = colors.outlineVariant)
-            Text(
-                text = guidance,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * 快捷操作网格：当前环节对应的入口移到首位并高亮，其余入口保持固定顺序。
- *
- * 同一时刻只有一个入口使用主色容器，避免首页出现多个视觉重点。
- */
-@Composable
-private fun QuickActionsGrid(
-    highlight: HomeHighlight,
-    onEntry: () -> Unit,
-    onCreateQuestion: () -> Unit,
-    onCreatePlan: () -> Unit,
-    onScan: () -> Unit,
-    onRecordCardBounds: (Rect) -> Unit,
-) {
-    val actions = orderedHomeActions(highlight)
-    val guided = guidedHomeAction(highlight)
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        actions.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                row.forEach { action ->
-                    val (iconRes, onClick) = when (action) {
-                        HomeAction.RECORD -> R.drawable.ic_home_entry to onCreateQuestion
-                        HomeAction.LIBRARY -> R.drawable.ic_home_library to onEntry
-                        HomeAction.PLAN -> R.drawable.ic_home_plan to onCreatePlan
-                        HomeAction.SCAN -> R.drawable.ic_home_scan to onScan
-                    }
-                    QuickActionCard(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .then(
-                                if (action == HomeAction.RECORD) {
-                                    Modifier.onGloballyPositioned {
-                                        onRecordCardBounds(it.boundsInRoot())
-                                    }
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                        iconRes = iconRes,
-                        title = action.title,
-                        highlighted = action == guided,
-                        onClick = onClick,
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 设置区：上方是每日复习时长设置行；下方并排三个等宽入口（导入数据库 / 导出数据库 / 关于），
- * 每个入口各占原设置面板总宽度的三分之一。版本号显示在首页标题旁，此处不再重复。
- */
-@Composable
-private fun HomeSettingsPanel(
-    dailyReviewMinutes: Int,
-    onEditDailyMinutes: () -> Unit,
-    onAbout: () -> Unit,
+    onKnowledge: () -> Unit,
+    onDailyMinutes: () -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
     onGuide: () -> Unit,
+    onAbout: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = colors.surfaceContainerLow,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-    ) {
-        Column {
-            HomeSettingsRow(
-                iconRes = R.drawable.ic_clock,
-                title = "每日复习时长",
-                subtitle = "当前 $dailyReviewMinutes 分钟",
-                onClick = onEditDailyMinutes,
-            )
-            HorizontalDivider(color = colors.outlineVariant)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                HomeSettingsAction(
-                    modifier = Modifier.weight(1f),
-                    // 2026-11-22 用户要求：导入与导出的图标互换
-                    // （导入用原导出图形、导出用原导入图形），移动位置后保持。
-                    iconRes = R.drawable.ic_export,
-                    title = "导入数据库",
-                    onClick = onImport,
-                )
-                HomeSettingsAction(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_import,
-                    title = "导出数据库",
-                    onClick = onExport,
-                )
-                HomeSettingsAction(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_guide,
-                    title = "使用引导",
-                    onClick = onGuide,
-                )
-                HomeSettingsAction(
-                    modifier = Modifier.weight(1f),
-                    iconRes = R.drawable.ic_info,
-                    title = "关于",
-                    onClick = onAbout,
-                )
-            }
-        }
-    }
-}
-
-/** 设置面板底部的等宽入口：图标在上、文字在下，整体居中。 */
-@Composable
-private fun HomeSettingsAction(
-    modifier: Modifier,
-    iconRes: Int,
-    title: String,
-    onClick: () -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    Column(
-        modifier = modifier
-            .clip(MaterialTheme.shapes.small)
-            .clickable(onClick = onClick)
-            // 四个入口等分时可用宽度更窄，不设水平内边距，保证 1.3 倍字号下标签完整。
-            .padding(vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(colors.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
             Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+                painter = painterResource(R.drawable.ic_more),
+                contentDescription = "更多",
             )
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun HomeSettingsRow(
-    iconRes: Int,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(colors.surfaceVariant),
-            contentAlignment = Alignment.Center,
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
         ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+            DropdownMenuItem(
+                text = { Text("复习进度") },
+                onClick = {
+                    expanded = false
+                    onProgress()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("知识点与分类") },
+                onClick = {
+                    expanded = false
+                    onKnowledge()
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("每日复习时长（$dailyReviewMinutes 分钟）") },
+                onClick = {
+                    expanded = false
+                    onDailyMinutes()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("导入数据库") },
+                onClick = {
+                    expanded = false
+                    onImport()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("导出数据库") },
+                onClick = {
+                    expanded = false
+                    onExport()
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("使用引导") },
+                onClick = {
+                    expanded = false
+                    onGuide()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("关于") },
+                onClick = {
+                    expanded = false
+                    onAbout()
+                },
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
-            )
-        }
-        Icon(
-            painter = painterResource(R.drawable.ic_chevron_right),
-            contentDescription = null,
-            tint = colors.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
     }
 }
 
@@ -1539,156 +1188,6 @@ private fun DailyReviewMinutesDialog(
     )
 }
 
-/** 一行四项概览；数据未加载或读取失败时显示“—”。 */
-@Composable
-private fun HomeStatsRow(
-    questionCount: Int?,
-    knowledgeCount: Int?,
-    overdueCount: Int?,
-    dueWithinWeekCount: Int?,
-) {
-    val colors = MaterialTheme.colorScheme
-    Row(modifier = Modifier.fillMaxWidth()) {
-        HomeStat(
-            label = "题目",
-            value = questionCount,
-            valueColor = colors.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        StatDivider()
-        HomeStat(
-            label = "知识点",
-            value = knowledgeCount,
-            valueColor = colors.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        StatDivider()
-        HomeStat(
-            label = "已逾期",
-            value = overdueCount,
-            valueColor = if ((overdueCount ?: 0) > 0) colors.error else colors.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        StatDivider()
-        HomeStat(
-            label = "7 天内",
-            value = dueWithinWeekCount,
-            valueColor = colors.primary,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun StatDivider() {
-    Box(
-        modifier = Modifier
-            .width(1.dp)
-            .height(30.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    )
-}
-
-@Composable
-private fun HomeStat(
-    label: String,
-    value: Int?,
-    valueColor: Color,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = value?.toString() ?: "—",
-            style = MaterialTheme.typography.headlineSmall,
-            color = valueColor,
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/**
- * 快捷入口卡片：左侧图标块，右侧纵向右对齐显示标题与可选的「下一步」标签。
- *
- * 高度由内容决定，同一行的两张卡片用 `IntrinsicSize.Min` 对齐；
- * 高亮时整卡换成主色容器、图标块填主色，并显示「下一步」；
- * 未高亮的入口保持中性，让首页只有一个视觉重点。
- */
-@Composable
-private fun QuickActionCard(
-    iconRes: Int,
-    title: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    highlighted: Boolean = false,
-) {
-    val colors = MaterialTheme.colorScheme
-    val container = if (highlighted) colors.primaryContainer else colors.surfaceContainerLow
-    val borderColor = if (highlighted) {
-        colors.primary.copy(alpha = 0.18f)
-    } else {
-        colors.outlineVariant
-    }
-    val titleColor = if (highlighted) colors.onPrimaryContainer else colors.onSurface
-    val iconBackground = if (highlighted) colors.primary else colors.surfaceVariant
-    val iconTint = if (highlighted) colors.onPrimary else colors.onSurfaceVariant
-    Card(
-        modifier = modifier.clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = container),
-        border = BorderStroke(1.dp, borderColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(iconBackground),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = titleColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (highlighted) {
-                    Text(
-                        text = "下一步",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.primary,
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** 首页概览的静默读取：统计失败不影响入口；协程取消照常向上传播。 */
 private suspend fun <T> quietly(block: suspend () -> T): T? =
     try {
@@ -1699,25 +1198,16 @@ private suspend fun <T> quietly(block: suspend () -> T): T? =
         null
     }
 
-/** app 层把计划层的 `PrintJob` 映射为打印 feature 的输入，避免 feature 之间直接依赖。 */
-private fun PrintJob.toPrintPlanInput(): PrintPlanInput = PrintPlanInput(
-    planId = planId,
-    pages = pages,
-    questions = questions,
-    noteTexts = notes.mapValues { (_, items) -> items.map { it.text } },
-    template = template,
-)
-
 private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Home -> "拾知"
-    AppRoute.Entry -> "题库"
+    is AppRoute.Entry -> route.categoryName ?: "全部错题"
     is AppRoute.QuestionEdit -> if (route.questionId == null) "录入题目" else "编辑题目"
     AppRoute.KnowledgePoints -> "知识点"
     AppRoute.SourceTags -> "来源标签"
     AppRoute.Progress -> "复习进度"
-    AppRoute.PlanPreview -> "计划预览"
-    AppRoute.Print -> "打印"
-    AppRoute.Scan -> "扫描"
+    is AppRoute.CategoryCreate -> if (route.categoryId == null) "添加分类" else "编辑封面"
+    AppRoute.PlanPreview -> "打印计划"
+    AppRoute.Scan -> "扫描回读"
     is AppRoute.Confirm -> "确认"
     AppRoute.Settings -> "设置"
     AppRoute.About -> "关于"
