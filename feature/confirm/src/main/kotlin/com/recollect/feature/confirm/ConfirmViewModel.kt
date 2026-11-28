@@ -51,6 +51,8 @@ data class ConfirmRowView(
     val decision: UserDecision,
     val selectedTier: Tier?,
     val correctedText: String?,
+    /** 弹窗中已选、但尚未通过卡片「确认」落定的效果（2026-11-28）。 */
+    val pendingEffect: EffectChoice? = null,
 ) {
     val key: ConfirmRowKey
         get() = ConfirmRowKey(questionId = questionId, knowledgePointId = knowledgePointId)
@@ -175,18 +177,25 @@ class ConfirmViewModel(
         }
     }
 
-    fun accept(row: ConfirmRowView, tier: Tier? = null): MarkOutcome =
-        applyOutcome(machine?.accept(row.key, tier))
+    /** 卡片「确认」：把该行落定为最终决策（弹窗中的选择在这里生效，2026-11-28 用户要求）。 */
+    fun confirm(row: ConfirmRowView): MarkOutcome =
+        applyOutcome(machine?.confirm(row.key))
 
-    fun correct(row: ConfirmRowView, tier: Tier? = null): MarkOutcome =
-        applyOutcome(machine?.correct(row.key, tier))
-
-    fun notReviewed(row: ConfirmRowView): MarkOutcome =
-        applyOutcome(machine?.notReviewed(row.key))
-
-    fun setCorrectedText(row: ConfirmRowView, text: String?) {
+    /** 弹窗选择复习效果：只暂存，不自动确认；已确认的行会退回未标记等待再次确认。 */
+    fun setPendingEffect(row: ConfirmRowView, effect: EffectChoice?) {
         if (submitted) return
-        machine?.setCorrectedText(row.key, text)
+        machine?.setPendingEffect(row.key, effect)
+        publish()
+    }
+
+    /**
+     * 修改笔记识别结果（2026-11-28：一张卡片按题合并多个知识点行，笔记在整题内共用）。
+     *
+     * 同一题的每个知识点行都保存各自的 `correctedText`，这里同步写入并只刷新一次页面。
+     */
+    fun setCorrectedText(rows: List<ConfirmRowView>, text: String?) {
+        if (submitted) return
+        rows.forEach { machine?.setCorrectedText(it.key, text) }
         publish()
     }
 
@@ -374,6 +383,7 @@ class ConfirmViewModel(
             decision = decision.decision,
             selectedTier = decision.selectedTier,
             correctedText = decision.correctedText,
+            pendingEffect = decision.pendingEffect,
         )
     }
 }

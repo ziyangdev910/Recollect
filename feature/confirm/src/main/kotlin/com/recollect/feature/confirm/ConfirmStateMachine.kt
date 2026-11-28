@@ -42,14 +42,26 @@ data class ConfirmRow(
     fun isFuture(today: LocalDate): Boolean = plannedDate.isAfter(today)
 }
 
+/**
+ * 用户在弹窗里选择、但尚未通过卡片「确认」落定的复习效果（2026-11-28 用户要求）。
+ *
+ * 修改掌握程度只暂存选择，卡片仍显示「确认」按钮，必须手动确认完成校对；
+ * 已确认的行锁定效果，不再接受修改。
+ */
+sealed interface EffectChoice {
+    data class Rated(val tier: Tier) : EffectChoice
+    data object NotReviewed : EffectChoice
+}
+
 /** 单行当前编辑状态；[decision] 为 `UNMARKED` 时表示尚未标记。 */
 data class RowDecision(
     val decision: UserDecision = UserDecision.UNMARKED,
     val selectedTier: Tier? = null,
     val correctedText: String? = null,
+    val pendingEffect: EffectChoice? = null,
 )
 
-/** 逐项标记的结果；[NeedsTier] 表示需要界面弹出档位（掌握 / 较熟悉 / 不会）选择。 */
+/** 逐项标记的结果；[NeedsTier] 表示需要界面弹出档位（掌握 / 较熟悉 / 不会 / 未复习）选择。 */
 sealed interface MarkOutcome {
     data object Applied : MarkOutcome
     data object NeedsTier : MarkOutcome
@@ -119,10 +131,12 @@ class ConfirmStateMachine(
             row.detectedTier != null -> existing.copy(
                 decision = UserDecision.ACCEPT,
                 selectedTier = null,
+                pendingEffect = null,
             )
             tier != null -> existing.copy(
                 decision = UserDecision.ACCEPT,
                 selectedTier = tier,
+                pendingEffect = null,
             )
             else -> return MarkOutcome.NeedsTier
         }
@@ -138,6 +152,7 @@ class ConfirmStateMachine(
         decisions[key] = decisions.getValue(key).copy(
             decision = UserDecision.CORRECTED,
             selectedTier = tier,
+            pendingEffect = null,
         )
         return MarkOutcome.Applied
     }
@@ -148,8 +163,45 @@ class ConfirmStateMachine(
         decisions[key] = decisions.getValue(key).copy(
             decision = UserDecision.NOT_REVIEWED,
             selectedTier = null,
+            pendingEffect = null,
         )
         return MarkOutcome.Applied
+    }
+
+    /**
+     * 在弹窗里选择复习效果：只暂存为待确认状态，**不**直接落定。
+     *
+     * 修改掌握程度不能自动确认；已确认的行锁定效果，不接受再次修改（2026-11-28 用户要求）。
+     */
+    fun setPendingEffect(key: ConfirmRowKey, effect: EffectChoice?) {
+        rowByKey[key] ?: return
+        val existing = decisions.getValue(key)
+        // 已确认行不允许再改效果。
+        if (existing.decision != UserDecision.UNMARKED) return
+        decisions[key] = existing.copy(pendingEffect = effect)
+    }
+
+    /**
+     * 卡片「确认」：把该行落定为最终决策。
+     *
+     * 优先使用弹窗中暂存的效果；没有暂存时接受识别档位；
+     * 无识别档位则需要用户先在弹窗里选择（[MarkOutcome.NeedsTier]）。
+     */
+    fun confirm(key: ConfirmRowKey): MarkOutcome {
+        val row = rowByKey[key] ?: return unknownRow(key)
+        val state = decisions.getValue(key)
+        if (state.decision != UserDecision.UNMARKED) return MarkOutcome.Applied
+        return when (val effect = state.pendingEffect) {
+            is EffectChoice.Rated ->
+                if (row.detectedTier == effect.tier) accept(key) else correct(key, effect.tier)
+            EffectChoice.NotReviewed -> notReviewed(key)
+            null -> when {
+                // 未来日期的行只能标记本次未复习，确认即按唯一可用选项落定。
+                row.isFuture(today) -> notReviewed(key)
+                row.detectedTier != null -> accept(key)
+                else -> MarkOutcome.NeedsTier
+            }
+        }
     }
 
     /** 修正文本可编辑；原始 OCR 不经过这里（D-06）。 */

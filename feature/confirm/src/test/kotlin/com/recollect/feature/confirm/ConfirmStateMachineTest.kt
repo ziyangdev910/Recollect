@@ -147,4 +147,85 @@ class ConfirmStateMachineTest {
         assertEquals("手写：x+1=3", decisions.getValue("q1").correctedText, "编辑后的文本写入修正文本")
         assertEquals("另一条笔记", decisions.getValue("q2").correctedText, "未编辑时修正文本保留识别原文")
     }
+
+    /**
+     * 2026-11-28 用户要求：修改掌握程度只暂存，不算完成校对；
+     * 必须手动点击卡片「确认」才落定，已确认的行锁定效果、不再允许修改。
+     */
+    @Test
+    fun editing_effect_only_stages_a_choice_until_the_card_is_confirmed() {
+        val machine = ConfirmStateMachine(
+            rows = listOf(row("q1", "k1", detectedTier = Tier.MASTERED)),
+            today = today,
+        )
+
+        machine.setPendingEffect(key("q1", "k1"), EffectChoice.Rated(Tier.FAMILIAR))
+        assertEquals(
+            UserDecision.UNMARKED,
+            machine.decisionOf(key("q1", "k1")).decision,
+            "选好效果后仍应等待用户手动确认",
+        )
+        assertEquals(1, machine.unmarkedCount)
+        assertFalse(machine.canSubmit)
+
+        assertEquals(MarkOutcome.Applied, machine.confirm(key("q1", "k1")))
+        val decision = machine.decisionOf(key("q1", "k1"))
+        assertEquals(UserDecision.CORRECTED, decision.decision)
+        assertEquals(Tier.FAMILIAR, decision.selectedTier)
+        assertNull(decision.pendingEffect)
+        assertTrue(machine.canSubmit)
+
+        // 已确认的行锁定复习效果：再次修改不生效，决策保持不变。
+        machine.setPendingEffect(key("q1", "k1"), EffectChoice.Rated(Tier.MASTERED))
+        val locked = machine.decisionOf(key("q1", "k1"))
+        assertEquals(UserDecision.CORRECTED, locked.decision)
+        assertEquals(Tier.FAMILIAR, locked.selectedTier)
+        assertNull(locked.pendingEffect)
+        assertTrue(machine.canSubmit)
+    }
+
+    /** 暂存档位与识别结果相同时，手动确认按“接受”落定。 */
+    @Test
+    fun staged_choice_equal_to_detection_is_committed_as_accept() {
+        val machine = ConfirmStateMachine(
+            rows = listOf(row("q1", "k1", detectedTier = Tier.MASTERED)),
+            today = today,
+        )
+        machine.setPendingEffect(key("q1", "k1"), EffectChoice.Rated(Tier.MASTERED))
+        assertEquals(MarkOutcome.Applied, machine.confirm(key("q1", "k1")))
+        assertEquals(UserDecision.ACCEPT, machine.decisionOf(key("q1", "k1")).decision)
+    }
+
+    /** 未在弹窗里选择时，卡片「确认」直接接受识别结果。 */
+    @Test
+    fun confirming_without_a_staged_choice_accepts_the_detected_tier() {
+        val machine = ConfirmStateMachine(
+            rows = listOf(row("q1", "k1", detectedTier = Tier.UNKNOWN)),
+            today = today,
+        )
+        assertEquals(MarkOutcome.Applied, machine.confirm(key("q1", "k1")))
+        val decision = machine.decisionOf(key("q1", "k1"))
+        assertEquals(UserDecision.ACCEPT, decision.decision)
+        assertNull(decision.selectedTier, "接受识别结果时不覆盖 detectedTier")
+    }
+
+    /** 没有识别档位时必须先在弹窗选择；未来的行确认即标记本次未复习。 */
+    @Test
+    fun confirm_requests_a_choice_when_detection_is_missing_and_marks_future_rows_not_reviewed() {
+        val machine = ConfirmStateMachine(
+            rows = listOf(
+                row("q1", "k1", detectedTier = null),
+                row("q2", "k2", plannedDate = today.plusDays(1), detectedTier = Tier.MASTERED),
+            ),
+            today = today,
+        )
+        assertEquals(MarkOutcome.NeedsTier, machine.confirm(key("q1", "k1")))
+
+        machine.setPendingEffect(key("q1", "k1"), EffectChoice.Rated(Tier.MASTERED))
+        assertEquals(MarkOutcome.Applied, machine.confirm(key("q1", "k1")))
+        assertEquals(UserDecision.CORRECTED, machine.decisionOf(key("q1", "k1")).decision)
+
+        assertEquals(MarkOutcome.Applied, machine.confirm(key("q2", "k2")))
+        assertEquals(UserDecision.NOT_REVIEWED, machine.decisionOf(key("q2", "k2")).decision)
+    }
 }
