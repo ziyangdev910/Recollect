@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -192,35 +191,30 @@ fun KnowledgePointLibraryScreen(
                 }
             },
         )
-        is LibraryDialog.Delete -> AlertDialog(
+        is LibraryDialog.Delete -> RecollectDialog(
+            title = "删除标签 #${current.tag.number}",
             onDismissRequest = { dialog = null },
-            title = { Text("删除标签 #${current.tag.number}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "确定删除「${current.tag.name}」吗？删除后编号不再复用；" +
-                            "若该标签仍被题目引用，将无法删除。",
-                    )
-                    viewModel.actionError?.let { message ->
-                        Text(message, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
+            actions = {
+                RecollectDialogAction(text = "取消", onClick = { dialog = null })
+                RecollectDialogAction(
+                    text = "删除",
+                    destructive = true,
                     onClick = {
                         scope.launch {
                             if (viewModel.delete(current.tag.id)) dialog = null
                         }
                     },
-                ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { dialog = null }) { Text("取消") }
-            },
-        )
+        ) {
+            Text(
+                "确定删除「${current.tag.name}」吗？删除后编号不再复用；" +
+                    "若该标签仍被题目引用，将无法删除。",
+            )
+            viewModel.actionError?.let { message ->
+                Text(message, color = MaterialTheme.colorScheme.error)
+            }
+        }
     }
 
 }
@@ -339,55 +333,50 @@ private fun KnowledgePointDialog(
     var categoryId by remember {
         mutableStateOf(initialCategoryId ?: categories.firstOrNull()?.id)
     }
-    AlertDialog(
+    RecollectDialog(
+        title = title,
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("标签名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text("分类（必选）", style = MaterialTheme.typography.titleSmall)
-                if (categories.isEmpty()) {
-                    Text(
-                        "暂无分类。请先到首页「添加分类」创建分类，再新增知识点。",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                } else {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        categories.forEach { category ->
-                            FilterChip(
-                                selected = category.id == categoryId,
-                                onClick = { categoryId = category.id },
-                                label = { Text(category.name) },
-                            )
-                        }
-                    }
-                }
-                errorMessage?.let { message ->
-                    Text(message, color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
+        scrollable = true,
+        actions = {
+            RecollectDialogAction(text = "取消", onClick = onDismiss)
+            RecollectDialogAction(
+                text = confirmLabel,
                 enabled = name.isNotBlank() && categoryId != null && categories.isNotEmpty(),
                 onClick = { categoryId?.let { onConfirm(name, it) } },
+            )
+        },
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("标签名称") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("分类（必选）", style = MaterialTheme.typography.titleSmall)
+        if (categories.isEmpty()) {
+            Text(
+                "暂无分类。请先到首页「添加分类」创建分类，再新增知识点。",
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(confirmLabel)
+                categories.forEach { category ->
+                    FilterChip(
+                        selected = category.id == categoryId,
+                        onClick = { categoryId = category.id },
+                        label = { Text(category.name) },
+                    )
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
+        }
+        errorMessage?.let { message ->
+            Text(message, color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 private sealed interface LibraryDialog {

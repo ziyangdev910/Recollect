@@ -10,9 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -22,7 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -37,20 +33,22 @@ import kotlinx.coroutines.launch
 /**
  * 「导出数据库」悬浮窗（backup.md「导出/导入 UI」）。
  *
- * 悬浮在主页面上方，样式与「每日复习时长」设置弹窗一致（Material 3 `AlertDialog`）：
+ * 悬浮在主页面上方，复用与「计划日期」「每日复习时长」一致的统一紧凑弹窗样式：
  * 由底部「关闭」或系统返回键退出，不进入页面返回栈。
  * 只与 [BackupViewModel] 交互，不直接访问 Room/Context/Intent（R-03）。
  */
 @Composable
 fun BackupDialog(viewModel: BackupViewModel, onDismiss: () -> Unit) {
-    AlertDialog(
+    RecollectDialog(
+        title = "导出数据库",
         onDismissRequest = onDismiss,
-        title = { Text("导出数据库") },
-        text = { BackupContent(viewModel) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+        scrollable = true,
+        actions = {
+            RecollectDialogAction(text = "关闭", onClick = onDismiss)
         },
-    )
+    ) {
+        BackupContent(viewModel)
+    }
 }
 
 /** 悬浮窗正文：说明、主按钮、导出状态与隐私提示；内容超出弹窗高度时可滚动。 */
@@ -58,15 +56,14 @@ fun BackupDialog(viewModel: BackupViewModel, onDismiss: () -> Unit) {
 private fun BackupContent(viewModel: BackupViewModel) {
     val scope = rememberCoroutineScope()
     Column(
-        modifier = Modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         IntroHeader()
         Button(
             onClick = { scope.launch { viewModel.exportAndShare() } },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .height(44.dp),
             enabled = viewModel.state !is BackupState.Exporting,
         ) {
             Icon(
@@ -122,8 +119,8 @@ private fun StateCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircularProgressIndicator(
@@ -153,8 +150,8 @@ private fun StateCard(
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
                         text = "导出失败",
@@ -192,8 +189,8 @@ private fun ExportedCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 text = "导出完成",

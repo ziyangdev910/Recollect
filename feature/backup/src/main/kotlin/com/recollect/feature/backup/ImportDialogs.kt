@@ -1,15 +1,11 @@
 package com.recollect.feature.backup
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,58 +34,55 @@ fun ImportDialogs(
 
         ImportState.Importing -> ProgressDialog("正在导入并覆盖当前数据…")
 
-        is ImportState.Confirming -> AlertDialog(
+        is ImportState.Confirming -> RecollectDialog(
+            title = "导入数据库",
             onDismissRequest = onCancel,
-            title = { Text("导入数据库") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "将覆盖当前数据，是否继续？",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = summaryText(state.summary),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            actions = {
+                RecollectDialogAction(text = "取消", onClick = onCancel)
+                RecollectDialogAction(text = "继续导入", onClick = onConfirm)
             },
-            confirmButton = {
-                TextButton(onClick = onConfirm) { Text("继续导入") }
-            },
-            dismissButton = {
-                TextButton(onClick = onCancel) { Text("取消") }
-            },
-        )
+        ) {
+            Text(
+                text = "将覆盖当前数据，是否继续？",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = summaryText(state.summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
-        is ImportState.Error -> AlertDialog(
+        is ImportState.Error -> RecollectDialog(
+            title = "导入失败",
             onDismissRequest = onDismissError,
-            title = { Text("导入失败") },
-            text = { Text(state.message) },
-            confirmButton = {
-                TextButton(onClick = onDismissError) { Text("知道了") }
+            actions = {
+                RecollectDialogAction(text = "知道了", onClick = onDismissError)
             },
-        )
+        ) {
+            Text(state.message)
+        }
     }
 }
 
 @Composable
 private fun ProgressDialog(message: String) {
-    AlertDialog(
+    RecollectDialog(
+        title = "请稍候",
         onDismissRequest = {},
-        confirmButton = {},
-        text = {
-            Row(
-                modifier = Modifier.padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                Text(message)
-            }
-        },
-    )
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(message)
+        }
+    }
 }
 
 private fun summaryText(summary: ImportSummary): String {

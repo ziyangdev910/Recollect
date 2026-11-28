@@ -41,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,9 +61,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import com.recollect.app.ui.RecollectDialog
+import com.recollect.app.ui.RecollectDialogAction
 import org.ziyangdev910.recollect.R
 
 /** 首页错题本卡片的数据投影；[id] 为知识点分类 id。 */
@@ -356,7 +355,7 @@ private fun CategoryEditActions(
     }
 }
 
-/** 紧凑的操作浮窗：宽度固定、内边距小，用于删除确认与不可删除提示。 */
+/** 统一紧凑弹窗：用于删除分类确认与不可删除提示。 */
 @Composable
 private fun CompactDialog(
     title: String,
@@ -367,50 +366,25 @@ private fun CompactDialog(
     dismissLabel: String = "取消",
     destructive: Boolean = false,
 ) {
-    val colors = MaterialTheme.colorScheme
-    Dialog(
+    RecollectDialog(
+        title = title,
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(
-            modifier = Modifier.width(280.dp),
-            shape = MaterialTheme.shapes.large,
-            color = colors.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
+        actions = {
+            RecollectDialogAction(text = dismissLabel, onClick = onDismiss)
+            if (onConfirm != null && confirmLabel != null) {
+                RecollectDialogAction(
+                    text = confirmLabel,
+                    onClick = onConfirm,
+                    destructive = destructive,
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(dismissLabel)
-                    }
-                    if (onConfirm != null && confirmLabel != null) {
-                        TextButton(onClick = onConfirm) {
-                            Text(
-                                text = confirmLabel,
-                                color = if (destructive) colors.error else colors.primary,
-                            )
-                        }
-                    }
-                }
             }
-        }
+        },
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

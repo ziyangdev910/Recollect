@@ -21,9 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,8 +53,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.time.DayOfWeek
@@ -283,51 +279,47 @@ fun PlanPreviewScreen(
 
     // 打开已有计划时，若题库在计划生成后发生变化，先询问是否重新生成。
     if (viewModel.bankChanged) {
-        AlertDialog(
+        RecollectDialog(
+            title = "题库已更新",
             onDismissRequest = { viewModel.dismissBankChanged() },
-            title = { Text("题库已更新") },
-            text = { Text("当前题库与上次生成计划时不同，是否重新生成计划？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch { viewModel.regenerate() }
-                    },
-                ) {
-                    Text("重新生成")
-                }
+            actions = {
+                RecollectDialogAction(
+                    text = "保持当前计划",
+                    onClick = { viewModel.dismissBankChanged() },
+                )
+                RecollectDialogAction(
+                    text = "重新生成",
+                    onClick = { scope.launch { viewModel.regenerate() } },
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissBankChanged() }) {
-                    Text("保持当前计划")
-                }
-            },
-        )
+        ) {
+            Text("当前题库与上次生成计划时不同，是否重新生成计划？")
+        }
     }
 
     if (showRegenerateConfirm) {
-        AlertDialog(
+        RecollectDialog(
+            title = REGENERATE_PLAN_LABEL,
             onDismissRequest = { showRegenerateConfirm = false },
-            title = { Text(REGENERATE_PLAN_LABEL) },
-            text = {
-                Text(
-                    "将生成新的计划号。旧计划仍可回读，但不再是最新计划；" +
-                        "已打印的旧稿如需继续使用，请保留。",
+            actions = {
+                RecollectDialogAction(
+                    text = "取消",
+                    onClick = { showRegenerateConfirm = false },
                 )
-            },
-            confirmButton = {
-                TextButton(
+                RecollectDialogAction(
+                    text = "重新生成",
                     onClick = {
                         showRegenerateConfirm = false
                         scope.launch { viewModel.regenerate() }
                     },
-                ) {
-                    Text("重新生成")
-                }
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { showRegenerateConfirm = false }) { Text("取消") }
-            },
-        )
+        ) {
+            Text(
+                "将生成新的计划号。旧计划仍可回读，但不再是最新计划；" +
+                    "已打印的旧稿如需继续使用，请保留。",
+            )
+        }
     }
 }
 
@@ -457,90 +449,61 @@ private fun PlanDateRangeDialog(
     var activeField by remember { mutableStateOf(DateField.START) }
     val days = ChronoUnit.DAYS.between(draftStart, draftEnd).toInt() + 1
 
-    Dialog(
+    RecollectDialog(
+        title = "计划日期",
+        subtitle = "共 $days 天（最多 7 天）",
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        actions = {
+            RecollectDialogAction(text = "取消", onClick = onDismiss)
+            RecollectDialogAction(
+                text = "确定",
+                onClick = { onConfirm(draftStart, draftEnd) },
+            )
+        },
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "计划日期",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = "共 $days 天（最多 7 天）",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DateFieldButton(
-                        label = "开始",
-                        date = draftStart,
-                        modifier = Modifier.weight(1f),
-                        selected = activeField == DateField.START,
-                        onClick = { activeField = DateField.START },
-                    )
-                    Text(
-                        text = "至",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    DateFieldButton(
-                        label = "结束",
-                        date = draftEnd,
-                        modifier = Modifier.weight(1f),
-                        selected = activeField == DateField.END,
-                        onClick = { activeField = DateField.END },
-                    )
-                }
-
-                InlinePlanCalendar(
-                    activeField = activeField,
-                    startDate = draftStart,
-                    endDate = draftEnd,
-                    onStartChange = { date ->
-                        // 修改开始日时保持原来的天数，超过 7 天则收回。
-                        val span = ChronoUnit.DAYS.between(draftStart, draftEnd)
-                        draftStart = date
-                        draftEnd = date.plusDays(span.coerceIn(0, MAX_PLAN_DAYS - 1))
-                    },
-                    onEndChange = { date ->
-                        draftEnd = date.coerceIn(
-                            draftStart,
-                            draftStart.plusDays(MAX_PLAN_DAYS - 1),
-                        )
-                    },
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    ) { Text("取消") }
-                    TextButton(
-                        onClick = { onConfirm(draftStart, draftEnd) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    ) { Text("确定") }
-                }
-            }
+            DateFieldButton(
+                label = "开始",
+                date = draftStart,
+                modifier = Modifier.weight(1f),
+                selected = activeField == DateField.START,
+                onClick = { activeField = DateField.START },
+            )
+            Text(
+                text = "至",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DateFieldButton(
+                label = "结束",
+                date = draftEnd,
+                modifier = Modifier.weight(1f),
+                selected = activeField == DateField.END,
+                onClick = { activeField = DateField.END },
+            )
         }
+
+        InlinePlanCalendar(
+            activeField = activeField,
+            startDate = draftStart,
+            endDate = draftEnd,
+            onStartChange = { date ->
+                // 修改开始日时保持原来的天数，超过 7 天则收回。
+                val span = ChronoUnit.DAYS.between(draftStart, draftEnd)
+                draftStart = date
+                draftEnd = date.plusDays(span.coerceIn(0, MAX_PLAN_DAYS - 1))
+            },
+            onEndChange = { date ->
+                draftEnd = date.coerceIn(
+                    draftStart,
+                    draftStart.plusDays(MAX_PLAN_DAYS - 1),
+                )
+            },
+        )
     }
 }
 

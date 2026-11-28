@@ -34,7 +34,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,6 +88,8 @@ import com.recollect.app.onboarding.DemoTourOverlay
 import com.recollect.app.onboarding.DemoTourState
 import com.recollect.app.onboarding.DemoTourStop
 import com.recollect.app.onboarding.blocksInteraction
+import com.recollect.app.ui.RecollectDialog
+import com.recollect.app.ui.RecollectDialogAction
 import com.recollect.app.ui.theme.RecollectTheme
 import com.recollect.data.room.entity.AppSettings
 import com.recollect.data.room.repository.PlanStatus
@@ -762,10 +763,6 @@ fun AppRoot(
                                 viewModel = entryViewModel,
                                 listState = entryListState,
                                 categoryId = route.categoryId,
-                                categoryNames = homeCategories
-                                    .orEmpty()
-                                    .associate { it.id to it.name },
-                                onManageKnowledge = { navigator.push(AppRoute.KnowledgePoints) },
                                 onCreatePlan = {
                                     if (demoStop == DemoTourStop.ENTRY_PLAN) {
                                         setDemoStop(DemoTourStop.PLAN_PRINT)
@@ -1199,46 +1196,39 @@ private fun DailyReviewMinutesDialog(
     val value = text.toIntOrNull()
     val valid = value != null &&
         value in AppSettings.MIN_DAILY_REVIEW_MINUTES..AppSettings.MAX_DAILY_REVIEW_MINUTES
-    AlertDialog(
+    RecollectDialog(
+        title = "设置每日复习时长",
         onDismissRequest = onDismiss,
-        title = { Text("设置每日复习时长") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { input -> text = input.filter(Char::isDigit).take(3) },
-                    singleLine = true,
-                    label = { Text("每日复习时长（分钟）") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    isError = text.isNotEmpty() && !valid,
-                    supportingText = if (text.isNotEmpty() && !valid) {
-                        { Text("请输入 ${AppSettings.MIN_DAILY_REVIEW_MINUTES}～${AppSettings.MAX_DAILY_REVIEW_MINUTES} 之间的分钟数") }
-                    } else {
-                        null
-                    },
-                )
-                Text(
-                    text = "决定每天能安排多少分钟的复习内容。当天需复习题目总耗时超出复习时长时会被推迟到后续日期。" +
-                        "修改后对下一份生成的计划生效，已生成或已打印的计划不变。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { value?.let(onConfirm) },
+        scrollable = true,
+        actions = {
+            RecollectDialogAction(text = "取消", onClick = onDismiss)
+            RecollectDialogAction(
+                text = "保存",
                 enabled = valid,
-            ) {
-                Text("保存")
-            }
+                onClick = { value?.let(onConfirm) },
+            )
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        },
-    )
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { input -> text = input.filter(Char::isDigit).take(3) },
+            singleLine = true,
+            label = { Text("每日复习时长（分钟）") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = text.isNotEmpty() && !valid,
+            supportingText = if (text.isNotEmpty() && !valid) {
+                { Text("请输入 ${AppSettings.MIN_DAILY_REVIEW_MINUTES}～${AppSettings.MAX_DAILY_REVIEW_MINUTES} 之间的分钟数") }
+            } else {
+                null
+            },
+        )
+        Text(
+            text = "决定每天能安排多少分钟的复习内容。当天需复习题目总耗时超出复习时长时会被推迟到后续日期。" +
+                "修改后对下一份生成的计划生效，已生成或已打印的计划不变。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 /** 首页概览的静默读取：统计失败不影响入口；协程取消照常向上传播。 */

@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -592,28 +591,24 @@ private fun TierDialog(
     onDismiss: () -> Unit,
     onPick: (Tier) -> Unit,
 ) {
-    AlertDialog(
+    RecollectDialog(
+        title = title,
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Tier.entries.forEach { tier ->
-                    Button(
-                        onClick = { onPick(tier) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(tierLabel(tier))
-                    }
-                }
-            }
+        actions = {
+            RecollectDialogAction(text = "取消", onClick = onDismiss)
         },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
+    ) {
+        Tier.entries.forEach { tier ->
+            Button(
+                onClick = { onPick(tier) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+            ) {
+                Text(tierLabel(tier))
             }
-        },
-    )
+        }
+    }
 }
 
 private data class TierRequest(

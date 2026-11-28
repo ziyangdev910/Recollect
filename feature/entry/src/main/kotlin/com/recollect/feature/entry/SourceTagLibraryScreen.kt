@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -148,34 +147,27 @@ fun SourceTagLibraryScreen(
                 }
             },
         )
-        is SourceDialog.Delete -> AlertDialog(
+        is SourceDialog.Delete -> RecollectDialog(
+            title = "删除来源「${current.tag.name}」",
             onDismissRequest = { dialog = null },
-            title = { Text("删除来源「${current.tag.name}」") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "确定删除「${current.tag.name}」吗？若该来源仍被题目引用，将无法删除。",
-                    )
-                    viewModel.actionError?.let { message ->
-                        Text(message, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
+            actions = {
+                RecollectDialogAction(text = "取消", onClick = { dialog = null })
+                RecollectDialogAction(
+                    text = "删除",
+                    destructive = true,
                     onClick = {
                         scope.launch {
                             if (viewModel.delete(current.tag.id)) dialog = null
                         }
                     },
-                ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { dialog = null }) { Text("取消") }
-            },
-        )
+        ) {
+            Text("确定删除「${current.tag.name}」吗？若该来源仍被题目引用，将无法删除。")
+            viewModel.actionError?.let { message ->
+                Text(message, color = MaterialTheme.colorScheme.error)
+            }
+        }
     }
 }
 
@@ -275,35 +267,30 @@ private fun NameDialog(
     onConfirm: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf(initialName) }
-    AlertDialog(
+    RecollectDialog(
+        title = title,
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("来源名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                errorMessage?.let { message ->
-                    Text(message, color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
+        scrollable = true,
+        actions = {
+            RecollectDialogAction(text = "取消", onClick = onDismiss)
+            RecollectDialogAction(
+                text = confirmLabel,
                 enabled = name.isNotBlank(),
                 onClick = { onConfirm(name) },
-            ) {
-                Text(confirmLabel)
-            }
+            )
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("来源名称") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        errorMessage?.let { message ->
+            Text(message, color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 private sealed interface SourceDialog {

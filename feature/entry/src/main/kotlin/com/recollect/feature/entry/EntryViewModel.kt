@@ -62,10 +62,6 @@ class EntryViewModel(
     var newestFirst by mutableStateOf(true)
         private set
 
-    /** true 时按知识点分类分组（「知识分类」选项卡），false 为「全部错题」。 */
-    var groupByKnowledge by mutableStateOf(false)
-        private set
-
     /** 搜索框是否展开；同样跨编辑页保留。 */
     var searchVisible by mutableStateOf(false)
         private set
@@ -77,7 +73,6 @@ class EntryViewModel(
         sourceFilter = null
         knowledgeFilter = null
         newestFirst = true
-        groupByKnowledge = false
         searchVisible = false
         updateQuery("")
     }
@@ -92,10 +87,6 @@ class EntryViewModel(
 
     fun toggleTimeOrder() {
         newestFirst = !newestFirst
-    }
-
-    fun updateGroupByKnowledge(value: Boolean) {
-        groupByKnowledge = value
     }
 
     fun toggleSearchVisible() {

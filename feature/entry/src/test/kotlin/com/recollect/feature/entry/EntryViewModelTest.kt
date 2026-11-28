@@ -70,7 +70,6 @@ class EntryViewModelTest {
         viewModel.updateQuery("T-1")
         viewModel.updateSourceFilter("作业本")
         viewModel.updateKnowledgeFilter("函数")
-        viewModel.updateGroupByKnowledge(true)
         viewModel.toggleSearchVisible()
         viewModel.toggleTimeOrder()
 
@@ -79,7 +78,6 @@ class EntryViewModelTest {
         assertEquals("T-1", viewModel.query)
         assertEquals("作业本", viewModel.sourceFilter)
         assertEquals("函数", viewModel.knowledgeFilter)
-        assertTrue(viewModel.groupByKnowledge)
         assertTrue(viewModel.searchVisible)
         assertFalse(viewModel.newestFirst)
 
@@ -88,7 +86,6 @@ class EntryViewModelTest {
         assertEquals("", viewModel.query)
         assertNull(viewModel.sourceFilter)
         assertNull(viewModel.knowledgeFilter)
-        assertFalse(viewModel.groupByKnowledge)
         assertFalse(viewModel.searchVisible)
         assertTrue(viewModel.newestFirst)
     }
