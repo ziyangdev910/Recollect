@@ -50,7 +50,7 @@ data class PlanPreviewContent(
 )
 
 // 计划预览的题目标识：`来源 第X页 第Y题`（X 为页码编号、Y 为题号）；
-// 没有来源说明时显示 `编号X 第Y题`，无来源页码时只显示 `第Y题`。
+// 没有来源说明时显示 `第X份试卷 第Y题`，无来源页码时只显示 `第Y题`。
 // 同一题号可能出现在不同来源页上，单看题号无法区分。
 data class PlanPreviewPage(
     val pageNumber: Int,
@@ -69,7 +69,7 @@ data class PlanPreviewWarning(
 // 被推迟题目的预览投影（冷却期 / 当天时间不足 / 关联知识点失效）；不会出现在打印稿里。
 data class PlanPreviewDeferred(
     val questionId: String,      // 仅供定位/日志，不直接展示
-    val questionLabel: String,   // 与 PlanPreviewPage 相同：`来源 第X页 第Y题`（无来源说明时 `编号X 第Y题`）
+    val questionLabel: String,   // 与 PlanPreviewPage 相同：`来源 第X页 第Y题`（无来源说明时 `第X份试卷 第Y题`）
     val label: String,           // 中文原因标签，不展示调度器枚举名
     val message: String
 )
@@ -117,7 +117,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ### 固定流程
 
-1. 读取 `PlanningSettings`；`planStartDate`/`planEndDate` 由「打印计划」页的日期范围决定（2026-11-27 用户要求）：默认填入本周（今天所在自然周，`today.with(previousOrSame(MONDAY))`）或下周（紧随其后的自然周）——本周计划 COMPLETED 时填下周，否则填本周；用户可调整任意连续日期范围，最多 7 天，不允许超过 7 天；`dailyAvailableMinutes` 缺失按 60 分钟/天。
+1. 读取 `PlanningSettings`；`planStartDate`/`planEndDate` 由「打印计划」页的日期范围决定（2026-11-27 用户要求）：默认填入本周（今天所在自然周，`today.with(previousOrSame(MONDAY))`）或下周（紧随其后的自然周）——本周计划 COMPLETED（完成确认）时填下周，否则填本周（2026-11-28 用户要求保留原有规则：仅 COMPLETED 填下周）；用户可调整任意连续日期范围，最多 7 天，不允许超过 7 天；`dailyAvailableMinutes` 缺失按 60 分钟/天。
 2. 读取 `KnowledgePointRepository.states()`、`QuestionRepository.schedulerQuestions()/questionNumbers()/sourcePages()`、`PlanRepository.pendingCoolingOverrides()`（题号与来源页码用于预览标识与打印元数据）。
 3. 调用 `Scheduler.plan(..., dateRange = planStartDate..planEndDate, coolingOverrides = 未消费事件 questionId 集合)`。
 4. 对每个 `PlannedQuestion`：
@@ -129,7 +129,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
      - `Success` 且 `pages` 为空：返回 `PlanGenerationOutcome.Empty(message, warnings 的预览投影)`，**不建页、不进入事务**（C-060）；`message` 必须区分“没有到期题目”与“有题目但全部无法打印”，且 overflow 的原因与题目不得丢弃（C-061/C-062）。
    - 为每道已排入题目生成行快照 `PlanPageRows`，与页一起放入 `PlanDraft.knowledgeRowsByQuestionId`；行组按打印时的 `KnowledgePoint.number` 升序生成后冻结，后续不接受重算（C-071/C-072）。`PlanPage` 的 `pageId = "{planId}-{pageNumber:02d}"`、`questionIds`、`knowledgeRows`、`continuationMarkers` 由 `PlanRepository.savePlan` 按草稿落库；`continuationMarkers` 仅作内部移页元数据，不在纸上绘制“续下页”（C-063）。
    - 有可打印页时组装预览投影：`PlanPreviewContent(planId, pages, warnings, deferred)`；警告已按 C-064 合并去重排序，并按 C-065 方案 B 映射为中文标签与 `message`，不把分页内部代码交给界面。
-   - 预览页的页面卡片与推迟卡片统一用题目标识 `来源 第X页 第Y题`（X 为页码编号、Y 为题号；来源页码取 `QuestionRepository.sourcePages()` 的 `页码编号-来源说明`，没有来源说明时显示 `编号X`，无来源页码时回落 `第Y题`）；`deferred` 取 `PlanResult.deferred`，按中文原因标签与说明投影，不展示调度器枚举名。
+   - 预览页的页面卡片与推迟卡片统一用题目标识 `来源 第X页 第Y题`（X 为页码编号、Y 为题号；来源页码取 `QuestionRepository.sourcePages()` 的 `页码编号-来源说明`，没有来源说明时显示 `第X份试卷`，无来源页码时回落 `第Y题`）；`deferred` 取 `PlanResult.deferred`，按中文原因标签与说明投影，不展示调度器枚举名。
 5. 仅当存在可打印页时，在**一个 Room 事务**内调用 `PlanRepository.savePlan(draft)`（`PlanDraft` 含上述行快照与 `deferredRecords`，C-074 方案 A）：
    - 写 `plan` 头；`deferred` 保存 `questionId/题号/来源页码/原因` 的冻结快照，重开计划时不再依赖当前题库（旧快照缺来源页码时，仅展示层可按当前题库兜底补齐）；
    - 写全部 `PlanPage`；
@@ -150,8 +150,10 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 
 ## 预览默认日期范围与题库变更提示（2026-11-27）
 
-- `PlanSession.activePlan(settings)` 暴露该范围当前的活动计划（含 `createdAt`）：生成页首次进入时读取本周窗口的计划状态，本周计划 COMPLETED（完成确认）则默认填入下一自然周，否则填入今天所在自然周；用户可在日期范围卡中调整起止日期（最多 7 天）。
+- `PlanSession.activePlan(settings)` 暴露该范围当前的活动计划（含 `createdAt`）：生成页首次进入时读取本周窗口的计划状态，本周计划 COMPLETED（完成确认）则默认填入下一自然周，否则填入今天所在自然周（2026-11-28 用户要求保留原有规则）；用户可在日期范围卡中调整起止日期（最多 7 天）。
+- **始终检测**：加载已有计划时（进入页默认范围加载、手动切换日期范围、或切回已有范围）都执行题库/时长检测，检测先于 PDF 渲染，提示不因渲染耗时而延迟。
 - 打开已有计划时判断题库是否与生成时不同：任一未归档题目在计划 `createdAt` 之后被新增/编辑（`Question.updatedAt` 晚于计划 `createdAt`），或计划中已排入/推迟/告警的题目已不在未归档题库（被归档），则提示「题库已更新，是否重新生成计划？」。确认后走 `regenerate()`；取消则保持当前计划，同一日期范围不再重复询问。
+- 每日复习时长同样参与判断（2026-11-28 用户要求）：计划头 `plan.dailyMinutes` 记录生成时的分钟数（schema v17）；打开已有计划时若该值 > 0 且与当前设置不同，提示「复习时长已更新，是否重新生成计划？」；两者同时变化时提示「计划已过期」。旧计划 `dailyMinutes = 0`（v17 前）视为未知，不据此提示。取消（保持当前计划）对同一日期范围同时忽略题库与时长提示。
 - 计划只排入范围内到期的题目，未到期题目本就不在计划中，因此**不得**用“全部题库 vs 计划题目”的集合差异判断变化，避免每次打开都误报。
 - `StoredPlan.createdAt` 与 `EntrySummary.updatedAt` 只用于该判断；`Question.updatedAt` 仅在用户新建/编辑时更新，打印快照、归档、调度等系统写回不改变它。
 - 生成成功后，页面通过 `PlanDocumentGateway.preview(printJob)` 渲染与分享 PDF 相同的 A4 布局页图，打印稿预览占满页面主体；日期范围与唯一导出操作「分享 PDF」（`share`）位于页面底部悬浮栏，不再提供系统打印页（2026-11-27 用户要求）。
@@ -191,7 +193,7 @@ interface KnowledgeTextMeasurer {   // 定义在 core/common；feature/print 实
 ## 验收
 
 - C-090 方案 A：`GeneratePlanUseCase.execute()` 返回 `PlanGenerationOutcome`；`Planned` 同时携带 `PrintJob`（打印层唯一输入）与 `PlanPreviewContent`（预览页唯一输入）；`Empty` 携带可读文案、`PlanPreviewWarning` 与 `PlanPreviewDeferred`，不得只返回页列表或丢弃提示。`PaginationResult.Failure` 不进入结果包装，仍按 C-047 抛 `PlanGenerationException`。
-- 计划预览的页面卡片与“未排入计划”卡片使用同一题目标识 `来源 第X页 第Y题`（X 为页码编号、Y 为题号；没有来源说明时 `编号X 第Y题`，无来源页码时 `第Y题`）；重开计划时从冻结的 `renderMeta`/`plan.deferred` 重建，旧推迟快照缺来源页码可按当前题库兜底展示，但不得改写快照或依赖题库重算分页。
+- 计划预览的页面卡片与“未排入计划”卡片使用同一题目标识 `来源 第X页 第Y题`（X 为页码编号、Y 为题号；没有来源说明时 `第X份试卷 第Y题`，无来源页码时 `第Y题`）；重开计划时从冻结的 `renderMeta`/`plan.deferred` 重建，旧推迟快照缺来源页码可按当前题库兜底展示，但不得改写快照或依赖题库重算分页。
 - 计划生成后：`PlanPage`、`Question.lastScheduledDate`、冷却事件消费、顺延在同一事务内；任一步失败全部回滚。
 - C-099：所有页确认提交后计划迁移为 COMPLETED；只确认部分页、或有整题跳过时保持原状态；SUPERSEDED 计划不得改回 COMPLETED。
 - `PagePlanner` 返回 `Failure` 时抛 `PlanGenerationException`，不进入事务、不写任何 `PlanPage`。

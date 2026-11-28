@@ -487,6 +487,8 @@ class RoomDatabaseImporter(
             supersededBy = row.optionalString("supersededBy", context),
             renderMeta = row.optionalString("renderMeta", context) ?: "[]",
             deferred = row.optionalString("deferred", context) ?: "[]",
+            // v17：旧备份缺少该字段时记 0（未知）；新备份保留生成时的每日复习时长。
+            dailyMinutes = row.optionalInt("dailyMinutes", context) ?: 0,
         )
     }
 

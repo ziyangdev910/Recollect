@@ -91,18 +91,24 @@ class DefaultScheduler : Scheduler {
             )
         }
 
-        // 第 3 层时间装箱（C-017、C-020）：按日期升序逐日 first-fit；
-        // 候选只在唯一目标日尝试，溢出不顺延，也不因一个大条目停止整日。
+        // 第 3 层时间装箱（2026-11-28 用户要求调整）：
+        // 按日期升序逐日 first-fit；当天容量不足的候选顺延到后续日期继续尝试，
+        // 但目标日晚于当前日期的候选不得提前回填当前日期。
         // 每日候选顺序只来自第 2 层排序结果，装箱阶段不得改序。
-        val candidatesByDate = candidates.sortedWith(CANDIDATE_ORDER).groupBy { it.targetDate }
+        val pending = candidates.sortedWith(CANDIDATE_ORDER).toMutableList()
         val assignmentsByDate = LinkedHashMap<LocalDate, MutableList<PlannedQuestion>>()
-        val timeDeferred = mutableListOf<DeferredItem>()
 
         var date = dateRange.start
         while (!date.isAfter(dateRange.endInclusive)) {
             var remainingMinutes = dailyAvailableMinutes[date] ?: 0
             val assigned = mutableListOf<PlannedQuestion>()
-            for (candidate in candidatesByDate[date].orEmpty()) {
+            val stillPending = mutableListOf<Candidate>()
+            for (candidate in pending) {
+                // 目标日尚未到来：保留到后续日期，不得提前占用今天。
+                if (candidate.targetDate.isAfter(date)) {
+                    stillPending += candidate
+                    continue
+                }
                 val minutes = candidate.question.estimatedMinutes()
                 if (remainingMinutes >= minutes) {
                     assigned += PlannedQuestion(
@@ -113,14 +119,22 @@ class DefaultScheduler : Scheduler {
                     )
                     remainingMinutes -= minutes
                 } else {
-                    timeDeferred += DeferredItem(
-                        questionId = candidate.question.id,
-                        reason = DeferReason.TIME_OVERFLOW,
-                    )
+                    // 今天剩余容量不足：保留到后续日期继续尝试（同日仍继续尝试更小的候选）。
+                    stillPending += candidate
                 }
             }
+            pending.clear()
+            pending.addAll(stillPending)
             if (assigned.isNotEmpty()) assignmentsByDate[date] = assigned
             date = date.plusDays(1)
+        }
+
+        // 整个日期范围都未能排入的候选记为 TIME_OVERFLOW。
+        val timeDeferred = pending.map { candidate ->
+            DeferredItem(
+                questionId = candidate.question.id,
+                reason = DeferReason.TIME_OVERFLOW,
+            )
         }
 
         return PlanResult(

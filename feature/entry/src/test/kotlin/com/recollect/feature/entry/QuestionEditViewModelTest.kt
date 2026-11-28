@@ -182,6 +182,21 @@ class QuestionEditViewModelTest {
     }
 
     @Test
+    fun `review minutes outside one to 240 are rejected before saving`() = runBlocking {
+        val (viewModel, repository) = fixture()
+        viewModel.load(questionId = null)
+
+        val tooLong = viewModel.save("T-1", 1, "", listOf("kp-1"), 241)
+        assertFalse(tooLong)
+        assertTrue(viewModel.actionError.orEmpty().contains("240"))
+        assertEquals(0, repository.createCalls)
+
+        val zero = viewModel.save("T-1", 1, "", listOf("kp-1"), 0)
+        assertFalse(zero)
+        assertEquals(0, repository.createCalls)
+    }
+
+    @Test
     fun `missing question shows a load error`() = runBlocking {
         val (viewModel, _) = fixture()
 

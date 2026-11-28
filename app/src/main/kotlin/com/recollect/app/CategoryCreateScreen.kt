@@ -37,6 +37,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.recollect.data.room.repository.KnowledgeCategoryRepository
+import com.recollect.feature.entry.notebookTone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.ziyangdev910.recollect.R

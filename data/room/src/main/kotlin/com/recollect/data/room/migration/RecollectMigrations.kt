@@ -394,6 +394,19 @@ object RecollectMigrations {
         }
     }
 
+    /**
+     * schema 16 → 17（2026-11-28 用户要求）：记录计划生成时的每日复习时长。
+     *
+     * 旧计划为 0（未知）；每日复习时长修改后进入打印计划页时，只有新旧值都已知且不同才提示重新生成。
+     */
+    val MIGRATION_16_17: Migration = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `plan` ADD COLUMN `dailyMinutes` INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -410,5 +423,6 @@ object RecollectMigrations {
         MIGRATION_13_14,
         MIGRATION_14_15,
         MIGRATION_15_16,
+        MIGRATION_16_17,
     )
 }

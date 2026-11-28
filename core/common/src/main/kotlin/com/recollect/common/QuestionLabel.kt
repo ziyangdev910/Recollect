@@ -9,7 +9,7 @@ const val UNKNOWN_QUESTION_NUMBER = "未知题号"
  * [sourcePage] 为数据层的来源页码展示串 `页码编号-来源说明`（说明为空时只有编号，如 `1`、`2-同步练习`）：
  * - X 取页码编号，来源取说明，Y 取 [questionNumber]；
  * - 有来源说明时输出 `同步练习 第12页 第T-1题`；
- * - 没有来源说明时页码写成「编号」，输出 `编号12 第T-1题`；
+ * - 没有来源说明时按试卷份数展示，输出 `第12份试卷 第T-1题`（2026-11-28 用户要求）；
  * - 旧稿整串没有页码编号时（如 `P12`）整串作为来源，输出 `P12 第T-1题`；
  * - 没有来源时只输出 `第T-1题`；题号缺失时沿用 [UNKNOWN_QUESTION_NUMBER]。
  *
@@ -25,7 +25,7 @@ fun formatQuestionLabel(sourcePage: String, questionNumber: String): String {
 /**
  * 题目标识的分行展示（2026-11-25 用户要求）：
  * - 有来源说明：[first] 为来源，[second] 为 `第X页 第Y题`；
- * - 没有来源说明：[first] 为 `编号X`，[second] 为 `第Y题`；
+ * - 没有来源说明：[first] 为 `第X份试卷`，[second] 为 `第Y题`；
  * - 旧稿整串没有页码编号：[first] 为整串，[second] 为 `第Y题`；
  * - 没有来源：[first] 为 `第Y题`，[second] 为空；题号缺失时 [first] 为 [UNKNOWN_QUESTION_NUMBER]。
  */
@@ -44,7 +44,10 @@ fun formatQuestionLabelLines(sourcePage: String, questionNumber: String): Questi
             first = label,
             second = listOfNotNull(pageCode?.let { "第${it}页" }, question).joinToString(" "),
         )
-        pageCode != null -> QuestionLabelLines(first = "编号${pageCode}", second = question)
+        pageCode != null -> QuestionLabelLines(
+            first = "第${pageCode}份试卷",
+            second = question,
+        )
         else -> QuestionLabelLines(first = question, second = "")
     }
 }

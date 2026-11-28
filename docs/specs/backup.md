@@ -64,6 +64,9 @@
 > `knowledgeCategories`；`knowledgePoints` 每行新增 `categoryId`。旧备份缺少该键时，
 > 导入端补默认 11 个分类并把知识点归入「语文」。
 
+> 2026-11-28 回写：v17 的计划头 `plan` 新增 `dailyMinutes`（生成时的每日复习时长）；
+> 新备份写入该字段，旧备份缺少时为 0（未知），不影响导入。
+>
 > 2026-11-22 回写：v8 的计划头 `plan` 与 v9 的来源标签库 `source_tag` 纳入导出，
 > 分别对应 `plans` 与 `sourceTags`；旧数组键名与字段名不变。单一笔记条目表在实现中
 > 为 `note_attachment_item`，导出键统一写作 `noteAttachments`（原规格中

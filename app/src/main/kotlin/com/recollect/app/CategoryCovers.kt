@@ -1,5 +1,6 @@
 package com.recollect.app
 
+import com.recollect.feature.entry.NOTEBOOK_TONE_COUNT
 import org.ziyangdev910.recollect.R
 
 /**

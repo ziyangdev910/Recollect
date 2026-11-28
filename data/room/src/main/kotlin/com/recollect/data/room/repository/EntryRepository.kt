@@ -47,6 +47,9 @@ data class EntryDraft(
     companion object {
         const val DEFAULT_REVIEW_MINUTES = 15
 
+        /** 单题预估复习时长的输入上限（2026-11-28 用户要求，与每日复习时长一致）。 */
+        const val MAX_REVIEW_MINUTES = 240
+
         /** 单题关联知识点上限（D-12）。 */
         const val MAX_KNOWLEDGE_POINTS = 4
     }

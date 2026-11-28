@@ -1,9 +1,11 @@
 package com.recollect.data.room.repository
 
+import com.recollect.data.room.dao.KnowledgeCategoryDao
 import com.recollect.data.room.dao.KnowledgePointDao
 import com.recollect.data.room.dao.QuestionDao
 import com.recollect.data.room.dao.QuestionKnowledgeCrossRefDao
 import com.recollect.model.Tier
+import java.time.Instant
 import java.time.LocalDate
 
 /**
@@ -26,6 +28,8 @@ data class QuestionReviewProgress(
     val sourcePage: String,
     /** 实际复习日；尚未复习为 `null`。 */
     val lastReviewedDate: LocalDate?,
+    /** 用户最近新建/编辑时间；题目进度可按修改时间排序（2026-11-28 用户要求）。 */
+    val updatedAt: Instant = Instant.EPOCH,
     val knowledgePoints: List<KnowledgePointReviewProgress>,
 )
 
@@ -34,6 +38,9 @@ data class KnowledgePointReviewProgress(
     val id: String,
     val number: Int,
     val name: String,
+    /** 所属知识分类；用于复习进度按科目筛选（2026-11-28 用户要求）。 */
+    val categoryId: String = "",
+    val categoryName: String = "",
     val tier: Tier,
     val continuousScore: Float,
     val effectiveFeedbackCount: Float,
@@ -46,10 +53,12 @@ class RoomReviewProgressRepository(
     private val questionDao: QuestionDao,
     private val crossRefDao: QuestionKnowledgeCrossRefDao,
     private val knowledgePointDao: KnowledgePointDao,
+    private val categoryDao: KnowledgeCategoryDao,
 ) : ReviewProgressRepository {
 
     override suspend fun questions(): List<QuestionReviewProgress> {
         val knowledgeById = knowledgePointDao.allOrderedByNumber().associateBy { it.id }
+        val categoryNames = categoryDao.all().associate { it.id to it.name }
         val refsByQuestion = crossRefDao.all().groupBy { it.questionId }
         return questionDao.active().map { question ->
             val linked = refsByQuestion[question.id].orEmpty()
@@ -60,11 +69,14 @@ class RoomReviewProgressRepository(
                 questionNumber = question.questionNumber,
                 sourcePage = formatSourcePage(question.sourcePageCode, question.sourcePage),
                 lastReviewedDate = question.lastReviewedDate,
+                updatedAt = question.updatedAt,
                 knowledgePoints = linked.map { knowledgePoint ->
                     KnowledgePointReviewProgress(
                         id = knowledgePoint.id,
                         number = knowledgePoint.number,
                         name = knowledgePoint.name,
+                        categoryId = knowledgePoint.categoryId,
+                        categoryName = categoryNames[knowledgePoint.categoryId] ?: "未分类",
                         tier = knowledgePoint.currentTier,
                         continuousScore = knowledgePoint.continuousScore,
                         effectiveFeedbackCount = knowledgePoint.effectiveFeedbackCount,

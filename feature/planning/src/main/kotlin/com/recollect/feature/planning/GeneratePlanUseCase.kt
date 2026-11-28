@@ -208,6 +208,9 @@ class GeneratePlanUseCase(
             weekEndDate = settings.planEndDate,
             renderMetaByQuestionId = renderMetaByQuestionId,
             supersedesPlanId = supersedesPlanId,
+            // 计划头记录生成时的每日复习时长；UI 设置变更后进入打印页据此提示重新生成。
+            dailyMinutes = settings.dailyAvailableMinutes.values.firstOrNull()
+                ?: DEFAULT_DAILY_MINUTES,
         )
         planRepository.savePlan(draft)
 
@@ -261,6 +264,7 @@ class GeneratePlanUseCase(
     }
 
     private companion object {
+        /** 与 `PlanningSettings`/`app_settings` 的默认值一致；缺失日按 60 分钟处理。 */
         const val DEFAULT_DAILY_MINUTES = 60
         const val MAX_KNOWLEDGE_LINES = 4
         const val MAX_ATTACHMENTS = 3

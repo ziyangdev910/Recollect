@@ -69,6 +69,7 @@ object ReviewProgressAggregator {
             lastReviewedDate = lastReviewedDate,
             dueDate = dueDate,
             daysUntilDue = dueDate?.let { ChronoUnit.DAYS.between(today, it) },
+            updatedAt = updatedAt,
             knowledgePoints = knowledgePoints.map { it.toUi(today) },
         )
     }
@@ -78,6 +79,8 @@ object ReviewProgressAggregator {
             id = id,
             number = number,
             name = name,
+            categoryId = categoryId,
+            categoryName = categoryName,
             tier = tier,
             tierLabel = tier.label,
             masteryPercent = (continuousScore.coerceIn(0f, 1f) * 100).roundToInt(),

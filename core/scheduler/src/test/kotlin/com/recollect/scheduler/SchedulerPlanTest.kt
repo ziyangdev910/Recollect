@@ -622,7 +622,7 @@ class SchedulerPlanTest {
     }
 
     @Test
-    fun `S-17 overflow never spills to later days and later candidates never backfill earlier days`() {
+    fun `S-17 overflow spills to later days while later candidates do not backfill earlier days`() {
         val day1 = LocalDate.of(2026, 11, 16)
         val day2 = LocalDate.of(2026, 11, 17)
 
@@ -669,17 +669,65 @@ class SchedulerPlanTest {
             "第 1 天容量 30：只有 q1(20) 能排入，q3 属于第 2 天，不得回填第 1 天余量",
         )
         assertEquals(
-            listOf(DeferredItem(questionId = "q2", reason = DeferReason.TIME_OVERFLOW)),
-            result.deferred,
-            "第 1 天溢出的 q2 只记 TIME_OVERFLOW，不顺延到第 2 天",
-        )
-        assertEquals(
-            listOf("q3"),
+            listOf("q2", "q3"),
             assertNotNull(result.dailyAssignments[day2]).map { it.questionId },
-            "第 2 天只排入自己的候选 q3",
+            "第 1 天溢出的 q2 顺延到第 2 天；同日再排入自己的候选 q3",
         )
+        assertTrue(result.deferred.isEmpty(), "两天总容量足以排入全部题目，不应再有 TIME_OVERFLOW")
         val allScheduledIds = result.dailyAssignments.values.flatMap { day -> day.map { it.questionId } }
-        assertTrue(allScheduledIds.none { it == "q2" }, "q2 不得借后续日期混入计划")
+        assertEquals(listOf("q1", "q2", "q3"), allScheduledIds)
+    }
+
+    @Test
+    fun `S-17b overflow fills following days within the selected week`() {
+        val start = LocalDate.of(2026, 11, 30)
+        val end = LocalDate.of(2026, 12, 6)
+
+        val state = KnowledgeState(
+            id = "k1",
+            number = 1,
+            currentTier = Tier.UNKNOWN,
+            continuousScore = 0f,
+            nextDueDate = start,
+            effectiveFeedbackCount = 0f,
+            dormant = false,
+            activeQuestionCount = 12,
+            difficulty = null,
+            halfLifeDays = null,
+            createdAt = Instant.parse("2026-11-01T00:00:00Z"),
+        )
+        val questions = (1..12).map { number ->
+            SchedulerQuestion(
+                id = "q$number",
+                linkedKnowledgeIds = listOf("k1"),
+                archived = false,
+                lastReviewedDate = null,
+                estimatedReviewMinutes = 15,
+            )
+        }
+        val dailyAvailableMinutes = (0L..6L).associate { start.plusDays(it) to 60 }
+
+        val result = DefaultScheduler().plan(
+            knowledgeStates = listOf(state),
+            questions = questions,
+            dailyAvailableMinutes = dailyAvailableMinutes,
+            dateRange = start..end,
+        )
+
+        assertEquals(
+            listOf(start, start.plusDays(1), start.plusDays(2)),
+            result.dailyAssignments.keys.toList(),
+            "12 题 × 15 分钟、每天 60 分钟：应铺满周一至周三，而不是只排周一",
+        )
+        assertEquals(4, result.dailyAssignments[start]?.size)
+        assertEquals(4, result.dailyAssignments[start.plusDays(1)]?.size)
+        assertEquals(4, result.dailyAssignments[start.plusDays(2)]?.size)
+        assertTrue(result.deferred.isEmpty(), "容量足够时不应再出现 TIME_OVERFLOW")
+        assertEquals(
+            12,
+            result.dailyAssignments.values.sumOf { it.size },
+            "所有题目只能排入一次",
+        )
     }
 
     @Test
@@ -949,7 +997,11 @@ class SchedulerPlanTest {
         )
         assertEquals(listOf(day1, day2), planB.dailyAssignments.keys.toList())
         assertEquals(listOf("q1"), planA.dailyAssignments[day1]?.map { it.questionId })
-        assertEquals(listOf("q3"), planA.dailyAssignments[day2]?.map { it.questionId })
+        assertEquals(
+            listOf("q3", "q2"),
+            planA.dailyAssignments[day2]?.map { it.questionId },
+            "第 1 天溢出的 q2 顺延到第 2 天；同日按第 2 层排序，FAMILIAR 的 q3 先于 UNKNOWN 的 q2",
+        )
         assertEquals(
             listOf(
                 DeferredItem(
@@ -958,10 +1010,9 @@ class SchedulerPlanTest {
                     knowledgePointIds = listOf("k3"),
                     targetNextDueDates = mapOf("k3" to day3.plusDays(1)),
                 ),
-                DeferredItem(questionId = "q2", reason = DeferReason.TIME_OVERFLOW),
             ),
             planA.deferred,
-            "deferred 先按 reason（COOLING 在前）再按 questionId 升序，与输入顺序无关",
+            "只有冷却题目被推迟；deferred 与输入顺序无关",
         )
     }
 

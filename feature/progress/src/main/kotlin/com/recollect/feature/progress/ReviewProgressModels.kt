@@ -1,6 +1,7 @@
 package com.recollect.feature.progress
 
 import com.recollect.model.Tier
+import java.time.Instant
 import java.time.LocalDate
 
 /** 复习进度页的展示内容；由 [ReviewProgressAggregator] 从只读投影生成。 */
@@ -35,6 +36,8 @@ data class QuestionProgressUi(
     /** 题目最早到期的知识点日期；没有可调度的关联知识点时为 `null`。 */
     val dueDate: LocalDate?,
     val daysUntilDue: Long?,
+    /** 用户最近新建/编辑时间；用于按修改时间排序（2026-11-28 用户要求）。 */
+    val updatedAt: Instant = Instant.EPOCH,
     val knowledgePoints: List<KnowledgePointProgressUi>,
 ) {
     /** 卡片副标题：已掌握（MASTERED 档）的知识点数量。 */
@@ -43,12 +46,22 @@ data class QuestionProgressUi(
             val mastered = knowledgePoints.count { it.tier == Tier.MASTERED }
             return "已掌握 $mastered/${knowledgePoints.size} 个知识点"
         }
+
+    /** 题目关联知识点所属的科目（去重、按知识点编号顺序）；用于科目筛选。 */
+    val categoryNames: List<String>
+        get() = knowledgePoints
+            .map { it.categoryName }
+            .filter { it.isNotBlank() }
+            .distinct()
 }
 
 data class KnowledgePointProgressUi(
     val id: String,
     val number: Int,
     val name: String,
+    /** 所属知识分类；用于复习进度按科目筛选（2026-11-28 用户要求）。 */
+    val categoryId: String = "",
+    val categoryName: String = "",
     val tier: Tier,
     val tierLabel: String,
     /** 连续掌握度百分比（0～100）。 */

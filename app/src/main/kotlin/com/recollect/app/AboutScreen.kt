@@ -42,8 +42,8 @@ import androidx.compose.ui.unit.dp
 import org.ziyangdev910.recollect.R
 
 /** 作者与开源仓库；「关于」页展示，仓库地址可点击在浏览器打开。 */
-private const val AUTHOR = "@ziyangdev910"
-private const val REPOSITORY_URL = "https://github.com/ziyangdev910/recollect"
+private const val AUTHOR = "GitHub @ziyangdev910"
+private const val REPOSITORY_URL = "https://github.com/ziyangdev910/Recollect"
 
 /** 本项目采用的开源许可证；「关于」页展示，正文见仓库 LICENSE 与 LICENSE-EXCEPTION。 */
 private const val LICENSE_NAME = "GPL-3.0 with Classpath Exception"

@@ -31,4 +31,10 @@ data class Plan(
     val renderMeta: String = "[]",
     @ColumnInfo(defaultValue = "[]")
     val deferred: String = "[]",
+    /**
+     * 生成计划时使用的每日复习时长（分钟，schema v17）。
+     * 0 表示旧计划未记录；设置变更后进入打印计划页据此提示重新生成。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val dailyMinutes: Int = 0,
 )

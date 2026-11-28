@@ -71,6 +71,8 @@ class PlanPreviewViewModel(
         { start, end, _ -> PlanningSettings(planStartDate = start, planEndDate = end) },
     /** 当前题库：questionId → 最近修改时间；为 null 时跳过“题库已更新”检查。 */
     private val currentQuestionBank: suspend () -> Map<String, Instant>? = { null },
+    /** 当前每日复习时长（分钟）；0 表示未知。与计划头记录值不同时提示重新生成。 */
+    private val currentDailyMinutes: Int = 0,
     /** 计划成功后把同一份 `PrintJob` 交给打印稿预览/分享；失败/空态时清空，避免打印旧计划。 */
     private val onPrintJobAvailable: (PrintJob?) -> Unit = {},
     /** 打印稿预览、分享与演示回写端口；为 null 时不渲染 PDF 预览。 */
@@ -139,8 +141,12 @@ class PlanPreviewViewModel(
     var bankChanged by mutableStateOf(false)
         private set
 
+    /** 加载到已有计划、且每日复习时长与生成时不同；页面据此询问是否重新生成。 */
+    var settingsChanged by mutableStateOf(false)
+        private set
+
     private var initialRangeResolved = initialStartDate != null && initialEndDate != null
-    private var dismissedBankRange: Pair<LocalDate, LocalDate>? = null
+    private var dismissedChangeRange: Pair<LocalDate, LocalDate>? = null
     private var currentPrintJob: PrintJob? = null
 
     /**
@@ -158,6 +164,7 @@ class PlanPreviewViewModel(
         startDate = safeStart
         endDate = safeEnd
         bankChanged = false
+        settingsChanged = false
         open(regenerate = false)
     }
 
@@ -174,6 +181,9 @@ class PlanPreviewViewModel(
             val currentStatus = quietly {
                 session.activePlan(currentWeekSettings(LocalDate.now(clock)))?.status
             }
+            // 保留原有默认规则：仅本周计划 COMPLETED（完成确认）时才填下一自然周；
+            // PRINTED（已打印但未确认）仍留在本周。无论默认范围如何，
+            // 随后加载已有计划时都会执行题库/时长变化检测。
             val defaults = if (currentStatus == PlanStatus.COMPLETED) {
                 nextWeekSettings(LocalDate.now(clock))
             } else {
@@ -190,14 +200,16 @@ class PlanPreviewViewModel(
     /** 用户确认“重新生成计划”：生成新计划号，并把旧计划标记为已被替代。 */
     suspend fun regenerate() {
         bankChanged = false
-        dismissedBankRange = null
+        settingsChanged = false
+        dismissedChangeRange = null
         open(regenerate = true)
     }
 
     /** 用户选择沿用当前计划：关闭提示，本轮不再就同一日期范围重复询问。 */
-    fun dismissBankChanged() {
-        if (bankChanged) dismissedBankRange = startDate to endDate
+    fun dismissPlanChanges() {
+        if (bankChanged || settingsChanged) dismissedChangeRange = startDate to endDate
         bankChanged = false
+        settingsChanged = false
     }
 
     /**
@@ -248,6 +260,7 @@ class PlanPreviewViewModel(
     private suspend fun open(regenerate: Boolean) {
         state = PlanPreviewUiState.Loading
         bankChanged = false
+        settingsChanged = false
         currentPrintJob = null
         onPrintJobAvailable(null)
         val settings = settingsFactory(startDate, endDate, LocalDate.now(clock))
@@ -259,6 +272,8 @@ class PlanPreviewViewModel(
             } else {
                 session.open(settings)
             }
+            var printJobToRender: PrintJob? = null
+            var planIdToRender: String? = null
             val handledQuestionIds = when (outcome) {
                 is PlanGenerationOutcome.Planned -> {
                     currentPrintJob = outcome.printJob
@@ -274,9 +289,8 @@ class PlanPreviewViewModel(
                             PlanPdfPreviewState.Loading
                         },
                     )
-                    if (documentGateway != null) {
-                        renderPdfPreview(outcome.printJob, outcome.preview.planId)
-                    }
+                    printJobToRender = outcome.printJob
+                    planIdToRender = outcome.preview.planId
                     buildSet {
                         addAll(outcome.printJob.questions.keys)
                         addAll(outcome.preview.deferred.map { it.questionId })
@@ -295,8 +309,15 @@ class PlanPreviewViewModel(
                     }
                 }
             }
+            // 先检测题库/时长变化，再渲染可能耗时的 PDF 预览：
+            // 只要加载的是已有计划，进入页或切换范围时都会立即进入提示判断。
             if (existingPlan != null) {
-                detectBankChanged(existingPlan, handledQuestionIds)
+                detectPlanChanges(existingPlan, handledQuestionIds)
+            }
+            val job = printJobToRender
+            val renderPlanId = planIdToRender
+            if (job != null && renderPlanId != null && documentGateway != null) {
+                renderPdfPreview(job, renderPlanId)
             }
         } catch (e: CancellationException) {
             throw e
@@ -340,6 +361,25 @@ class PlanPreviewViewModel(
     }
 
     /**
+     * 已有计划是否与当前数据不一致：
+     * - 题库：任一未归档题目在计划生成后被新增/编辑（`updatedAt` 晚于计划 `createdAt`），
+     *   或计划中已排入/推迟/告警的题目现在被归档；
+     * - 每日复习时长：计划头记录了生成时的分钟数，且与当前设置不同。
+     *
+     * 旧计划（v17 前）的 `dailyMinutes` 为 0（未知），不据此提示，避免误报。
+     */
+    private suspend fun detectPlanChanges(
+        existingPlan: StoredPlan,
+        handledQuestionIds: Set<String>,
+    ) {
+        if (dismissedChangeRange == (startDate to endDate)) return
+        detectBankChanged(existingPlan, handledQuestionIds)
+        settingsChanged = currentDailyMinutes > 0 &&
+            existingPlan.dailyMinutes > 0 &&
+            existingPlan.dailyMinutes != currentDailyMinutes
+    }
+
+    /**
      * 题库是否与计划生成时不同。
      *
      * 计划只排入「当天到期」的题目，未到期题目本就不在计划中，因此不能拿全部题库与
@@ -348,7 +388,6 @@ class PlanPreviewViewModel(
      * - 计划中已排入/推迟/告警的题目现在被归档（`handledQuestionIds` 中已不在题库）。
      */
     private suspend fun detectBankChanged(existingPlan: StoredPlan, handledQuestionIds: Set<String>) {
-        if (dismissedBankRange == (startDate to endDate)) return
         val bank = quietly { currentQuestionBank() } ?: return
         val editedOrAdded = bank.values.any { it.isAfter(existingPlan.createdAt) }
         val plannedQuestionRemoved = handledQuestionIds.any { it !in bank.keys }

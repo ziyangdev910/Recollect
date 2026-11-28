@@ -3,6 +3,8 @@
 关联决策：D-01、D-02、D-03、D-04、D-05、D-11、D-12
 关联裁决：C-006、C-007、C-009、C-017、C-019、C-020、C-021、C-046、C-049、C-050、C-054、C-055、C-056、C-057、C-058、C-059、C-076
 
+> 2026-11-28 用户要求调整时间装箱：当天容量不足的候选顺延到后续日期继续尝试，目标日晚于当前日期的候选仍不得提前回填；只有日期范围结束仍未排入才记 `TIME_OVERFLOW`。此调整取代 C-020 的“候选只在其唯一目标日尝试、不得顺延”限制。
+
 ## 冻结决策（D-01～D-05）
 
 - **D-01**：调度单元是知识点，题目是载体；同一题只打印一次；触发知识点正常更新；非触发关联知识点按 0.3 权重更新连续掌握度增量，tier/nextDueDate 不变；非触发行独立填涂。
@@ -137,11 +139,12 @@ enum class DeferReason { COOLING, TIME_OVERFLOW, UNRESOLVED_KNOWLEDGE }  // C-05
 ### 3. 时间装箱层（C-017、C-020）
 
 - 按 `dateRange` 中的日期升序逐日装箱。
-- 当日候选集合 = `{ q | targetDate(q) == date }`；候选只在其唯一目标日尝试，**不得顺延到后续日期**（C-020）。
+- 当日候选集合 = `{ q | targetDate(q) <= date 且尚未排入 }`；目标日晚于当前日期的候选**不得提前回填当前日期**；当天容量不足的候选**顺延到后续日期继续尝试**（2026-11-28 用户要求调整，取代 C-020 的“不得顺延”）。
 - 当日容量 `dailyAvailableMinutes[date]`；缺失视为 `0`。
 - 当日候选按第 2 层排序依次尝试 first-fit：
   - 剩余容量 ≥ `estimatedReviewMinutes`：排入；
-  - 否则：生成 `DeferredItem(q.id, TIME_OVERFLOW)`，继续尝试后续候选（不因一个大条目停止整日装箱）。
+  - 否则：保留到后续日期继续尝试，同时继续尝试当日更小的候选（不因一个大条目停止整日装箱）。
+- 日期范围结束后仍未排入的候选才生成 `DeferredItem(q.id, TIME_OVERFLOW)`。
 - `estimatedReviewMinutes` 从 `Question` 读取；缺失或 ≤ 0 时按 15 分钟处理。
 - 同一题目、同一知识点在一份计划内不重复排入。
 - 输出 `dailyAssignments` 按日期升序；没有条目的日期不出现在 Map 中。
@@ -176,7 +179,7 @@ enum class DeferReason { COOLING, TIME_OVERFLOW, UNRESOLVED_KNOWLEDGE }  // C-05
 | S-14 | 一题多个知识点在同一 dateRange 内到期 | 只排入最早 `targetDate` 一次；全部到期知识点均为 triggered |
 | S-15 | `estimatedReviewMinutes` 缺失/自定义 | 缺失按 15 分钟；自定义值参与累加 |
 | S-16 | 输入 Map 顺序打乱 | 输出与输入顺序无关，按日期升序 |
-| S-17 | 第 1 天候选溢出、第 2 天仍有候选 | 第 1 天溢出的候选记 `TIME_OVERFLOW`，不占用第 2 天容量；第 2 天候选不填补第 1 天剩余容量 |
+| S-17 | 第 1 天候选溢出、第 2 天仍有候选 | 第 1 天溢出的候选顺延到第 2 天并在容量允许时排入；第 2 天候选不提前回填第 1 天剩余容量；范围结束仍未排入才记 `TIME_OVERFLOW`（2026-11-28 用户要求） |
 | S-18 | Q1 同时触发 MASTERED 0.9 与 UNKNOWN 0.1，Q2 触发 MASTERED 0.5 | Q1 的组内分数只能取 MASTERED 的 0.9；Q2（0.5）在前。不得用 UNKNOWN 的 0.1 把 Q1 排到 Q2 之前 |
 | S-19 | 题目在冷却期，但 `coolingOverrides` 含其 id | 本次跳过冷却并正常排入；未命中/已消费的 id 不生效；下一份计划不再自动跳过 |
 | S-20 | 关联知识点 id 失效（任一 id 不在输入知识点集合内） | 整题跳过；`Deferred(UNRESOLVED_KNOWLEDGE)`；`knowledgePointIds` 为未解析 id 字典序；不进入 `dailyAssignments`（C-055 方案 C） |

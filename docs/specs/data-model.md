@@ -252,14 +252,16 @@ data class Plan(
     val supersededBy: String?,
     val renderMeta: String,      // 生成时冻结的打印元数据 JSON，见 repository.md
     @ColumnInfo(defaultValue = "[]")
-    val deferred: String = "[]"  // 生成时被推迟题目的快照 JSON（schema v11），见 repository.md
+    val deferred: String = "[]", // 生成时被推迟题目的快照 JSON（schema v11），见 repository.md
+    @ColumnInfo(defaultValue = "0")
+    val dailyMinutes: Int = 0    // 生成时的每日复习时长（schema v17）；0 = 旧计划未记录
 )
 ```
 
 - 同一 `weekStart/weekEnd` 最多一份 GENERATED/PRINTED 计划；`activePlan` 只返回这类计划，显式重新生成后旧计划标记为 SUPERSEDED（C-097）。
 - `renderMeta` 保存题号、来源页、知识点名称与行数、附件数与附件文本，使进程重建后能按原布局重新打印同一计划；不依赖当前题库或当前附件。
 - `deferred` 保存被推迟题目的 `questionId/题号/来源页码/原因` 快照，使重开计划仍能说明哪些题没有排入；旧计划为空数组。快照缺来源页码时，预览层可按当前题库兜底展示，但不得改写快照。
-- 迁移 v7→v8 只建表，不回填历史 `plan_page`；旧页仍可按 `pageId` 回读，但不再参与“当前计划”复用。v10→v11 为 `plan` 增加 `deferred TEXT NOT NULL DEFAULT '[]'`，旧计划迁移后为空数组、不显示推迟提示。
+- 迁移 v7→v8 只建表，不回填历史 `plan_page`；旧页仍可按 `pageId` 回读，但不再参与“当前计划”复用。v10→v11 为 `plan` 增加 `deferred TEXT NOT NULL DEFAULT '[]'`，旧计划迁移后为空数组、不显示推迟提示。v16→v17 为 `plan` 增加 `dailyMinutes INTEGER NOT NULL DEFAULT 0`，旧计划为 0（未知）；新计划写入生成时的每日复习时长，设置变更后进入打印页据此提示重新生成。
 - `plan_page` 保持页面快照与题块几何；计划头与页面在 `savePlan` 同一事务写入。
 
 ### SourceTag（来源标签库，schema v9）
@@ -402,6 +404,7 @@ data class KnowledgeNumberSequence(
 - 新增表：`plan`（schema v8）、`source_tag`（schema v9）。v8→v9 的 `source_tag.name` 唯一索引在迁移内先按 `trim(sourcePage)` 去重种入再创建，不会因历史重复触发冲突。
 - schema v10：删除 `review_feedback`、`confirmation_decision_log`、`pending_feedback` 的 `isSupplemental` 列；历史 `SUPPLEMENTED` 决策归并为 `CORRECTED`。SQLite 在 minSdk 26 不支持 `DROP COLUMN`，迁移建新表 → 回填 → 删旧表 → 重命名。
 - schema v11：`plan` 增加 `deferred TEXT NOT NULL DEFAULT '[]'`；旧计划迁移后为空数组、不显示推迟提示，重新生成计划后才有快照。
+- schema v17：`plan` 增加 `dailyMinutes INTEGER NOT NULL DEFAULT 0`；旧计划为 0（未知），新计划记录生成时的每日复习时长。
 - schema v12：新增 `app_settings` 单行表（`id INTEGER PRIMARY KEY`、`dailyReviewMinutes INTEGER NOT NULL`），迁移时写入 `(1, 60)`。
 - schema v13：新增 `knowledge_category` 表（`id` 主键、`name` 唯一索引、`createdAt`），迁移时按给定顺序种入 11 个默认分类；`knowledge_point` 增加 `categoryId TEXT NOT NULL DEFAULT 'cat-chinese'`，现有知识点因此全部归入「语文」，无需逐行回填。分类下仍有知识点时不得删除分类。
 - schema v14：`question` 与 `knowledge_point` 增加 `updatedAt INTEGER NOT NULL DEFAULT 0`，迁移时回填为各自的 `createdAt`；仅用于题库与知识点列表的倒序展示，不参与调度、分页与打印布局（2026-11-24 用户要求）。

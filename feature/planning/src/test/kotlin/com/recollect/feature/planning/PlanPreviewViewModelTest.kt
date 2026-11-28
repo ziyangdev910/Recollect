@@ -393,6 +393,119 @@ class PlanPreviewViewModelTest {
     }
 
     @Test
+    fun `changed daily review minutes prompts to regenerate`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED, dailyMinutes = 60),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
+            currentQuestionBank = {
+                mapOf("q1" to planCreatedAt.minusSeconds(60))
+            },
+            currentDailyMinutes = 40,
+        )
+
+        viewModel.refresh()
+
+        assertTrue(viewModel.settingsChanged, "每日复习时长变更后必须询问是否重新生成")
+        assertFalse(viewModel.bankChanged, "题库未变化时不应误报题库更新")
+    }
+
+    @Test
+    fun `same daily review minutes does not prompt`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED, dailyMinutes = 40),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
+            currentQuestionBank = {
+                mapOf("q1" to planCreatedAt.minusSeconds(60))
+            },
+            currentDailyMinutes = 40,
+        )
+
+        viewModel.refresh()
+
+        assertFalse(viewModel.settingsChanged)
+    }
+
+    @Test
+    fun `legacy plan without recorded daily minutes does not prompt`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED, dailyMinutes = 0),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialStartDate = today,
+            initialEndDate = today.plusDays(6),
+            currentQuestionBank = {
+                mapOf("q1" to planCreatedAt.minusSeconds(60))
+            },
+            currentDailyMinutes = 40,
+        )
+
+        viewModel.refresh()
+
+        assertFalse(viewModel.settingsChanged, "旧计划未记录时长，不能据此误报")
+    }
+
+    @Test
+    fun `opening a plan on entry prompts when the bank changed`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            // 走 refreshIfNeeded 的默认范围解析（而不是显式 selectRange）：
+            // 进入页加载已有计划时同样必须立即检测。
+            initialStartDate = null,
+            initialEndDate = null,
+            currentQuestionBank = {
+                mapOf("q1" to planCreatedAt.plusSeconds(60))
+            },
+        )
+
+        viewModel.refreshIfNeeded()
+
+        assertTrue(viewModel.bankChanged, "进入页加载已有计划时必须检测题库变化")
+    }
+
+    @Test
+    fun `opening a plan on entry prompts when daily minutes changed`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED, dailyMinutes = 60),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialStartDate = null,
+            initialEndDate = null,
+            currentQuestionBank = {
+                mapOf("q1" to planCreatedAt.minusSeconds(60))
+            },
+            currentDailyMinutes = 40,
+        )
+
+        viewModel.refreshIfNeeded()
+
+        assertFalse(viewModel.bankChanged, "题库未变化时不应误报")
+        assertTrue(viewModel.settingsChanged, "进入页加载已有计划时必须检测每日复习时长变化")
+    }
+
+    @Test
     fun `completed current week opens next week by default`() = runBlocking {
         val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
         val viewModel = PlanPreviewViewModel(
@@ -436,7 +549,33 @@ class PlanPreviewViewModelTest {
         )
     }
 
-    private fun storedPlan(createdAt: Instant, status: PlanStatus): StoredPlan = StoredPlan(
+    @Test
+    fun `generated current week opens current week by default`() = runBlocking {
+        val planCreatedAt = Instant.parse("2026-11-20T00:00:00Z")
+        val viewModel = PlanPreviewViewModel(
+            session = scriptedSession(
+                existing = storedPlan(planCreatedAt, PlanStatus.GENERATED),
+                outcome = plannedOutcome(questionIds = listOf("q1")),
+            ),
+            clock = clock,
+            initialStartDate = null,
+            initialEndDate = null,
+        )
+
+        viewModel.refreshIfNeeded()
+
+        assertEquals(
+            currentWeekSettings(today).planStartDate,
+            viewModel.startDate,
+            "本周未完成确认时默认填入本周日期范围",
+        )
+    }
+
+    private fun storedPlan(
+        createdAt: Instant,
+        status: PlanStatus,
+        dailyMinutes: Int = 0,
+    ): StoredPlan = StoredPlan(
         planId = "PLAN01",
         weekStart = today,
         weekEnd = today.plusDays(6),
@@ -444,6 +583,7 @@ class PlanPreviewViewModelTest {
         printedAt = null,
         createdAt = createdAt,
         renderMeta = emptyList(),
+        dailyMinutes = dailyMinutes,
     )
 
     private fun scriptedSession(

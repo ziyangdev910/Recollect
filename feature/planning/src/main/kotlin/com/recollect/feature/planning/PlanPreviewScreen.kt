@@ -277,15 +277,20 @@ fun PlanPreviewScreen(
         )
     }
 
-    // 打开已有计划时，若题库在计划生成后发生变化，先询问是否重新生成。
-    if (viewModel.bankChanged) {
+    // 打开已有计划时，若题库或每日复习时长在计划生成后发生变化，先询问是否重新生成。
+    if (viewModel.bankChanged || viewModel.settingsChanged) {
+        val bothChanged = viewModel.bankChanged && viewModel.settingsChanged
         RecollectDialog(
-            title = "题库已更新",
-            onDismissRequest = { viewModel.dismissBankChanged() },
+            title = when {
+                bothChanged -> "计划已过期"
+                viewModel.settingsChanged -> "复习时长已更新"
+                else -> "题库已更新"
+            },
+            onDismissRequest = { viewModel.dismissPlanChanges() },
             actions = {
                 RecollectDialogAction(
                     text = "保持当前计划",
-                    onClick = { viewModel.dismissBankChanged() },
+                    onClick = { viewModel.dismissPlanChanges() },
                 )
                 RecollectDialogAction(
                     text = "重新生成",
@@ -293,7 +298,16 @@ fun PlanPreviewScreen(
                 )
             },
         ) {
-            Text("当前题库与上次生成计划时不同，是否重新生成计划？")
+            Text(
+                when {
+                    bothChanged ->
+                        "当前题库和每日复习时长都与上次生成计划时不同，是否重新生成计划？"
+                    viewModel.settingsChanged ->
+                        "当前每日复习时长与上次生成计划时不同，是否重新生成计划？"
+                    else ->
+                        "当前题库与上次生成计划时不同，是否重新生成计划？"
+                },
+            )
         }
     }
 

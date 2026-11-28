@@ -46,7 +46,7 @@ class RoomDatabaseExporterTest {
 
         assertEquals("recollect-20261122-1605.json", document.fileName)
         assertContains(document.json, "\"backupFormatVersion\": 1")
-        assertContains(document.json, "\"roomSchemaVersion\": 16")
+        assertContains(document.json, "\"roomSchemaVersion\": 17")
         assertContains(document.json, "\"appVersionName\": \"0.1.0\"")
         assertContains(document.json, "\"exportedAt\": \"2026-11-22T08:05:00Z\"")
         listOf(
@@ -165,6 +165,7 @@ class RoomDatabaseExporterTest {
                     status = "PRINTED",
                     printedAt = Instant.parse("2026-11-16T08:00:00Z"),
                     supersededBy = null,
+                    dailyMinutes = 45,
                 ),
             ),
             planPages = listOf(
@@ -234,6 +235,7 @@ class RoomDatabaseExporterTest {
         assertContains(document.json, "\"reviewedOn\": null")
         assertContains(document.json, "\"lastIssued\": 3")
         assertContains(document.json, "\"status\": \"PRINTED\"")
+        assertContains(document.json, "\"dailyMinutes\": 45")
         assertContains(document.json, "\"categoryId\": \"cat-chinese\"")
         assertContains(document.json, "\"name\": \"语文\"")
         // v15：分类封面按可选字段导出；旧分类为 null 时不写这两个键。

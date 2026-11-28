@@ -48,7 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
@@ -56,7 +58,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.recollect.common.UiState
-import com.recollect.common.formatQuestionLabelLines
 import com.recollect.data.room.repository.EntrySummary
 import kotlinx.coroutines.launch
 
@@ -68,7 +69,6 @@ import kotlinx.coroutines.launch
  * 从首页每个分类卡片进入时，[categoryId] 限定只显示该分类下的题目。
  * 2026-11-28 用户要求：删除选项卡后，进一步去除「今天 / 昨天 / 更早」分组标签，列表改为扁平排序。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EntryScreen(
     viewModel: EntryViewModel,
@@ -89,6 +89,8 @@ fun EntryScreen(
     LaunchedEffect(categoryId) { viewModel.selectNotebook(categoryId) }
 
     var pendingDelete by remember { mutableStateOf<EntrySummary?>(null) }
+    // 来源/知识点筛选改为与「添加题目」页一致的内联标签卡片面板。
+    var expandedFilter by remember { mutableStateOf<EntryFilterPanel?>(null) }
 
     val sourceFilter = viewModel.sourceFilter
     val knowledgeFilter = viewModel.knowledgeFilter
@@ -155,19 +157,50 @@ fun EntryScreen(
             }
 
             FilterRow(
-                sourceOptions = sourceOptions,
-                knowledgeOptions = knowledgeOptions,
                 sourceFilter = sourceFilter,
                 knowledgeFilter = knowledgeFilter,
                 newestFirst = newestFirst,
                 hasFilter = hasFilter,
                 searchVisible = viewModel.searchVisible,
-                onSourceChange = viewModel::updateSourceFilter,
-                onKnowledgeChange = viewModel::updateKnowledgeFilter,
+                expandedFilter = expandedFilter,
+                onTogglePanel = { panel ->
+                    expandedFilter = if (expandedFilter == panel) null else panel
+                },
                 onToggleTimeOrder = viewModel::toggleTimeOrder,
-                onClearFilters = viewModel::clearFilters,
+                onClearFilters = {
+                    viewModel.clearFilters()
+                    expandedFilter = null
+                },
                 onToggleSearch = viewModel::toggleSearchVisible,
             )
+
+            when (expandedFilter) {
+                EntryFilterPanel.SOURCE -> FilterOptionPanel(
+                    allLabel = "全部来源",
+                    options = sourceOptions,
+                    selected = sourceFilter,
+                    selectedContainer = MaterialTheme.colorScheme.primaryContainer,
+                    selectedContent = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onSelect = { value ->
+                        viewModel.updateSourceFilter(value)
+                        expandedFilter = null
+                    },
+                )
+
+                EntryFilterPanel.KNOWLEDGE -> FilterOptionPanel(
+                    allLabel = "全部知识点",
+                    options = knowledgeOptions,
+                    selected = knowledgeFilter,
+                    selectedContainer = MaterialTheme.colorScheme.secondaryContainer,
+                    selectedContent = MaterialTheme.colorScheme.onSecondaryContainer,
+                    onSelect = { value ->
+                        viewModel.updateKnowledgeFilter(value)
+                        expandedFilter = null
+                    },
+                )
+
+                null -> Unit
+            }
 
             when (val state = viewModel.state) {
                 UiState.Loading -> Box(
@@ -275,15 +308,13 @@ fun EntryScreen(
 /** 来源 / 知识点 / 录入时间筛选行；搜索按钮固定在最右侧。 */
 @Composable
 private fun FilterRow(
-    sourceOptions: List<String>,
-    knowledgeOptions: List<String>,
     sourceFilter: String?,
     knowledgeFilter: String?,
     newestFirst: Boolean,
     hasFilter: Boolean,
     searchVisible: Boolean,
-    onSourceChange: (String?) -> Unit,
-    onKnowledgeChange: (String?) -> Unit,
+    expandedFilter: EntryFilterPanel?,
+    onTogglePanel: (EntryFilterPanel) -> Unit,
     onToggleTimeOrder: () -> Unit,
     onClearFilters: () -> Unit,
     onToggleSearch: () -> Unit,
@@ -301,25 +332,19 @@ private fun FilterRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             item {
-                FilterPill(
+                FilterTogglePill(
                     label = sourceFilter ?: "来源",
                     active = sourceFilter != null,
-                    options = listOf("全部来源") + sourceOptions,
-                    selectedOption = sourceFilter ?: "全部来源",
-                    onSelect = { option ->
-                        onSourceChange(option.takeUnless { it == "全部来源" })
-                    },
+                    expanded = expandedFilter == EntryFilterPanel.SOURCE,
+                    onClick = { onTogglePanel(EntryFilterPanel.SOURCE) },
                 )
             }
             item {
-                FilterPill(
+                FilterTogglePill(
                     label = knowledgeFilter ?: "知识点",
                     active = knowledgeFilter != null,
-                    options = listOf("全部知识点") + knowledgeOptions,
-                    selectedOption = knowledgeFilter ?: "全部知识点",
-                    onSelect = { option ->
-                        onKnowledgeChange(option.takeUnless { it == "全部知识点" })
-                    },
+                    expanded = expandedFilter == EntryFilterPanel.KNOWLEDGE,
+                    onClick = { onTogglePanel(EntryFilterPanel.KNOWLEDGE) },
                 )
             }
             item {
@@ -353,6 +378,101 @@ private fun FilterRow(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+        }
+    }
+}
+
+/** 点开后在筛选行下方展开标签卡片的筛选类别。 */
+private enum class EntryFilterPanel { SOURCE, KNOWLEDGE }
+
+/**
+ * 无下拉菜单的筛选胶囊：点开后由调用方在下方渲染与「添加题目」页一致的标签卡片。
+ */
+@Composable
+private fun FilterTogglePill(
+    label: String,
+    active: Boolean,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = CircleShape,
+        color = if (active) colors.primaryContainer else colors.surfaceContainerLow,
+        contentColor = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
+        border = BorderStroke(
+            1.dp,
+            if (active) colors.primary.copy(alpha = 0.2f) else colors.outlineVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(onClick = onClick)
+                .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 140.dp),
+            )
+            Icon(
+                painter = painterResource(R.drawable.ic_expand_more),
+                contentDescription = if (expanded) "收起" else "展开",
+                modifier = Modifier
+                    .size(16.dp)
+                    .rotate(if (expanded) 180f else 0f),
+            )
+        }
+    }
+}
+
+/**
+ * 来源 / 知识点筛选的标签卡片面板：与「添加题目」页使用同一套 OptionCard 外观。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterOptionPanel(
+    allLabel: String,
+    options: List<String>,
+    selected: String?,
+    selectedContainer: Color,
+    selectedContent: Color,
+    onSelect: (String?) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 156.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            OptionCard(
+                label = allLabel,
+                selected = selected == null,
+                container = if (selected == null) selectedContainer else colors.surfaceContainerLow,
+                contentColor = if (selected == null) selectedContent else colors.onSurface,
+                onClick = { onSelect(null) },
+            )
+            options.forEach { option ->
+                val isSelected = option == selected
+                OptionCard(
+                    label = option,
+                    selected = isSelected,
+                    container = if (isSelected) selectedContainer else colors.surfaceContainerLow,
+                    contentColor = if (isSelected) selectedContent else colors.onSurface,
+                    onClick = { onSelect(option) },
+                )
+            }
         }
     }
 }
@@ -446,7 +566,7 @@ private fun EntryQuestionList(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 128.dp),
     ) {
         itemsIndexed(rows, key = { _, row -> row.questionId }) { index, row ->
-            QuestionCard(
+            EntryQuestionCard(
                 row = row,
                 displayNumber = index + 1,
                 onEdit = { onEdit(row) },
@@ -530,163 +650,6 @@ private fun NoMatch(
         )
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = onClear) { Text("清除条件") }
-    }
-}
-
-/**
- * 题目卡片：大标题分两行——来源（无来源时「编号X」）与「第X页 第Y题」；其下耗时与知识点标签并排，
- * 右下角显示按当前列表顺序生成的临时编号「#N」。
- *
- * 整张卡片可点进入编辑；右上角的「更多」菜单提供编辑与删除（归档）。
- */
-@Composable
-private fun QuestionCard(
-    row: EntrySummary,
-    displayNumber: Int,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    var menuExpanded by remember { mutableStateOf(false) }
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .clickable(onClick = onEdit),
-        shape = MaterialTheme.shapes.large,
-        color = colors.surfaceContainerLowest,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, top = 12.dp, end = 4.dp, bottom = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    // 来源与「第X页 第Y题」分行显示；无来源时第一行为「编号X」。
-                    val labelLines = formatQuestionLabelLines(row.sourcePage, row.questionNumber)
-                    Text(
-                        text = labelLines.first,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (labelLines.second.isNotBlank()) {
-                        Text(
-                            text = labelLines.second,
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_more),
-                            contentDescription = "题目操作",
-                            tint = colors.onSurfaceVariant,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("编辑") },
-                            onClick = {
-                                menuExpanded = false
-                                onEdit()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("删除", color = colors.error) },
-                            onClick = {
-                                menuExpanded = false
-                                onDelete()
-                            },
-                        )
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 12.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                FlowRow(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    DurationChip(row.estimatedReviewMinutes)
-                    row.knowledgeNames.forEach { name ->
-                        KnowledgeChip(name)
-                    }
-                }
-                // 临时序号：始终按当前列表从上到下的顺序生成，中性色，不参与题目数据。
-                Text(
-                    text = "#$displayNumber",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp, bottom = 2.dp),
-                )
-            }
-        }
-    }
-}
-
-/** 耗时标签：中性底色，与赭石色知识点标签并排；时钟图标 + 分钟数。 */
-@Composable
-private fun DurationChip(minutes: Int) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = colors.surfaceContainerHighest,
-        contentColor = colors.onSurfaceVariant,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_clock),
-                contentDescription = null,
-                modifier = Modifier.size(13.dp),
-            )
-            Text(
-                text = "$minutes 分钟",
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/** 知识点标签：赭石色底，和主色的计划/按钮区分开。 */
-@Composable
-private fun KnowledgeChip(name: String) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = colors.secondaryContainer,
-        contentColor = colors.onSecondaryContainer,
-    ) {
-        Text(
-            text = name,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

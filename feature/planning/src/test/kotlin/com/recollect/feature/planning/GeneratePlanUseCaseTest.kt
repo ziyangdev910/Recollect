@@ -214,7 +214,14 @@ class GeneratePlanUseCaseTest {
             catalog = catalog,
             numbers = mapOf("q-1" to "T-1", "q-2" to "T-2"),
             sources = mapOf("q-1" to "9-P9", "q-2" to "10-P10"),
-        ).execute(settings)
+            // 单日范围（知识点到期的 11/19）：当天 60 分钟排不下两道 40 分钟的题，
+            // 后一题之后没有可选日期，才真正无法顺延。
+        ).execute(
+            settings.copy(
+                planStartDate = today.plusDays(1),
+                planEndDate = today.plusDays(1),
+            ),
+        )
 
         val planned = outcome as? PlanGenerationOutcome.Planned
             ?: error("预期生成计划，实际为 $outcome")

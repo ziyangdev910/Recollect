@@ -226,6 +226,7 @@ class AppContainer(context: Context) {
             questionDao = database.questionDao(),
             crossRefDao = database.questionKnowledgeCrossRefDao(),
             knowledgePointDao = database.knowledgePointDao(),
+            categoryDao = database.knowledgeCategoryDao(),
         )
     }
 

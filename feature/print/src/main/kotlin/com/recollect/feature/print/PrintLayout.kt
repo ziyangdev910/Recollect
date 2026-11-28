@@ -623,7 +623,7 @@ object PrintLayoutBuilder {
      * 右上第一行：`来源 第X页 第Y题`（2026-11-25 用户要求）。
      *
      * 与计划预览共用 [formatQuestionLabel]；X 为页码编号、Y 为题号，
-     * 来源说明缺失时只保留页码与题号。QR 载荷与页脚仍使用完整 pageId。
+     * 来源说明缺失时显示 `第X份试卷 第Y题`（2026-11-28 用户要求）。QR 载荷与页脚仍使用完整 pageId。
      */
     private fun pageLineText(question: RenderableQuestion): String =
         formatQuestionLabel(question.sourcePage, question.questionNumber)

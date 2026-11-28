@@ -35,6 +35,8 @@ data class PlanDraft(
     val renderMetaByQuestionId: Map<String, PlanRenderMeta> = emptyMap(),
     /** 显式重新生成时被替代的旧计划；保存事务内标记为 SUPERSEDED。 */
     val supersedesPlanId: String? = null,
+    /** 生成计划时使用的每日复习时长（分钟）；0 表示未提供（schema v17）。 */
+    val dailyMinutes: Int = 0,
 ) {
     companion object {
         /**
@@ -53,6 +55,7 @@ data class PlanDraft(
             weekEndDate: LocalDate? = null,
             renderMetaByQuestionId: Map<String, PlanRenderMeta> = emptyMap(),
             supersedesPlanId: String? = null,
+            dailyMinutes: Int = 0,
         ): PlanDraft = when (result) {
             is PaginationResult.Failure -> throw PlanGenerationException(result.code, result.message)
             is PaginationResult.Success -> PlanDraft(
@@ -72,6 +75,7 @@ data class PlanDraft(
                     ?: LocalDate.MIN,
                 renderMetaByQuestionId = renderMetaByQuestionId,
                 supersedesPlanId = supersedesPlanId,
+                dailyMinutes = dailyMinutes,
             )
         }
     }

@@ -83,8 +83,8 @@ internal enum class DemoTourStop(
     ),
     FORM_PAGE_CODE(
         stage = DemoTourStage.RECORD,
-        title = "填写页码编号",
-        body = "页码编号 42 用来定位题目所在的位置；若本题来自试卷，则此处数字代表试卷编号，用 +/− 修改。",
+        title = "填写页码",
+        body = "页码 42 用来定位题目所在的位置；来源留空时，此处数字表示第几份试卷。",
         mode = DemoStopMode.NEXT,
         target = DemoTarget.FORM_PAGE_CODE,
     ),

@@ -309,7 +309,7 @@ class PrintLayoutTest {
         assertEquals(3, q3.dailyIndex)
         assertEquals("【3】", q3.questionIndexText.text)
         // 没有来源说明时页码显示为「编号X」。
-        assertEquals("编号3 第T-3题", q3.rightTop.pageLine.text)
+        assertEquals("第3份试卷 第T-3题", q3.rightTop.pageLine.text)
         assertEquals(136.5, q3.blockTopMm, EPSILON) // 33 + 49.5(q1) + 54(q2)
         // 顶部 max(7.5, 7+2*7.5=22) + 附加 30 + 笔记行 30 + 间距 5 = 87mm。
         assertEquals(87.0, q3.blockHeightMm, EPSILON)

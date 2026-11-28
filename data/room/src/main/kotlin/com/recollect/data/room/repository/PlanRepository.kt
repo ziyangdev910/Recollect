@@ -63,6 +63,8 @@ data class StoredPlan(
     val renderMeta: List<PlanRenderMeta>,
     /** 生成时被推迟的题目；旧计划为空列表。 */
     val deferredRecords: List<PlanDeferredRecord> = emptyList(),
+    /** 生成计划时使用的每日复习时长（分钟）；0 表示旧计划未记录（schema v17）。 */
+    val dailyMinutes: Int = 0,
 )
 
 data class StoredPlanPage(
@@ -137,6 +139,7 @@ class RoomPlanRepository(
                         },
                     ),
                     deferred = PlanDeferredJson.encode(draft.deferredRecords),
+                    dailyMinutes = draft.dailyMinutes,
                 ),
             )
             draft.supersedesPlanId?.let { oldPlanId ->
@@ -221,6 +224,7 @@ class RoomPlanRepository(
         createdAt = createdAt,
         renderMeta = PlanRenderMetaJson.decode(renderMeta),
         deferredRecords = PlanDeferredJson.decode(deferred),
+        dailyMinutes = dailyMinutes,
     )
 
     /**

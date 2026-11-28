@@ -7,41 +7,34 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,7 +56,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -76,7 +68,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.recollect.app.navigation.AppNavigator
 import com.recollect.app.navigation.AppRoute
@@ -105,11 +96,13 @@ import com.recollect.feature.entry.EntryScreen
 import com.recollect.feature.entry.EntryViewModel
 import com.recollect.feature.entry.KnowledgePointLibraryScreen
 import com.recollect.feature.entry.KnowledgePointLibraryViewModel
+import com.recollect.feature.entry.QuestionEditDrawer
 import com.recollect.feature.entry.QuestionEditPrefill
-import com.recollect.feature.entry.QuestionEditScreen
 import com.recollect.feature.entry.QuestionEditTourTarget
 import com.recollect.feature.entry.QuestionEditViewModel
+import com.recollect.feature.entry.NOTEBOOK_TONE_COUNT
 import com.recollect.feature.entry.SourceTagLibraryScreen
+import com.recollect.feature.entry.notebookTone
 import com.recollect.feature.entry.SourceTagLibraryViewModel
 import com.recollect.feature.planning.PlanPreviewScreen
 import com.recollect.feature.planning.PlanPreviewUiState
@@ -176,17 +169,37 @@ fun AppRoot(
         demoTargets = demoTargets + (target to rect)
     }
 
-    // 录入/编辑题目页的表单用 `imePadding` 自己避让键盘（保留顶栏）；系统默认会把整个
-    // 窗口平移（本机解析为 adjustPan），与表单的 imePadding 叠加后会在输入框下方留下
-    // 一大块空白。因此只在该页显式要求 adjustResize（不让系统平移）；其余页面没有做
-    // IME 避让，保持系统默认的 adjustPan，由系统把获得焦点的输入框平移进可见区域。
-    // 只改 adjust 位，保留系统设置的其他状态位。
+    // 「录入 / 编辑题目」底部抽屉（2026-11-28 用户要求，替代独立 QuestionEdit 路由）。
+    // request 在关闭动画期间保留，动画结束后清空，避免抽屉内容在退场时消失。
+    var entryDrawerRequest by remember(container) {
+        mutableStateOf<EntryDrawerRequest?>(null)
+    }
+    var entryDrawerVisible by remember(container) { mutableStateOf(false) }
+    val drawerScope = rememberCoroutineScope()
+    val openEntryDrawer: (EntryDrawerRequest) -> Unit = { request ->
+        entryDrawerRequest = request
+        entryDrawerVisible = true
+    }
+    val closeEntryDrawer: () -> Unit = { entryDrawerVisible = false }
+    LaunchedEffect(entryDrawerVisible) {
+        if (!entryDrawerVisible) {
+            delay(280)
+            // 期间若重新打开，本协程会被取消，抽屉内容继续复用。
+            if (!entryDrawerVisible) entryDrawerRequest = null
+        }
+    }
+
+    // 录入/编辑抽屉用 `imePadding` 自己避让键盘（保留顶栏）；系统默认会把整个窗口平移
+    // （本机解析为 adjustPan），与抽屉的 imePadding 叠加后会在输入框下方留下大块空白。
+    // 因此抽屉打开时显式要求 adjustResize（不让系统平移）；其余页面保持系统默认的
+    // adjustPan，由系统把获得焦点的输入框平移进可见区域。只改 adjust 位，保留其他状态位。
     val hostView = LocalView.current
-    LaunchedEffect(current) {
+    val entryDrawerOpen = entryDrawerRequest != null
+    LaunchedEffect(current, entryDrawerOpen) {
         val window = hostView.context.findHostActivity()?.window ?: return@LaunchedEffect
         val adjustMask = WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
         val currentMode = window.attributes.softInputMode
-        val desiredAdjust = if (current is AppRoute.QuestionEdit) {
+        val desiredAdjust = if (entryDrawerOpen) {
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         } else {
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
@@ -199,9 +212,22 @@ fun AppRoot(
     // 首页「调整顺序」模式：顶栏右侧改为「完成」，返回键先退出编辑而不是结束应用。
     var homeEditing by remember(container) { mutableStateOf(false) }
 
+    // 首页左侧抽屉（2026-11-28 用户要求）：收纳原顶栏「更多」菜单的条目。
+    var homeDrawerOpen by remember(container) { mutableStateOf(false) }
+
     // 根路由时不拦截系统返回，交给 Activity 默认结束进程级页面。
     BackHandler(enabled = canPop) {
         navigator.pop()
+    }
+
+    // 抽屉打开时，返回键先收起抽屉（演示期间由演示蒙层统一拦截）。
+    BackHandler(enabled = entryDrawerRequest != null && !demoTourActive) {
+        closeEntryDrawer()
+    }
+
+    // 首页左侧抽屉打开时，返回键先收起抽屉。
+    BackHandler(enabled = homeDrawerOpen) {
+        homeDrawerOpen = false
     }
 
     // 首页调整顺序时，返回键先退出编辑模式。
@@ -213,6 +239,9 @@ fun AppRoot(
     LaunchedEffect(current) {
         if (current != AppRoute.Home && current !is AppRoute.CategoryCreate) {
             homeEditing = false
+        }
+        if (current != AppRoute.Home) {
+            homeDrawerOpen = false
         }
     }
 
@@ -291,6 +320,8 @@ fun AppRoot(
                 container.entryRepository.summaries()
                     .associate { it.questionId to it.updatedAt }
             },
+            // 每日复习时长变更后，打开已有计划时提示重新生成（2026-11-28 用户要求）。
+            currentDailyMinutes = dailyReviewMinutes,
             onPrintJobAvailable = { container.printPlanSession.update(it) },
             documentGateway = container.planDocumentGateway,
         )
@@ -398,7 +429,8 @@ fun AppRoot(
     // 不展示「演示结束」页，也不弹清理 Toast；还原完成后直接回到空首页。
     val restoreDemoData: () -> Unit = {
         demoTourState = DemoTourState.Restoring
-        // 先回首页，释放扫描页、打印页与确认页的临时状态。
+        // 先回首页，释放扫描页、打印页、确认页与录入抽屉的临时状态。
+        closeEntryDrawer()
         navigator.resetTo(AppRoute.Home)
         demoScope.launch {
             when (val result = demoStore.restore()) {
@@ -603,13 +635,12 @@ fun AppRoot(
                     if (current !is AppRoute.Scan) {
                         TopAppBar(
                             title = {
-                                // 2026-11-26 用户要求：仅在首页标题「拾知」的右下角以
-                                // 小字号、非强调色显示版本号；其余页面标题保持原样。
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
                                         text = routeTitle(route = current),
                                         fontWeight = FontWeight.SemiBold,
                                     )
+                                    // 首页标题旁保留版本号；左侧抽屉顶部也显示一次。
                                     if (current == AppRoute.Home) {
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
@@ -628,7 +659,30 @@ fun AppRoot(
                                 actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
                             navigationIcon = {
-                                if (canPop) {
+                                if (current == AppRoute.Home) {
+                                    // 「拾知」标题左侧的三横线：打开左侧抽屉。
+                                    // 不用 IconButton 的涟漪/焦点背景，保持图标背景完全透明。
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clickable(
+                                                interactionSource = remember {
+                                                    MutableInteractionSource()
+                                                },
+                                                indication = null,
+                                            ) {
+                                                homeEditing = false
+                                                homeDrawerOpen = true
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_menu),
+                                            contentDescription = "打开菜单",
+                                            tint = MaterialTheme.colorScheme.onBackground,
+                                        )
+                                    }
+                                } else if (canPop) {
                                     IconButton(onClick = { navigator.pop() }) {
                                         Icon(
                                             painter = painterResource(R.drawable.ic_arrow_back),
@@ -638,22 +692,10 @@ fun AppRoot(
                                 }
                             },
                             actions = {
-                                if (current == AppRoute.Home) {
-                                    if (homeEditing) {
-                                        TextButton(onClick = { homeEditing = false }) {
-                                            Text("完成")
-                                        }
-                                    } else {
-                                        HomeOverflowMenu(
-                                            dailyReviewMinutes = dailyReviewMinutes,
-                                            onProgress = { navigator.push(AppRoute.Progress) },
-                                            onKnowledge = { navigator.push(AppRoute.KnowledgePoints) },
-                                            onDailyMinutes = { showDailyMinutesDialog = true },
-                                            onImport = { importPicker.launch(IMPORT_MIME_TYPES) },
-                                            onExport = { showBackupDialog = true },
-                                            onGuide = { startDemo(true) },
-                                            onAbout = { navigator.push(AppRoute.About) },
-                                        )
+                                // 首页编辑态仍保留「完成」；其余入口已移入左侧抽屉。
+                                if (current == AppRoute.Home && homeEditing) {
+                                    TextButton(onClick = { homeEditing = false }) {
+                                        Text("完成")
                                     }
                                 }
                             },
@@ -740,8 +782,15 @@ fun AppRoot(
                                 if (demoStop == DemoTourStop.HOME_RECORD) {
                                     setDemoStop(DemoTourStop.FORM_NUMBER)
                                 }
-                                // 从首页进入：保存成功后强制进入题库页（见 QuestionEdit 分支）。
-                                navigator.push(AppRoute.QuestionEdit(null, fromHome = true))
+                                // 从首页进入：不填科目默认值；保存成功后进入全部错题页。
+                                homeEditing = false
+                                openEntryDrawer(
+                                    EntryDrawerRequest(
+                                        questionId = null,
+                                        fromHome = true,
+                                        subjectCategoryId = null,
+                                    ),
+                                )
                             },
                             onCreatePlan = { openPlanPreview() },
                             onScan = { navigator.push(AppRoute.Scan) },
@@ -769,92 +818,28 @@ fun AppRoot(
                                     }
                                     openPlanPreview()
                                 },
-                                onCreateQuestion = { navigator.push(AppRoute.QuestionEdit(null)) },
+                                onCreateQuestion = {
+                                    // 从某个知识分类的错题本进入时，科目预填为当前分类。
+                                    openEntryDrawer(
+                                        EntryDrawerRequest(
+                                            questionId = null,
+                                            fromHome = false,
+                                            subjectCategoryId = route.categoryId,
+                                        ),
+                                    )
+                                },
                                 onEditQuestion = { questionId ->
-                                    navigator.push(AppRoute.QuestionEdit(questionId))
+                                    openEntryDrawer(
+                                        EntryDrawerRequest(
+                                            questionId = questionId,
+                                            fromHome = false,
+                                            subjectCategoryId = null,
+                                        ),
+                                    )
                                 },
                                 onPlanButtonBounds = {
                                     if (demoTourActive) {
                                         reportDemoTarget(DemoTarget.ENTRY_PLAN, it)
-                                    }
-                                },
-                            )
-                        }
-
-                        is AppRoute.QuestionEdit -> {
-                            val viewModel = remember(container, route.questionId) {
-                                QuestionEditViewModel(
-                                    repository = container.entryRepository,
-                                    libraryRepository = container.knowledgePointLibraryRepository,
-                                    categoryRepository = container.knowledgeCategoryRepository,
-                                    sourceTagRepository = container.sourceTagLibraryRepository,
-                                )
-                            }
-                            // 来源标签库与知识点标签库都在录入页内以全屏窗口打开：
-                            // 不离开当前页面，未保存的表单内容不会丢失。
-                            val sourceTagViewModel = remember(container) {
-                                SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
-                            }
-                            val knowledgePointViewModel = remember(container) {
-                                KnowledgePointLibraryViewModel(
-                                    repository = container.knowledgePointLibraryRepository,
-                                    categoryRepository = container.knowledgeCategoryRepository,
-                                )
-                            }
-                            QuestionEditScreen(
-                                viewModel = viewModel,
-                                sourceTagViewModel = sourceTagViewModel,
-                                knowledgePointViewModel = knowledgePointViewModel,
-                                questionId = route.questionId,
-                                prefill = if (demoTourActive && route.questionId == null) {
-                                    demoPrefill
-                                } else {
-                                    null
-                                },
-                                tourFocus = if (demoTourActive) {
-                                    when (demoStop) {
-                                        DemoTourStop.FORM_NUMBER -> QuestionEditTourTarget.NUMBER
-                                        DemoTourStop.FORM_PAGE_CODE -> QuestionEditTourTarget.PAGE_CODE
-                                        DemoTourStop.FORM_MINUTES -> QuestionEditTourTarget.MINUTES
-                                        DemoTourStop.FORM_SOURCE -> QuestionEditTourTarget.SOURCE
-                                        DemoTourStop.FORM_KNOWLEDGE -> QuestionEditTourTarget.KNOWLEDGE
-                                        DemoTourStop.FORM_SAVE -> QuestionEditTourTarget.SAVE
-                                        else -> null
-                                    }
-                                } else {
-                                    null
-                                },
-                                onTourTarget = { target, rect ->
-                                    if (demoTourActive) {
-                                        reportDemoTarget(
-                                            when (target) {
-                                                QuestionEditTourTarget.NUMBER -> DemoTarget.FORM_NUMBER
-                                                QuestionEditTourTarget.PAGE_CODE -> DemoTarget.FORM_PAGE_CODE
-                                                QuestionEditTourTarget.MINUTES -> DemoTarget.FORM_MINUTES
-                                                QuestionEditTourTarget.SOURCE -> DemoTarget.FORM_SOURCE
-                                                QuestionEditTourTarget.KNOWLEDGE -> DemoTarget.FORM_KNOWLEDGE
-                                                QuestionEditTourTarget.SAVE -> DemoTarget.FORM_SAVE
-                                            },
-                                            rect,
-                                        )
-                                    }
-                                },
-                                onSaved = {
-                                    // 首次演示：保存后进入题库页，聚焦「预览计划」。
-                                    if (demoTourActive && demoStop == DemoTourStop.FORM_SAVE) {
-                                        setDemoStop(DemoTourStop.ENTRY_PLAN)
-                                    }
-                                    // 两种入口都先提示保存成功（绿色对勾 +「保存成功」）。
-                                    showSaveSuccessToast(printContext)
-                                    // 静默更新题库列表数据，但不重置滚动位置。
-                                    entryViewModel.markNeedsRefresh()
-                                    if (route.fromHome) {
-                                        // 从首页进入：强制跳转题库页（替换当前页，
-                                        // 返回键回到首页），而不是关闭当前页。
-                                        navigator.replace(AppRoute.Entry())
-                                    } else {
-                                        // 从题库页进入：保留原有逻辑，关闭当前页即可。
-                                        navigator.pop()
                                     }
                                 },
                             )
@@ -885,7 +870,22 @@ fun AppRoot(
                                     clock = container.clock,
                                 )
                             }
-                            ReviewProgressScreen(viewModel)
+                            // 科目筛选卡片沿用首页分类封面底色，与「添加题目」页一致。
+                            val progressDark = isSystemInDarkTheme()
+                            ReviewProgressScreen(
+                                viewModel = viewModel,
+                                subjectTone = { name ->
+                                    val coverTone = homeCategories
+                                        ?.firstOrNull { it.name == name }
+                                        ?.coverTone
+                                        ?.takeIf { it in 0 until NOTEBOOK_TONE_COUNT }
+                                    val tone = notebookTone(
+                                        coverTone ?: defaultToneFor(name),
+                                        progressDark,
+                                    )
+                                    tone.container to tone.content
+                                },
+                            )
                         }
 
                         is AppRoute.CategoryCreate -> Unit
@@ -989,6 +989,167 @@ fun AppRoot(
                             Text(routeTitle(route))
                         }
                     }
+
+                    }
+                }
+            }
+
+            // 首页左侧抽屉：顶部为 logo/名称/版本号，条目收纳原顶栏「更多」菜单；
+            // 作为根级覆盖层压在顶栏与底部悬浮胶囊栏之上。
+            HomeDrawer(
+                visible = homeDrawerOpen,
+                versionName = container.appVersionName,
+                dailyReviewMinutes = dailyReviewMinutes,
+                onDismiss = { homeDrawerOpen = false },
+                onProgress = {
+                    homeDrawerOpen = false
+                    navigator.push(AppRoute.Progress)
+                },
+                onDailyMinutes = {
+                    homeDrawerOpen = false
+                    showDailyMinutesDialog = true
+                },
+                onImport = {
+                    homeDrawerOpen = false
+                    importPicker.launch(IMPORT_MIME_TYPES)
+                },
+                onExport = {
+                    homeDrawerOpen = false
+                    showBackupDialog = true
+                },
+                onGuide = {
+                    homeDrawerOpen = false
+                    startDemo(true)
+                },
+                onAbout = {
+                    homeDrawerOpen = false
+                    navigator.push(AppRoute.About)
+                },
+            )
+
+            // 「录入 / 编辑题目」底部抽屉：作为根级覆盖层，压在顶栏与底部胶囊栏之上；
+            // 点压暗区域、按返回键或「取消」收起。
+            entryDrawerRequest?.let { request ->
+                val drawerViewModel = remember(container, request) {
+                    QuestionEditViewModel(
+                        repository = container.entryRepository,
+                        libraryRepository = container.knowledgePointLibraryRepository,
+                        categoryRepository = container.knowledgeCategoryRepository,
+                        sourceTagRepository = container.sourceTagLibraryRepository,
+                    )
+                }
+                // 来源标签库与知识点标签库在抽屉内以全屏窗口打开：
+                // 不离开当前页，未保存的表单内容不会丢失。
+                val drawerSourceTagViewModel = remember(container) {
+                    SourceTagLibraryViewModel(container.sourceTagLibraryRepository)
+                }
+                val drawerKnowledgePointViewModel = remember(container) {
+                    KnowledgePointLibraryViewModel(
+                        repository = container.knowledgePointLibraryRepository,
+                        categoryRepository = container.knowledgeCategoryRepository,
+                    )
+                }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AnimatedVisibility(
+                        visible = entryDrawerVisible,
+                        enter = fadeIn(animationSpec = tween(180)),
+                        exit = fadeOut(animationSpec = tween(200)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.34f))
+                                .pointerInput(Unit) {
+                                    detectTapGestures { closeEntryDrawer() }
+                                },
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = entryDrawerVisible,
+                        enter = slideInVertically(
+                            animationSpec = tween(260),
+                            initialOffsetY = { it },
+                        ),
+                        exit = slideOutVertically(
+                            animationSpec = tween(220),
+                            targetOffsetY = { it },
+                        ),
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    ) {
+                        QuestionEditDrawer(
+                            viewModel = drawerViewModel,
+                            sourceTagViewModel = drawerSourceTagViewModel,
+                            knowledgePointViewModel = drawerKnowledgePointViewModel,
+                            questionId = request.questionId,
+                            initialSubjectCategoryId = request.subjectCategoryId,
+                            prefill = if (demoTourActive && request.questionId == null) {
+                                demoPrefill
+                            } else {
+                                null
+                            },
+                            tourFocus = if (demoTourActive) {
+                                when (demoStop) {
+                                    DemoTourStop.FORM_NUMBER -> QuestionEditTourTarget.NUMBER
+                                    DemoTourStop.FORM_PAGE_CODE -> QuestionEditTourTarget.PAGE_CODE
+                                    DemoTourStop.FORM_MINUTES -> QuestionEditTourTarget.MINUTES
+                                    DemoTourStop.FORM_SOURCE -> QuestionEditTourTarget.SOURCE
+                                    DemoTourStop.FORM_KNOWLEDGE -> QuestionEditTourTarget.KNOWLEDGE
+                                    DemoTourStop.FORM_SAVE -> QuestionEditTourTarget.SAVE
+                                    else -> null
+                                }
+                            } else {
+                                null
+                            },
+                            onTourTarget = { target, rect ->
+                                if (demoTourActive) {
+                                    reportDemoTarget(
+                                        when (target) {
+                                            QuestionEditTourTarget.NUMBER -> DemoTarget.FORM_NUMBER
+                                            QuestionEditTourTarget.PAGE_CODE -> DemoTarget.FORM_PAGE_CODE
+                                            QuestionEditTourTarget.MINUTES -> DemoTarget.FORM_MINUTES
+                                            QuestionEditTourTarget.SOURCE -> DemoTarget.FORM_SOURCE
+                                            QuestionEditTourTarget.KNOWLEDGE -> DemoTarget.FORM_KNOWLEDGE
+                                            QuestionEditTourTarget.SAVE -> DemoTarget.FORM_SAVE
+                                        },
+                                        rect,
+                                    )
+                                }
+                            },
+                            // 科目颜色与主页卡片一致：优先使用分类封面底色，
+                            // 旧分类按名称派生同款底色。
+                            subjectToneIndex = { category ->
+                                category.coverTone
+                                    ?.takeIf { it in 0 until NOTEBOOK_TONE_COUNT }
+                                    ?: defaultToneFor(category.name)
+                            },
+                            onDismiss = closeEntryDrawer,
+                            onSaved = { savedNotebook ->
+                                // 首次演示：保存后进入错题本页，聚焦「打印」。
+                                if (demoTourActive && demoStop == DemoTourStop.FORM_SAVE) {
+                                    setDemoStop(DemoTourStop.ENTRY_PLAN)
+                                }
+                                // 两种入口都先提示保存成功（绿色对勾 +「保存成功」）。
+                                showSaveSuccessToast(printContext)
+                                // 静默更新题库列表数据，但不重置滚动位置。
+                                entryViewModel.markNeedsRefresh()
+                                drawerScope.launch { entryViewModel.refreshIfNeeded() }
+                                closeEntryDrawer()
+                                if (request.fromHome) {
+                                    // 从首页进入：保存后进入该题所属科目的错题本；
+                                    // 无法解析科目时回退全部错题页。返回键回到首页。
+                                    navigator.push(
+                                        if (savedNotebook != null) {
+                                            AppRoute.Entry(
+                                                categoryId = savedNotebook.categoryId,
+                                                categoryName = savedNotebook.categoryName,
+                                            )
+                                        } else {
+                                            AppRoute.Entry()
+                                        },
+                                    )
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -1092,6 +1253,20 @@ fun AppRoot(
     }
 }
 
+/**
+ * 底部「录入 / 编辑题目」抽屉的打开请求（2026-11-28 用户要求）。
+ *
+ * - [questionId] 为 null 表示新建，否则编辑该题；
+ * - [subjectCategoryId] 只用于新建：从某个知识分类错题本进入时预填科目，
+ *   从首页「录入题目」进入时为 null（不填科目默认值）；
+ * - [fromHome] 表示从首页进入，保存成功后进入全部错题页（返回键回到首页）。
+ */
+private data class EntryDrawerRequest(
+    val questionId: String?,
+    val fromHome: Boolean,
+    val subjectCategoryId: String? = null,
+)
+
 /** 导入文件选择的 MIME 过滤：json 优先，同时容纳被文件管理器标成文本/二进制的 json。 */
 private val IMPORT_MIME_TYPES = arrayOf(
     "application/json",
@@ -1099,87 +1274,6 @@ private val IMPORT_MIME_TYPES = arrayOf(
     "application/octet-stream",
 )
 
-/**
- * 首页顶栏「更多」菜单（2026-11-27 用户要求）：收纳复习进度、知识点管理、每日复习时长、
- * 导入/导出数据库、使用引导与关于，主界面只保留错题本网格与底部胶囊栏。
- */
-@Composable
-private fun HomeOverflowMenu(
-    dailyReviewMinutes: Int,
-    onProgress: () -> Unit,
-    onKnowledge: () -> Unit,
-    onDailyMinutes: () -> Unit,
-    onImport: () -> Unit,
-    onExport: () -> Unit,
-    onGuide: () -> Unit,
-    onAbout: () -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(
-                painter = painterResource(R.drawable.ic_more),
-                contentDescription = "更多",
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text("复习进度") },
-                onClick = {
-                    expanded = false
-                    onProgress()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("知识点与分类") },
-                onClick = {
-                    expanded = false
-                    onKnowledge()
-                },
-            )
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("每日复习时长（$dailyReviewMinutes 分钟）") },
-                onClick = {
-                    expanded = false
-                    onDailyMinutes()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("导入数据库") },
-                onClick = {
-                    expanded = false
-                    onImport()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("导出数据库") },
-                onClick = {
-                    expanded = false
-                    onExport()
-                },
-            )
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("使用引导") },
-                onClick = {
-                    expanded = false
-                    onGuide()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("关于") },
-                onClick = {
-                    expanded = false
-                    onAbout()
-                },
-            )
-        }
-    }
-}
 
 /**
  * 修改每日复习时长的悬浮窗。
@@ -1244,7 +1338,6 @@ private suspend fun <T> quietly(block: suspend () -> T): T? =
 private fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.Home -> "拾知"
     is AppRoute.Entry -> route.categoryName ?: "全部错题"
-    is AppRoute.QuestionEdit -> if (route.questionId == null) "录入题目" else "编辑题目"
     AppRoute.KnowledgePoints -> "知识点"
     AppRoute.SourceTags -> "来源标签"
     AppRoute.Progress -> "复习进度"

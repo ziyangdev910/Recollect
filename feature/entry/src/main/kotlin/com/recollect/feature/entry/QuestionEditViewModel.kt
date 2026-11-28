@@ -164,6 +164,10 @@ class QuestionEditViewModel(
             actionError = "页码编号必须从 1 开始。"
             return false
         }
+        if (estimatedReviewMinutes !in 1..EntryDraft.MAX_REVIEW_MINUTES) {
+            actionError = "复习时长需为 1～${EntryDraft.MAX_REVIEW_MINUTES} 分钟之间的整数。"
+            return false
+        }
         if (selectedIds.isEmpty()) {
             actionError = "请至少选择一个知识点标签。"
             return false

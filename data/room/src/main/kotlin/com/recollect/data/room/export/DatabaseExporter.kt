@@ -206,6 +206,7 @@ class RoomDatabaseExporter(
         "supersededBy" to supersededBy.asJsonString(),
         "renderMeta" to renderMeta.asJsonString(),
         "deferred" to deferred.asJsonString(),
+        "dailyMinutes" to dailyMinutes.asJsonNumber(),
     )
 
     private fun com.recollect.data.room.entity.PlanPage.toJson() = jsonObject(

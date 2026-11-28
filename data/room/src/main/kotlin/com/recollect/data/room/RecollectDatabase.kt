@@ -130,7 +130,7 @@ abstract class RecollectDatabase : RoomDatabase() {
 
     companion object {
         /** Room schema 版本；备份 JSON 的 `roomSchemaVersion` 直接取此值（backup.md）。 */
-        const val SCHEMA_VERSION = 16
+        const val SCHEMA_VERSION = 17
 
         const val DATABASE_NAME = "recollect.db"
 

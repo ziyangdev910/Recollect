@@ -1,6 +1,7 @@
 package com.recollect.data.room.repository
 
 import com.recollect.data.room.dao.QuestionKnowledgeCrossRefDao
+import com.recollect.data.room.entity.KnowledgeCategory
 import com.recollect.data.room.entity.KnowledgePoint
 import com.recollect.data.room.entity.Question
 import com.recollect.data.room.entity.QuestionKnowledgeCrossRef
@@ -49,6 +50,7 @@ class ReviewProgressRepositoryTest {
         questionDao = FakeQuestionDao(stores),
         crossRefDao = FakeCrossRefDao(stores),
         knowledgePointDao = FakeKnowledgePointDao(stores),
+        categoryDao = FakeKnowledgeCategoryDao(stores),
     )
 
     private fun insertQuestion(
@@ -58,6 +60,7 @@ class ReviewProgressRepositoryTest {
         sourcePageCode: Int = 1,
         sourcePageLabel: String = "",
         lastReviewedDate: LocalDate? = null,
+        updatedAt: Instant = Instant.parse("2026-11-05T00:00:00Z"),
     ) {
         stores.questions[id] = Question(
             id = id,
@@ -72,10 +75,22 @@ class ReviewProgressRepositoryTest {
             archivedAt = if (archived) Instant.parse("2026-11-10T00:00:00Z") else null,
             sourcePage = sourcePageLabel,
             sourcePageCode = sourcePageCode,
+            updatedAt = updatedAt,
         )
     }
 
-    private fun insertKnowledgePoint(id: String, number: Int, nextDueDate: LocalDate) {
+    private fun insertKnowledgePoint(
+        id: String,
+        number: Int,
+        nextDueDate: LocalDate,
+        categoryId: String = "cat-math",
+        categoryName: String = "数学",
+    ) {
+        stores.knowledgeCategories[categoryId] = KnowledgeCategory(
+            id = categoryId,
+            name = categoryName,
+            createdAt = Instant.parse("2026-11-01T00:00:00Z"),
+        )
         stores.knowledgePoints[id] = KnowledgePoint(
             id = id,
             number = number,
@@ -89,6 +104,7 @@ class ReviewProgressRepositoryTest {
             difficulty = null,
             halfLifeDays = null,
             createdAt = Instant.parse("2026-11-01T00:00:00Z"),
+            categoryId = categoryId,
         )
     }
 
@@ -120,10 +136,13 @@ class ReviewProgressRepositoryTest {
         assertEquals("T-1", row.questionNumber)
         assertEquals("3-作业本", row.sourcePage)
         assertEquals(LocalDate.of(2026, 11, 18), row.lastReviewedDate)
+        assertEquals(Instant.parse("2026-11-05T00:00:00Z"), row.updatedAt)
         assertEquals(listOf("kp-1", "kp-2"), row.knowledgePoints.map { it.id })
         assertEquals(listOf(1, 2), row.knowledgePoints.map { it.number })
         assertEquals(LocalDate.of(2026, 11, 24), row.knowledgePoints.first().nextDueDate)
         assertEquals(Tier.FAMILIAR, row.knowledgePoints.first().tier)
+        assertEquals("cat-math", row.knowledgePoints.first().categoryId)
+        assertEquals("数学", row.knowledgePoints.first().categoryName)
     }
 
     @Test

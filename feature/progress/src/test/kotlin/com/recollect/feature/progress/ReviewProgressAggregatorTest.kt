@@ -3,6 +3,7 @@ package com.recollect.feature.progress
 import com.recollect.data.room.repository.KnowledgePointReviewProgress
 import com.recollect.data.room.repository.QuestionReviewProgress
 import com.recollect.model.Tier
+import java.time.Instant
 import java.time.LocalDate
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -28,10 +29,14 @@ class ReviewProgressAggregatorTest {
         effectiveFeedbackCount: Float = 0f,
         halfLifeDays: Float? = null,
         dormant: Boolean = false,
+        categoryId: String = "cat-math",
+        categoryName: String = "数学",
     ) = KnowledgePointReviewProgress(
         id = id,
         number = number,
         name = "知识点$number",
+        categoryId = categoryId,
+        categoryName = categoryName,
         tier = tier,
         continuousScore = continuousScore,
         effectiveFeedbackCount = effectiveFeedbackCount,
@@ -46,11 +51,13 @@ class ReviewProgressAggregatorTest {
         knowledgePoints: List<KnowledgePointReviewProgress>,
         lastReviewedDate: LocalDate? = null,
         sourcePage: String = "1",
+        updatedAt: Instant = Instant.EPOCH,
     ) = QuestionReviewProgress(
         questionId = id,
         questionNumber = number,
         sourcePage = sourcePage,
         lastReviewedDate = lastReviewedDate,
+        updatedAt = updatedAt,
         knowledgePoints = knowledgePoints,
     )
 
@@ -162,6 +169,27 @@ class ReviewProgressAggregatorTest {
             listOf("overdue", "today-a", "today-b", "later"),
             content.questions.map { it.questionId },
         )
+    }
+
+    @Test
+    fun `carries category names and modified time for filtering`() {
+        val modified = Instant.parse("2026-11-20T08:00:00Z")
+        val rows = listOf(
+            question(
+                id = "q1",
+                number = "T-1",
+                knowledgePoints = listOf(
+                    knowledgePoint("kp1", 1, today, categoryName = "数学"),
+                    knowledgePoint("kp2", 2, today, categoryName = "语文"),
+                ),
+                updatedAt = modified,
+            ),
+        )
+
+        val ui = ReviewProgressAggregator.build(rows, today).questions.single()
+
+        assertEquals(listOf("数学", "语文"), ui.categoryNames)
+        assertEquals(modified, ui.updatedAt)
     }
 
     @Test
