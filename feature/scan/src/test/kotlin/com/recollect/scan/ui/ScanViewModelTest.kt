@@ -32,6 +32,7 @@ class ScanViewModelTest {
     private var runnerResult: ScanRunResult = ScanRunResult.ImageUnreadable
     private var manualOutcome: ScanManualOutcome = ScanManualOutcome.Rejected("未调用")
     private var lastManualInput: Pair<String, String>? = null
+    private val removedPreviews = mutableListOf<String>()
 
     private val viewModel = ScanViewModel(
         runner = ScanRunner { runnerResult },
@@ -41,6 +42,7 @@ class ScanViewModelTest {
         },
         repository = repository,
         clock = Clock.fixed(Instant.parse("2026-11-18T08:00:00Z"), ZoneOffset.UTC),
+        deletePreview = { removedPreviews += it },
     )
 
     @Test
@@ -92,6 +94,108 @@ class ScanViewModelTest {
         assertNull(state.error)
         assertTrue(state.message!!.contains("该页此前已扫描"))
         assertEquals(PAGE_ID, requireNotNull(state.session).pages.single().pageId)
+    }
+
+    @Test
+    fun `a clean scan no longer shows the written rows message`() = runBlocking {
+        runnerResult = ScanRunResult.Completed(
+            ScanPageOutcome.Stored(
+                sessionId = "s-1",
+                pageId = PAGE_ID,
+                rowCount = 2,
+                lateBatch = false,
+                pageIsFuture = false,
+                pageDate = PAGE_DATE,
+                replacedPage = false,
+            ),
+            previewLocation = "cache/scan-previews/p1.jpg",
+        )
+        repository.active = ScanSessionSnapshot("s-1", PLAN_ID, ScanSessionStatus.READY, false)
+        repository.rows = listOf(row(PAGE_ID, PAGE_DATE), row(PAGE_ID, PAGE_DATE))
+
+        viewModel.onImageSelected("content://photo.jpg")
+
+        val state = viewModel.state
+        assertNull(state.message)
+        val page = requireNotNull(state.session).pages.single()
+        assertEquals("cache/scan-previews/p1.jpg", page.previewLocation)
+    }
+
+    @Test
+    fun `question count treats multiple knowledge rows of one question as one question`() = runBlocking {
+        repository.active = ScanSessionSnapshot("s-1", PLAN_ID, ScanSessionStatus.READY, false)
+        repository.rows = listOf(
+            row(PAGE_ID, PAGE_DATE, questionId = "q1"),
+            row(PAGE_ID, PAGE_DATE, questionId = "q1"),
+            row(PAGE_ID, PAGE_DATE, questionId = "q2"),
+        )
+
+        viewModel.load()
+
+        val session = requireNotNull(viewModel.state.session)
+        assertEquals(2, session.pages.single().questionCount)
+        assertEquals(2, session.questionCount)
+    }
+
+    @Test
+    fun `the most recently scanned page becomes the last in the list`() = runBlocking {
+        repository.active = ScanSessionSnapshot("s-1", PLAN_ID, ScanSessionStatus.READY, false)
+        repository.rows = listOf(row(PAGE_ID, PAGE_DATE), row("$PLAN_ID-02", PAGE_DATE))
+        viewModel.load()
+
+        runnerResult = ScanRunResult.Completed(
+            ScanPageOutcome.Stored(
+                sessionId = "s-1",
+                pageId = PAGE_ID,
+                rowCount = 1,
+                lateBatch = false,
+                pageIsFuture = false,
+                pageDate = PAGE_DATE,
+                replacedPage = false,
+            ),
+            previewLocation = "cache/scan-previews/p1.jpg",
+        )
+        viewModel.onImageSelected("content://photo.jpg")
+
+        // 重复扫描旧页后，该页移动到列表末尾（UI 中最右侧）。
+        assertEquals(PAGE_ID, requireNotNull(viewModel.state.session).pages.last().pageId)
+    }
+
+    @Test
+    fun `startNewScan discards the old session and deletes previews`() = runBlocking {
+        repository.active = ScanSessionSnapshot("s-1", PLAN_ID, ScanSessionStatus.READY, false)
+        repository.rows = listOf(row(PAGE_ID, PAGE_DATE))
+        runnerResult = ScanRunResult.Completed(
+            ScanPageOutcome.Stored(
+                sessionId = "s-1",
+                pageId = PAGE_ID,
+                rowCount = 1,
+                lateBatch = false,
+                pageIsFuture = false,
+                pageDate = PAGE_DATE,
+            ),
+            previewLocation = "cache/scan-previews/p1.jpg",
+        )
+        viewModel.onImageSelected("content://photo.jpg")
+
+        viewModel.startNewScan()
+
+        assertNull(viewModel.state.session)
+        assertTrue(repository.discarded)
+        assertEquals(listOf("cache/scan-previews/p1.jpg"), removedPreviews)
+    }
+
+    @Test
+    fun `removePage drops that page from the session`() = runBlocking {
+        repository.active = ScanSessionSnapshot("s-1", PLAN_ID, ScanSessionStatus.READY, false)
+        repository.rows = listOf(row(PAGE_ID, PAGE_DATE), row("$PLAN_ID-02", PAGE_DATE))
+        viewModel.load()
+
+        viewModel.removePage(PAGE_ID)
+
+        assertEquals(listOf(PAGE_ID), repository.removedPages)
+        val pages = requireNotNull(viewModel.state.session).pages
+        assertEquals(listOf("$PLAN_ID-02"), pages.map { it.pageId })
     }
 
     @Test
@@ -187,12 +291,12 @@ class ScanViewModelTest {
         assertNull(viewModel.state.error)
     }
 
-    private fun row(pageId: String, date: LocalDate) = PendingFeedbackRow(
+    private fun row(pageId: String, date: LocalDate, questionId: String = "q1") = PendingFeedbackRow(
         planId = PLAN_ID,
         pageId = pageId,
         plannedDate = date,
         actualReviewDate = date,
-        questionId = "q1",
+        questionId = questionId,
         knowledgePointId = "kp-1",
         triggered = true,
         detectedTier = null,
@@ -205,6 +309,8 @@ class ScanViewModelTest {
     private class FakeRepository : ScanSessionRepository {
         var active: ScanSessionSnapshot? = null
         var rows: List<PendingFeedbackRow> = emptyList()
+        var discarded = false
+        var removedPages: List<String> = emptyList()
 
         override suspend fun pageFacts(pageId: String): PlanPageFacts? = null
 
@@ -212,6 +318,17 @@ class ScanViewModelTest {
             active ?: ScanSessionSnapshot("s-1", planId, ScanSessionStatus.SCANNING, created = true)
 
         override suspend fun activeSession(): ScanSessionSnapshot? = active
+
+        override suspend fun discardActiveSession() {
+            discarded = true
+            active = null
+            rows = emptyList()
+        }
+
+        override suspend fun removePage(sessionId: String, pageId: String) {
+            removedPages = removedPages + pageId
+            rows = rows.filterNot { it.pageId == pageId }
+        }
 
         override suspend fun appendPage(
             sessionId: String,

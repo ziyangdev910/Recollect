@@ -105,6 +105,10 @@ internal fun HomeScreen(
     onRecordButtonBounds: (Rect) -> Unit = {},
     /** 首次演示：高亮「录入」按钮（底部栏始终可见，无需滚动）。 */
     focusRecordButton: Boolean = false,
+    /** 首次演示用：报告「扫描回读」按钮的位置，供黑底蒙层聚焦。 */
+    onScanButtonBounds: (Rect) -> Unit = {},
+    /** 首次演示：高亮「扫描回读」按钮。 */
+    focusScanButton: Boolean = false,
 ) {
     val gridState = rememberLazyGridState()
     var draggingId by remember { mutableStateOf<String?>(null) }
@@ -280,6 +284,8 @@ internal fun HomeScreen(
             onScan = onScan,
             onRecordButtonBounds = onRecordButtonBounds,
             focusRecordButton = focusRecordButton,
+            onScanButtonBounds = onScanButtonBounds,
+            focusScanButton = focusScanButton,
         )
 
         // 删除确认浮窗：只有分类中没有题目时才允许删除；有题目时只提示原因。
@@ -644,6 +650,8 @@ private fun HomeBottomBar(
     onScan: () -> Unit,
     onRecordButtonBounds: (Rect) -> Unit,
     focusRecordButton: Boolean,
+    onScanButtonBounds: (Rect) -> Unit,
+    focusScanButton: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -675,6 +683,8 @@ private fun HomeBottomBar(
                 iconRes = R.drawable.ic_home_scan,
                 label = "扫描回读",
                 onClick = onScan,
+                highlighted = focusScanButton,
+                modifier = Modifier.onGloballyPositioned { onScanButtonBounds(it.boundsInRoot()) },
             )
         }
     }

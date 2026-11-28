@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -73,7 +74,10 @@ fun PlanPreviewScreen(
     viewModel: PlanPreviewViewModel,
     /** 分享面板返回且快照写入成功；由 app 层退回首页并提示「打印完成」。 */
     onShareCompleted: () -> Unit = {},
-    /** 首次演示：不分享 PDF，改用已生成的演示打印稿继续回读。 */
+    /**
+     * 首次演示：按钮仍显示「分享 PDF」，但点击后不打开系统分享，
+     * 改用已生成的演示打印稿继续回读。
+     */
     demoMode: Boolean = false,
     onDemoPrint: () -> Unit = {},
     /** 首次演示用：报告打印/分享主按钮的位置，供黑底蒙层聚焦。 */
@@ -394,6 +398,7 @@ private fun PlanBottomBar(
             }
             PillDivider()
             val primaryEnabled = if (demoMode) contentReady else contentReady && !sharing
+            val density = LocalDensity.current
             Row(
                 modifier = Modifier
                     .clip(CircleShape)
@@ -402,14 +407,24 @@ private fun PlanBottomBar(
                         onClick = { if (demoMode) onDemoPrint() else onShare() },
                     )
                     .padding(horizontal = 14.dp, vertical = 8.dp)
-                    .onGloballyPositioned { onPrimaryActionBounds(it.boundsInRoot()) },
+                    .onGloballyPositioned {
+                        // 演示聚焦框比按钮本身略大一圈，避免高亮紧贴文字。
+                        val bounds = it.boundsInRoot()
+                        val pad = with(density) { 6.dp.toPx() }
+                        onPrimaryActionBounds(
+                            Rect(
+                                left = bounds.left - pad,
+                                top = bounds.top - pad,
+                                right = bounds.right + pad,
+                                bottom = bounds.bottom + pad,
+                            ),
+                        )
+                    },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
-                    painter = painterResource(
-                        if (demoMode) R.drawable.ic_print else R.drawable.ic_share,
-                    ),
+                    painter = painterResource(R.drawable.ic_share),
                     contentDescription = null,
                     tint = if (primaryEnabled) {
                         colors.onSurface
@@ -419,11 +434,7 @@ private fun PlanBottomBar(
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
-                    text = when {
-                        demoMode -> "演示打印稿"
-                        sharing -> "生成中…"
-                        else -> "分享 PDF"
-                    },
+                    text = if (sharing) "生成中…" else "分享 PDF",
                     style = MaterialTheme.typography.labelLarge,
                     color = if (primaryEnabled) {
                         colors.onSurface

@@ -28,14 +28,17 @@ data class QuestionEditPrefill(
     val sourcePageLabel: String,
     val knowledgePointIds: List<String>,
     val estimatedReviewMinutes: Int,
+    /** 首次演示预选的科目（知识点分类）；只影响筛选，不写入题目。 */
+    val subjectCategoryId: String? = null,
 )
 
 /** 录入页中首次演示会逐段聚焦的位置。 */
 enum class QuestionEditTourTarget {
-    NUMBER,
-    PAGE_CODE,
-    MINUTES,
+    SUBJECT,
     SOURCE,
+    PAGE_CODE,
+    NUMBER,
+    MINUTES,
     KNOWLEDGE,
     SAVE,
 }

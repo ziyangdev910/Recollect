@@ -60,12 +60,14 @@ import com.recollect.scan.OpenCvScanEngine
 import com.recollect.scan.ScanEngine
 import com.recollect.scan.io.AndroidScanImageLoader
 import com.recollect.scan.io.ScanImageLoader
+import com.recollect.scan.io.ScanPreviewStore
 import com.recollect.scan.ocr.MlKitNoteOcr
 import com.recollect.scan.ocr.NoteOcr
 import com.recollect.scan.ui.ScanManualEntry
 import com.recollect.scan.ui.ScanRunResult
 import com.recollect.scan.ui.ScanRunner
 import com.recollect.scan.usecase.ScanManualEntryUseCase
+import com.recollect.scan.usecase.ScanPageOutcome
 import com.recollect.scan.usecase.ScanPageUseCase
 import com.recollect.scheduler.DefaultScheduler
 import com.recollect.scheduler.Scheduler
@@ -312,6 +314,11 @@ class AppContainer(context: Context) {
         AndroidScanImageLoader(applicationContext)
     }
 
+    /** 扫描页缩略图缓存：相机原帧仍按规范删除，只保留小预览供缩略图与悬浮预览。 */
+    private val scanPreviewStore: ScanPreviewStore by lazy {
+        ScanPreviewStore(applicationContext)
+    }
+
     /**
      * 扫描页只依赖这两个入口，不直接接触 `Bitmap`/`Uri`/OpenCV/ML Kit（R-03）。
      * 解码在 IO 线程、识别在 Default 线程完成，位图在返回前回收。
@@ -320,12 +327,21 @@ class AppContainer(context: Context) {
         ScanRunner { imageLocation ->
             val bitmap = scanImageLoader.load(imageLocation)
                 ?: return@ScanRunner ScanRunResult.ImageUnreadable
+            val previewLocation = scanPreviewStore.save(bitmap)
             try {
+                val outcome = withContext(Dispatchers.Default) {
+                    scanPageUseCase.scan(bitmap, scanEngine, scanNoteOcr)
+                }
+                val stored = outcome is ScanPageOutcome.Stored
+                if (!stored) scanPreviewStore.delete(previewLocation)
                 ScanRunResult.Completed(
-                    withContext(Dispatchers.Default) {
-                        scanPageUseCase.scan(bitmap, scanEngine, scanNoteOcr)
-                    },
+                    outcome = outcome,
+                    previewLocation = previewLocation.takeIf { stored },
                 )
+            } catch (e: Exception) {
+                // 识别抛错时不保留无主缩略图；异常继续交给页面显示。
+                scanPreviewStore.delete(previewLocation)
+                throw e
             } finally {
                 if (!bitmap.isRecycled) bitmap.recycle()
             }
@@ -336,6 +352,11 @@ class AppContainer(context: Context) {
         ScanManualEntry { pageId, questionNumber ->
             scanManualEntryUseCase.submit(pageId, questionNumber)
         }
+    }
+
+    /** 扫描页缩略图的清理入口（删除单页 / 从首页重新进入时丢弃旧会话）。 */
+    val scanPreviewDeleter: suspend (String) -> Unit = { location ->
+        scanPreviewStore.delete(location)
     }
 
     val feedbackRepository: FeedbackRepository by lazy {

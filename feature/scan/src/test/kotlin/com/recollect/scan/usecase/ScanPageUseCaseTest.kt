@@ -250,6 +250,10 @@ class ScanPageUseCaseTest {
 
         override suspend fun activeSession(): ScanSessionSnapshot? = null
 
+        override suspend fun discardActiveSession() = Unit
+
+        override suspend fun removePage(sessionId: String, pageId: String) = Unit
+
         override suspend fun appendPage(
             sessionId: String,
             pageId: String,

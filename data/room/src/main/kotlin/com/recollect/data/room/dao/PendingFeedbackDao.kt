@@ -31,6 +31,10 @@ interface PendingFeedbackDao {
     @Query("DELETE FROM pending_feedback WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: String)
 
+    // 扫描页缩略图右上角的删除：只移除该页的待确认行，会话其余页保持不动。
+    @Query("DELETE FROM pending_feedback WHERE sessionId = :sessionId AND pageId = :pageId")
+    suspend fun deleteForSessionPage(sessionId: String, pageId: String)
+
     // C-055 方案 C：整题跳过时保留该题的待确认行，供数据修复后重试。
     @Query("DELETE FROM pending_feedback WHERE sessionId = :sessionId AND questionId = :questionId")
     suspend fun deleteForSessionQuestion(sessionId: String, questionId: String)

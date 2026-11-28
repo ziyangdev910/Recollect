@@ -187,6 +187,53 @@ class ScanSessionRepositoryTest {
     }
 
     @Test
+    fun `discarding the active session clears its pending rows and abandons it`() {
+        seedSession()
+        stores.planPages[PAGE_ID] = page()
+        runTest {
+            repository.appendPage(
+                sessionId = SESSION_ID,
+                pageId = PAGE_ID,
+                rows = listOf(input("q1", "kp-1", Tier.MASTERED)),
+            )
+        }
+
+        runTest { repository.discardActiveSession() }
+
+        assertEquals(ScanSessionStatus.ABANDONED, stores.scanSessions.getValue(SESSION_ID).status)
+        assertTrue(stores.pendingFeedbacks.isEmpty())
+        assertNull(runTest { repository.activeSession() })
+    }
+
+    @Test
+    fun `removePage deletes only that page's pending rows`() {
+        seedSession()
+        val secondPageId = "$PLAN_ID-02"
+        stores.planPages[PAGE_ID] = page()
+        stores.planPages[secondPageId] = page().copy(pageId = secondPageId, pageNumber = 2)
+        runTest {
+            repository.appendPage(
+                sessionId = SESSION_ID,
+                pageId = PAGE_ID,
+                rows = listOf(input("q1", "kp-1", Tier.MASTERED)),
+            )
+            repository.appendPage(
+                sessionId = SESSION_ID,
+                pageId = secondPageId,
+                rows = listOf(input("q1", "kp-1", Tier.FAMILIAR)),
+            )
+        }
+
+        runTest { repository.removePage(SESSION_ID, PAGE_ID) }
+
+        assertEquals(listOf(secondPageId), stores.pendingFeedbacks.map { it.pageId }.distinct())
+        assertEquals(
+            ScanSessionStatus.SCANNING,
+            stores.scanSessions.getValue(SESSION_ID).status,
+        )
+    }
+
+    @Test
     fun `abandons stale sessions but keeps fresh and submitted ones`() {
         seedSession()
         stores.scanSessions["old-submitted"] = com.recollect.data.room.entity.ScanSession(

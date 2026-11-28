@@ -245,10 +245,15 @@ private fun RunningOverlay(
                 DemoTarget.HOME_RECORD -> 14.dp.toPx()
                 // 题库页的「预览计划」是大号 Extended FAB，使用主题 large 形状。
                 DemoTarget.ENTRY_PLAN -> 18.dp.toPx()
+                // 科目选择行与录入页卡片一致使用 10dp 圆角。
+                DemoTarget.FORM_SUBJECT -> 10.dp.toPx()
                 // 来源与知识点使用与确认结果一致的直角边框。
                 DemoTarget.FORM_SOURCE,
                 DemoTarget.FORM_KNOWLEDGE,
                 -> 0f
+
+                // 扫描页快门是 16dp 圆角的方块，不再用胶囊圆角。
+                DemoTarget.SCAN_SHEET -> 16.dp.toPx()
 
                 DemoTarget.CONFIRM_CONTENT -> 0f
                 else -> (hole.height / 2f).coerceAtMost(28.dp.toPx())

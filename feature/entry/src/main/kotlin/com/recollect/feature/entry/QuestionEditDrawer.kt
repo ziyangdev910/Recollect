@@ -192,6 +192,7 @@ private fun QuestionDrawerForm(
     val scope = rememberCoroutineScope()
     val colors = MaterialTheme.colorScheme
 
+    val subjectRequester = remember { BringIntoViewRequester() }
     val numberRequester = remember { BringIntoViewRequester() }
     val pageCodeRequester = remember { BringIntoViewRequester() }
     val minutesRequester = remember { BringIntoViewRequester() }
@@ -271,13 +272,17 @@ private fun QuestionDrawerForm(
     // 首次演示：聚焦到某个选择行时自动展开它的选项，并滚动到可见位置。
     LaunchedEffect(tourFocus) {
         when (tourFocus) {
-            QuestionEditTourTarget.NUMBER -> numberRequester.bringIntoView()
-            QuestionEditTourTarget.PAGE_CODE -> pageCodeRequester.bringIntoView()
-            QuestionEditTourTarget.MINUTES -> minutesRequester.bringIntoView()
+            QuestionEditTourTarget.SUBJECT -> {
+                expandedSection = DrawerSection.SUBJECT
+                subjectRequester.bringIntoView()
+            }
             QuestionEditTourTarget.SOURCE -> {
                 expandedSection = DrawerSection.SOURCE
                 sourceRequester.bringIntoView()
             }
+            QuestionEditTourTarget.PAGE_CODE -> pageCodeRequester.bringIntoView()
+            QuestionEditTourTarget.NUMBER -> numberRequester.bringIntoView()
+            QuestionEditTourTarget.MINUTES -> minutesRequester.bringIntoView()
             QuestionEditTourTarget.KNOWLEDGE -> {
                 expandedSection = DrawerSection.KNOWLEDGE
                 knowledgeRequester.bringIntoView()
@@ -360,7 +365,12 @@ private fun QuestionDrawerForm(
                         },
                         expanded = expandedSection == DrawerSection.SUBJECT,
                         // 科目名通常较短；来源与「管理来源」需要更多横向空间。
-                        modifier = Modifier.weight(0.8f),
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .bringIntoViewRequester(subjectRequester)
+                            .onGloballyPositioned {
+                                onTourTarget(QuestionEditTourTarget.SUBJECT, it.boundsInRoot())
+                            },
                         onClick = {
                             expandedSection = if (expandedSection == DrawerSection.SUBJECT) {
                                 DrawerSection.NONE

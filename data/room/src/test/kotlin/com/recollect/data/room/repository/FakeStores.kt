@@ -218,6 +218,10 @@ internal class FakePendingFeedbackDao(private val stores: InMemoryStores) : Pend
         stores.pendingFeedbacks.removeAll { it.sessionId == sessionId }
     }
 
+    override suspend fun deleteForSessionPage(sessionId: String, pageId: String) {
+        stores.pendingFeedbacks.removeAll { it.sessionId == sessionId && it.pageId == pageId }
+    }
+
     override suspend fun deleteForSessionQuestion(sessionId: String, questionId: String) {
         stores.pendingFeedbacks.removeAll { it.sessionId == sessionId && it.questionId == questionId }
     }

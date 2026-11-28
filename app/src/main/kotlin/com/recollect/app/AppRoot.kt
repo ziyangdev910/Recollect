@@ -392,6 +392,21 @@ fun AppRoot(
     }
     val entryListState = rememberLazyListState()
 
+    // 扫描页的 ViewModel 归 AppRoot 顶层所有：进入确认页后路由分支离开组合，
+    // 若在分支内 remember，返回扫描页会重建 ViewModel 并丢失缩略图与扫描顺序。
+    // 顶层持有同一实例即可在「扫描 → 确认 → 返回」之间保留扫描状态；
+    // 只有从首页进入时才调用 startNewScan() 丢弃旧会话（2026-11-28 用户要求）。
+    val scanViewModel = remember(container) {
+        ScanViewModel(
+            runner = container.scanRunner,
+            manualEntry = container.scanManualEntry,
+            repository = container.scanSessionRepository,
+            clock = container.clock,
+            deletePreview = container.scanPreviewDeleter,
+        )
+    }
+    val scanScope = rememberCoroutineScope()
+
     // ---- 首次复习演示状态机（2026-11-26 用户要求）----
     val demoStore = container.firstRunDemoStore
     val demoScope = rememberCoroutineScope()
@@ -405,6 +420,8 @@ fun AppRoot(
             sourcePageLabel = "人教版九年级数学上册",
             knowledgePointIds = listOf("demo-kp-01"),
             estimatedReviewMinutes = 6,
+            // 演示的科目与知识点同属演示种子里的「数学」分类（seed.json: cat-math）。
+            subjectCategoryId = "cat-math",
         )
     }
 
@@ -464,8 +481,9 @@ fun AppRoot(
         }
     }
 
-    // 生成页点「使用演示打印稿」后：记录打印快照，用同一份计划渲染已填涂的打印稿，再进入扫描页。
-    val prepareDemoSheetAndOpenScan: () -> Unit = {
+    // 演示第 3 步点「分享 PDF」后：记录打印快照、渲染已填涂的打印稿，再回到首页，
+    // 让用户从底部「扫描回读」亲自进入扫描页（2026-11-28 用户要求）。
+    val prepareDemoSheetAndReturnHome: () -> Unit = {
         val job = container.printPlanSession.latest
         val input = job?.toPrintPlanInput()
         if (job == null || input == null) {
@@ -485,8 +503,9 @@ fun AppRoot(
                         image = sheet.image,
                         imageLocation = sheet.imageLocation,
                     )
-                    setDemoStop(DemoTourStop.SCAN_SHEET)
-                    navigator.resetTo(AppRoute.Scan)
+                    // 第 4 步先从打印页回到首页，由用户点击底部「扫描回读」进入。
+                    setDemoStop(DemoTourStop.HOME_SCAN)
+                    navigator.resetTo(AppRoute.Home)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -780,7 +799,7 @@ fun AppRoot(
                             onCreateQuestion = {
                                 // 首次演示：用户点中「录入」后，把聚焦切到预填好的表单。
                                 if (demoStop == DemoTourStop.HOME_RECORD) {
-                                    setDemoStop(DemoTourStop.FORM_NUMBER)
+                                    setDemoStop(DemoTourStop.FORM_SUBJECT)
                                 }
                                 // 从首页进入：不填科目默认值；保存成功后进入全部错题页。
                                 homeEditing = false
@@ -793,12 +812,27 @@ fun AppRoot(
                                 )
                             },
                             onCreatePlan = { openPlanPreview() },
-                            onScan = { navigator.push(AppRoute.Scan) },
+                            onScan = {
+                                // 首次演示：从首页点「扫描回读」后继续第 4 步的扫描说明。
+                                if (demoStop == DemoTourStop.HOME_SCAN) {
+                                    setDemoStop(DemoTourStop.SCAN_SHEET)
+                                }
+                                // 每次从首页进入都丢弃上次未提交的扫描会话，回到一页未扫。
+                                scanScope.launch {
+                                    scanViewModel.startNewScan()
+                                    navigator.push(AppRoute.Scan)
+                                }
+                            },
                             onRecordButtonBounds = {
                                 if (demoTourActive) reportDemoTarget(DemoTarget.HOME_RECORD, it)
                             },
                             focusRecordButton = demoTourActive &&
                                 demoStop == DemoTourStop.HOME_RECORD,
+                            onScanButtonBounds = {
+                                if (demoTourActive) reportDemoTarget(DemoTarget.HOME_SCAN, it)
+                            },
+                            focusScanButton = demoTourActive &&
+                                demoStop == DemoTourStop.HOME_SCAN,
                         )
                     }
 
@@ -896,9 +930,9 @@ fun AppRoot(
                                 showPrintCompleteToast(printContext)
                                 navigator.resetTo(AppRoute.Home)
                             },
-                            // 首次演示不打开系统分享，用「使用演示打印稿」继续回读。
+                            // 首次演示不打开系统分享：点「分享 PDF」改用演示打印稿继续回读。
                             demoMode = demoTourActive,
-                            onDemoPrint = prepareDemoSheetAndOpenScan,
+                            onDemoPrint = prepareDemoSheetAndReturnHome,
                             onPrimaryActionBounds = {
                                 if (demoTourActive) {
                                     reportDemoTarget(DemoTarget.PLAN_PRINT, it)
@@ -907,16 +941,8 @@ fun AppRoot(
                         )
 
                         AppRoute.Scan -> {
-                            val viewModel = remember(container) {
-                                ScanViewModel(
-                                    runner = container.scanRunner,
-                                    manualEntry = container.scanManualEntry,
-                                    repository = container.scanSessionRepository,
-                                    clock = container.clock,
-                                )
-                            }
                             ScanScreen(
-                                viewModel = viewModel,
+                                viewModel = scanViewModel,
                                 onOpenConfirm = { sessionId ->
                                     if (demoStop == DemoTourStop.SCAN_CONFIRM) {
                                         setDemoStop(DemoTourStop.CONFIRM)
@@ -970,14 +996,11 @@ fun AppRoot(
                             ConfirmScreen(
                                 viewModel = viewModel,
                                 onConfirmed = {
-                                    if (demoTourActive) {
-                                        // 演示：停留在确认页，整页压暗并让「开始使用」变为可用；
-                                        // 用户点击后才还原数据库。
-                                        demoConfirmSubmitted = true
-                                    } else {
-                                        showConfirmCompleteToast(printContext)
-                                        navigator.resetTo(AppRoute.Home)
-                                    }
+                                    // 演示与正常流程一致：提交后立即退回首页；演示说明条保持
+                                    // 完成态并让「开始使用」可用，用户点击后才还原数据库。
+                                    if (demoTourActive) demoConfirmSubmitted = true
+                                    showConfirmCompleteToast(printContext)
+                                    navigator.resetTo(AppRoute.Home)
                                 },
                             )
                         }
@@ -1081,7 +1104,12 @@ fun AppRoot(
                             sourceTagViewModel = drawerSourceTagViewModel,
                             knowledgePointViewModel = drawerKnowledgePointViewModel,
                             questionId = request.questionId,
-                            initialSubjectCategoryId = request.subjectCategoryId,
+                            // 首次演示从首页进入时也预选科目，引导从「选择科目」开始。
+                            initialSubjectCategoryId = if (demoTourActive && request.questionId == null) {
+                                demoPrefill.subjectCategoryId
+                            } else {
+                                request.subjectCategoryId
+                            },
                             prefill = if (demoTourActive && request.questionId == null) {
                                 demoPrefill
                             } else {
@@ -1089,10 +1117,11 @@ fun AppRoot(
                             },
                             tourFocus = if (demoTourActive) {
                                 when (demoStop) {
-                                    DemoTourStop.FORM_NUMBER -> QuestionEditTourTarget.NUMBER
-                                    DemoTourStop.FORM_PAGE_CODE -> QuestionEditTourTarget.PAGE_CODE
-                                    DemoTourStop.FORM_MINUTES -> QuestionEditTourTarget.MINUTES
+                                    DemoTourStop.FORM_SUBJECT -> QuestionEditTourTarget.SUBJECT
                                     DemoTourStop.FORM_SOURCE -> QuestionEditTourTarget.SOURCE
+                                    DemoTourStop.FORM_PAGE_CODE -> QuestionEditTourTarget.PAGE_CODE
+                                    DemoTourStop.FORM_NUMBER -> QuestionEditTourTarget.NUMBER
+                                    DemoTourStop.FORM_MINUTES -> QuestionEditTourTarget.MINUTES
                                     DemoTourStop.FORM_KNOWLEDGE -> QuestionEditTourTarget.KNOWLEDGE
                                     DemoTourStop.FORM_SAVE -> QuestionEditTourTarget.SAVE
                                     else -> null
@@ -1104,10 +1133,11 @@ fun AppRoot(
                                 if (demoTourActive) {
                                     reportDemoTarget(
                                         when (target) {
-                                            QuestionEditTourTarget.NUMBER -> DemoTarget.FORM_NUMBER
-                                            QuestionEditTourTarget.PAGE_CODE -> DemoTarget.FORM_PAGE_CODE
-                                            QuestionEditTourTarget.MINUTES -> DemoTarget.FORM_MINUTES
+                                            QuestionEditTourTarget.SUBJECT -> DemoTarget.FORM_SUBJECT
                                             QuestionEditTourTarget.SOURCE -> DemoTarget.FORM_SOURCE
+                                            QuestionEditTourTarget.PAGE_CODE -> DemoTarget.FORM_PAGE_CODE
+                                            QuestionEditTourTarget.NUMBER -> DemoTarget.FORM_NUMBER
+                                            QuestionEditTourTarget.MINUTES -> DemoTarget.FORM_MINUTES
                                             QuestionEditTourTarget.KNOWLEDGE -> DemoTarget.FORM_KNOWLEDGE
                                             QuestionEditTourTarget.SAVE -> DemoTarget.FORM_SAVE
                                         },
@@ -1245,7 +1275,7 @@ fun AppRoot(
                 onSkip = restoreDemoData,
                 onUse = { if (demoConfirmSubmitted) restoreDemoData() },
                 onRetryRestore = restoreDemoData,
-                onRetrySheet = prepareDemoSheetAndOpenScan,
+                onRetrySheet = prepareDemoSheetAndReturnHome,
                 onDismiss = dismissDemoOverlay,
                 onBarHeightChanged = { demoBarHeightPx = it },
             )

@@ -465,7 +465,7 @@ private fun EffectEditButton(onClick: () -> Unit, enabled: Boolean) {
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_confirm_edit),
-            contentDescription = "修改复习效果",
+            contentDescription = "修改复习反馈",
             tint = if (enabled) colors.primary else colors.onSurfaceVariant.copy(alpha = 0.4f),
             modifier = Modifier.size(16.dp),
         )
@@ -679,20 +679,20 @@ private fun knowledgeLabel(row: ConfirmRowView): String {
  * 复习效果识别结果：用户核对纸面填涂与识别是否一致（2026-11-22 用户要求）。
  *
  * 卡片上的胶囊显示当前生效的效果：已修改看用户选择，已接受看识别结果；
- * 未标记时展示识别预览；标记为「本次未复习」后显示「复习效果：未复习」。
+ * 未标记时展示识别预览；标记为「本次未复习」后显示「复习反馈：未复习」。
  * 不再显示内部术语“OMR”；可直接读取「掌握 / 较熟悉 / 不会」。
  */
 private fun effectLabel(row: ConfirmRowView): String {
     when (val choice = currentChoice(row)) {
-        EffectChoice.NotReviewed -> return "复习效果：未复习"
-        is EffectChoice.Rated -> return "复习效果：${tierName(choice.tier)}"
+        EffectChoice.NotReviewed -> return "复习反馈：未复习"
+        is EffectChoice.Rated -> return "复习反馈：${tierName(choice.tier)}"
         null -> Unit
     }
     return when (row.detectionStatus) {
-        DetectionStatus.OK -> "复习效果：未选择"
-        DetectionStatus.NO_MARK -> "复习效果：未填涂"
-        DetectionStatus.CONFLICT -> "复习效果：填涂冲突"
-        DetectionStatus.UNREADABLE -> "复习效果：无法识别"
+        DetectionStatus.OK -> "复习反馈：未选择"
+        DetectionStatus.NO_MARK -> "复习反馈：未填涂"
+        DetectionStatus.CONFLICT -> "复习反馈：填涂冲突"
+        DetectionStatus.UNREADABLE -> "复习反馈：无法识别"
     }
 }
 

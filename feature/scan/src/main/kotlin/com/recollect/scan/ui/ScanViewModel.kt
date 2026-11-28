@@ -20,7 +20,14 @@ fun interface ScanRunner {
 }
 
 sealed interface ScanRunResult {
-    data class Completed(val outcome: ScanPageOutcome) : ScanRunResult
+    /**
+     * @param previewLocation 识别用原图的缓存缩略图（相机临时帧已按规范删除）；
+     *   识别失败或无法生成时为 `null`，只用于扫描页缩略图展示。
+     */
+    data class Completed(
+        val outcome: ScanPageOutcome,
+        val previewLocation: String? = null,
+    ) : ScanRunResult
 
     /** 文件无法读取或解码；不进入识别、不写库。 */
     data object ImageUnreadable : ScanRunResult
@@ -36,7 +43,11 @@ data class ScannedPageSummary(
     val pageId: String,
     val plannedDate: LocalDate,
     val rowCount: Int,
+    /** 该页的不同题目数（同一题多个知识点只算一题），扫描页显示「Y 题」。 */
+    val questionCount: Int,
     val pageIsFuture: Boolean,
+    /** 扫描时缓存的缩略图路径；手动补录或进程恢复后可能为 `null`。 */
+    val previewLocation: String? = null,
 )
 
 data class ScanSessionSummary(
@@ -46,6 +57,9 @@ data class ScanSessionSummary(
 ) {
     val rowCount: Int
         get() = pages.sumOf { it.rowCount }
+
+    val questionCount: Int
+        get() = pages.sumOf { it.questionCount }
 }
 
 /** 阻断错误；[manualAllowed] 只对 QR 类失败开放手动回退（scan-pipeline.md）。 */
@@ -83,16 +97,53 @@ class ScanViewModel(
     private val manualEntry: ScanManualEntry,
     private val repository: ScanSessionRepository,
     private val clock: Clock,
+    /** 删除页面或开始新会话时清理缩略图缓存；测试与无缓存场景传空实现。 */
+    private val deletePreview: suspend (String) -> Unit = {},
 ) {
 
     var state by mutableStateOf(ScanUiState())
         private set
 
-    /** 进入页面或进程重建后恢复未提交会话（app.md「全局错误与恢复」）。 */
+    /** 已扫页的扫描顺序（旧 → 新），用于「最新页面压入最右侧」的缩略图列表。 */
+    private val scannedOrder = mutableListOf<String>()
+
+    /** pageId → 缩略图路径；扫描页在确认页返回后仍保留同一 ViewModel 实例。 */
+    private val previewLocations = mutableMapOf<String, String>()
+
+    /**
+     * 进入扫描页或从确认页返回后恢复未提交会话（app.md「全局错误与恢复」）。
+     *
+     * 从首页进入时先调用 [startNewScan] 丢弃旧会话；从确认页返回时不调用，保留原扫描状态。
+     */
     suspend fun load() {
         state = state.copy(loading = true)
         val session = runCatching { loadSession() }.getOrNull()
         state = state.copy(loading = false, session = session)
+    }
+
+    /**
+     * 从首页进入扫描页：丢弃上次未提交会话与缩略图，恢复为「一页未扫」
+     * （2026-11-28 用户要求）。从确认页返回时不得调用本方法。
+     */
+    suspend fun startNewScan() {
+        previewLocations.values.forEach { location ->
+            runCatching { deletePreview(location) }
+        }
+        scannedOrder.clear()
+        previewLocations.clear()
+        state = ScanUiState(loading = false)
+        runCatching { repository.discardActiveSession() }
+    }
+
+    /** 缩略图右上角的删除：从会话中移除该页，并清理它的缩略图。 */
+    suspend fun removePage(pageId: String) {
+        val session = state.session ?: return
+        runCatching { repository.removePage(session.sessionId, pageId) }
+        scannedOrder.remove(pageId)
+        previewLocations.remove(pageId)?.let { location ->
+            runCatching { deletePreview(location) }
+        }
+        state = state.copy(session = runCatching { loadSession() }.getOrNull())
     }
 
     /** 拍照或从相册选图后的入口；[imageLocation] 是页面传入的 URI 字符串，本类不持有平台上下文。 */
@@ -118,7 +169,7 @@ class ScanViewModel(
                 messageIsError = true,
             )
 
-            is ScanRunResult.Completed -> applyOutcome(result.outcome)
+            is ScanRunResult.Completed -> applyOutcome(result.outcome, result.previewLocation)
         }
     }
 
@@ -161,6 +212,8 @@ class ScanViewModel(
             }
 
             is ScanManualOutcome.Stored -> {
+                // 手动补录没有原图，缩略图用纸页占位；已有的缩略图不被覆盖。
+                rememberScannedPage(outcome.pageId, previewLocation = null)
                 val session = runCatching { loadSession() }.getOrNull() ?: state.session
                 val notices = buildList {
                     if (outcome.replacedPage) add("该页此前已扫描，本次结果已更新。")
@@ -196,14 +249,22 @@ class ScanViewModel(
         state = state.copy(error = null)
     }
 
-    private suspend fun applyOutcome(outcome: ScanPageOutcome) {
+    private suspend fun applyOutcome(outcome: ScanPageOutcome, previewLocation: String?) {
         when (outcome) {
             is ScanPageOutcome.Rejected -> {
                 state = state.copy(busy = false, error = errorView(outcome.code), message = null)
             }
 
             is ScanPageOutcome.Stored -> {
+                // 重复扫描同一页会生成新缩略图，旧文件随之清理。
+                val previousPreview = previewLocations[outcome.pageId]
+                rememberScannedPage(outcome.pageId, previewLocation)
+                if (previousPreview != null && previousPreview != previewLocation) {
+                    runCatching { deletePreview(previousPreview) }
+                }
                 val session = runCatching { loadSession() }.getOrNull() ?: state.session
+                // 「已写入…共…行」提示已按 2026-11-28 用户要求删除，
+                // 只在重复扫描/晚复习/未来日期等需要用户注意时保留说明。
                 val notices = buildList {
                     if (outcome.replacedPage) add("该页此前已扫描，本次结果已更新。")
                     if (outcome.lateBatch) add("已超过计划结束日 7 天，按晚复习记录。")
@@ -211,16 +272,22 @@ class ScanViewModel(
                         add("该页计划日为 ${outcome.pageDate}，晚于今天，确认页只能标记「本次未复习」。")
                     }
                 }
-                val suffix = if (notices.isEmpty()) "" else " " + notices.joinToString("")
                 state = state.copy(
                     busy = false,
                     session = session,
                     error = null,
-                    message = "已写入 ${outcome.pageId}（${outcome.pageDate}），共 ${outcome.rowCount} 行。$suffix",
+                    message = notices.joinToString("").ifEmpty { null },
                     messageIsError = false,
                 )
             }
         }
+    }
+
+    /** 记录一页的扫描顺序；重复扫描的页移动到最新位置（列表最右侧）。 */
+    private fun rememberScannedPage(pageId: String, previewLocation: String?) {
+        scannedOrder.remove(pageId)
+        scannedOrder.add(pageId)
+        if (previewLocation != null) previewLocations[pageId] = previewLocation
     }
 
     private suspend fun loadSession(): ScanSessionSummary? {
@@ -229,16 +296,22 @@ class ScanViewModel(
         if (rows.isEmpty()) return null
 
         val today = LocalDate.now(clock)
-        val pages = rows.groupBy { it.pageId }
-            .map { (pageId, pageRows) ->
-                ScannedPageSummary(
-                    pageId = pageId,
-                    plannedDate = pageRows.first().plannedDate,
-                    rowCount = pageRows.size,
-                    pageIsFuture = pageRows.first().plannedDate.isAfter(today),
-                )
-            }
-            .sortedBy { it.pageId }
+        val grouped = rows.groupBy { it.pageId }
+        // 本次进入后扫描的页按扫描先后排在最后（最新页在最右）；
+        // 进程恢复的旧页没有顺序信息，排在它们之前并按 pageId 排序。
+        val orderedIds = grouped.keys.filterNot { it in scannedOrder }.sorted() +
+            scannedOrder.filter { it in grouped }
+        val pages = orderedIds.map { pageId ->
+            val pageRows = grouped.getValue(pageId)
+            ScannedPageSummary(
+                pageId = pageId,
+                plannedDate = pageRows.first().plannedDate,
+                rowCount = pageRows.size,
+                questionCount = pageRows.map { it.questionId }.distinct().size,
+                pageIsFuture = pageRows.first().plannedDate.isAfter(today),
+                previewLocation = previewLocations[pageId],
+            )
+        }
         return ScanSessionSummary(active.sessionId, active.planId, pages)
     }
 

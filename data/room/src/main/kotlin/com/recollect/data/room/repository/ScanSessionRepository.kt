@@ -30,8 +30,19 @@ interface ScanSessionRepository {
     /** 同一计划已有 SCANNING/READY 会话则复用，否则新建。 */
     suspend fun startOrResumeSession(planId: String, now: Instant): ScanSessionSnapshot
 
-    /** 最近一次未提交会话；扫描页进入或进程重建时用于恢复已扫页（app.md）。 */
+    /** 最近一次未提交会话；从确认页返回扫描页或进程重建时用于恢复已扫页（app.md）。 */
     suspend fun activeSession(): ScanSessionSnapshot?
+
+    /**
+     * 丢弃最近一次未提交会话：清空其待确认行并标记为 ABANDONED。
+     *
+     * 从首页重新进入扫描页时调用，使扫描状态回到「一页未扫」
+     * （2026-11-28 用户要求；从确认页返回时保留原会话，不调用本方法）。
+     */
+    suspend fun discardActiveSession()
+
+    /** 删除会话中某一页的待确认行（扫描页缩略图右上角的删除按钮）。 */
+    suspend fun removePage(sessionId: String, pageId: String)
 
     /**
      * 向会话追加一页的识别行；同一 `(sessionId,questionId,knowledgePointId)` 重复扫描保留最新。
@@ -131,6 +142,18 @@ class RoomScanSessionRepository(
         scanSessionDao.latestActive()?.let { active ->
             ScanSessionSnapshot(active.sessionId, active.planId, active.status, created = false)
         }
+
+    override suspend fun discardActiveSession() {
+        val active = scanSessionDao.latestActive() ?: return
+        transactionRunner.inTransaction {
+            pendingFeedbackDao.deleteForSession(active.sessionId)
+            scanSessionDao.updateStatus(active.sessionId, ScanSessionStatus.ABANDONED)
+        }
+    }
+
+    override suspend fun removePage(sessionId: String, pageId: String) {
+        pendingFeedbackDao.deleteForSessionPage(sessionId, pageId)
+    }
 
     override suspend fun appendPage(
         sessionId: String,

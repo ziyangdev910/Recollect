@@ -2,6 +2,7 @@ package com.recollect.scan.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -17,14 +18,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -42,15 +43,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -58,9 +62,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.recollect.feature.scan.R
 import com.recollect.scan.io.GalleryMediaRefresher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 首次演示用的打印稿：一张已填涂的 A4 图片，以及识别引擎读取它的 URI。
@@ -78,13 +86,17 @@ private val ScanText = Color(0xFFF4F1E6)
 private val ScanMutedText = Color(0xFFB9BDAF)
 private val ScanAccent = Color(0xFF7FD6A8)
 private val OnScanAccent = Color(0xFF10352A)
+private val ScanDanger = Color(0xFFD64545)
 
 /**
  * 扫描回读页（app.md「Scan」、scan-pipeline.md；2026-11-27 用户要求按 reference/CaptureWindow.png 重做）。
  *
  * 全屏深色相机取景，中央引导线对齐整页打印稿；底部始终为多页录入：
- * 相册 / 快门 / 完成。录入一页或多页后，缩略图与页数徽标提示已扫页数，
- * 点「完成」进入确认页。演示模式在取景框里展示预生成的打印稿，不调用相机（见「首次复习演示」）。
+ * 相册 / 快门 / 完成。2026-11-28 用户要求：完成按钮上方不再显示页数徽标，
+ * 改为右对齐的「已扫 X 页，Y 题」与横向缩略图列表（最新页面压入最右侧），
+ * 缩略图点击可悬浮预览，右上角红色叉叉删除该页；快门不再带外圈圆圈。
+ * 从首页进入时扫描状态重置为一页未扫，从确认页返回时保留原会话。
+ * 演示模式在取景框里展示预生成的打印稿，不调用相机（见「首次复习演示」）。
  */
 @Composable
 fun ScanScreen(
@@ -99,7 +111,7 @@ fun ScanScreen(
     autoRequestCamera: Boolean = true,
     /** 首次演示：扫描框内直接展示已填涂的打印稿，不打开相机。 */
     demoSheet: DemoScanSheet? = null,
-    /** 首次演示用：报告「识别这张打印稿」按钮的位置。 */
+    /** 首次演示用：报告快门（识别预置演示稿）按钮的位置。 */
     demoScanButtonBounds: (Rect) -> Unit = {},
     /** 首次演示用：报告「完成」按钮的位置。 */
     confirmButtonBounds: (Rect) -> Unit = {},
@@ -193,6 +205,8 @@ fun ScanScreen(
     val session = state.session
     val pageCount = session?.pages?.size ?: 0
     val controller = rememberScanCameraController()
+    // 点击缩略图后悬浮预览的图片；任意位置点击关闭。
+    var previewLocation by remember { mutableStateOf<String?>(null) }
 
     // 演示：识别结果写入会话后，把焦点从「识别」切到「完成」。
     LaunchedEffect(state.session?.sessionId) {
@@ -201,8 +215,10 @@ fun ScanScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(ScanBackground)) {
         // 取景层：演示稿、相机或拒绝权限后的深色背景。
+        // 演示稿铺满取景框并叠加同样的参考线，排版与真实扫描页一致。
         if (demoSheet != null) {
             DemoSheetBackdrop(demoSheet)
+            ScanGuideLines()
         } else if (cameraGranted) {
             ScanCameraPane(
                 controller = controller,
@@ -234,7 +250,7 @@ fun ScanScreen(
         } else {
             Text(
                 text = when {
-                    demoSheet != null && session == null -> "演示打印稿\n点击下方按钮识别"
+                    demoSheet != null && session == null -> "演示打印稿\n点击下方快门识别"
                     demoSheet != null -> "已识别 $pageCount 页\n点击「完成」继续"
                     session == null -> "平行纸面拍照\n题目对齐参考线"
                     else -> "请拍第 ${pageCount + 1} 页"
@@ -287,26 +303,6 @@ fun ScanScreen(
                 )
             }
 
-            // 演示稿的识别入口：识别后收起，改由「完成」进入确认页。
-            if (demoSheet != null && session == null) {
-                Button(
-                    onClick = {
-                        scope.launch { viewModel.onImageSelected(demoSheet.imageLocation) }
-                    },
-                    enabled = !state.busy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .onGloballyPositioned { demoScanButtonBounds(it.boundsInRoot()) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ScanAccent,
-                        contentColor = OnScanAccent,
-                    ),
-                ) {
-                    Text(if (state.busy) "正在识别…" else "识别这张打印稿")
-                }
-            }
-
             if (!cameraGranted && demoSheet == null) {
                 PermissionPanel(
                     denied = cameraDenied,
@@ -317,42 +313,45 @@ fun ScanScreen(
                     onPickFromGallery = openGallery,
                 )
             } else {
-                SessionStrip(
+                ScannedPagesBar(
                     session = session,
-                    demoSheet = demoSheet,
+                    onOpenPreview = { previewLocation = it },
+                    onRemovePage = { pageId -> scope.launch { viewModel.removePage(pageId) } },
                 )
-                if (demoSheet == null) {
-                    CameraControls(
-                        ready = controller.isReady,
-                        busy = state.busy,
-                        galleryBusy = refreshingGallery,
-                        onCapture = { controller.takePhoto() },
-                        onPickFromGallery = openGallery,
-                        doneEnabled = session != null,
-                        onDone = { session?.let { onOpenConfirm(it.sessionId) } },
-                        onDoneBounds = confirmButtonBounds,
-                    )
-                } else if (session != null) {
-                    Button(
-                        onClick = { onOpenConfirm(session.sessionId) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .onGloballyPositioned { confirmButtonBounds(it.boundsInRoot()) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ScanAccent,
-                            contentColor = OnScanAccent,
-                        ),
-                    ) {
-                        Text("完成，进入确认页")
-                    }
-                }
+                // 演示与真实扫描共用同一套底部排版，只把快门换成识别预置的演示稿。
+                CameraControls(
+                    ready = if (demoSheet != null) !state.busy else controller.isReady,
+                    busy = state.busy,
+                    galleryBusy = refreshingGallery,
+                    onCapture = {
+                        if (demoSheet != null) {
+                            if (session == null) {
+                                scope.launch { viewModel.onImageSelected(demoSheet.imageLocation) }
+                            }
+                        } else {
+                            controller.takePhoto()
+                        }
+                    },
+                    onCaptureBounds = if (demoSheet != null) demoScanButtonBounds else { _ -> },
+                    onPickFromGallery = openGallery,
+                    doneEnabled = session != null,
+                    onDone = { session?.let { onOpenConfirm(it.sessionId) } },
+                    onDoneBounds = confirmButtonBounds,
+                )
             }
         }
     }
+
+    // 缩略图的悬浮预览：点击任意位置关闭。
+    previewLocation?.let { location ->
+        ScanPreviewDialog(
+            location = location,
+            onDismiss = { previewLocation = null },
+        )
+    }
 }
 
-/** 演示打印稿：整页 A4 居中展示在取景框内。 */
+/** 演示打印稿：像相机取景一样铺满整屏（保持 A4 比例），不额外包卡片。 */
 @Composable
 private fun DemoSheetBackdrop(sheet: DemoScanSheet) {
     Box(
@@ -361,20 +360,12 @@ private fun DemoSheetBackdrop(sheet: DemoScanSheet) {
             .background(ScanBackground),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.82f)
-                .fillMaxHeight(0.62f),
-            shape = RoundedCornerShape(6.dp),
-            color = Color.White,
-        ) {
-            Image(
-                bitmap = sheet.image,
-                contentDescription = "已填涂的演示打印稿",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        Image(
+            bitmap = sheet.image,
+            contentDescription = "已填涂的演示打印稿",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -401,40 +392,65 @@ private fun ScanGuideLines() {
     }
 }
 
-/** 已扫页数与缩略图；右上角徽标显示页数。 */
+/**
+ * 完成按钮上方的已扫页面板（2026-11-28 用户要求）：
+ * 右对齐的「已扫 X 页，Y 题」在横向缩略图列表上方；列表自右向左压入最新扫描的页。
+ */
 @Composable
-private fun SessionStrip(
+private fun ScannedPagesBar(
     session: ScanSessionSummary?,
-    demoSheet: DemoScanSheet?,
+    onOpenPreview: (String) -> Unit,
+    onRemovePage: (String) -> Unit,
 ) {
-    if (session == null && demoSheet == null) return
-    Row(
+    val pages = session?.pages.orEmpty()
+    if (session == null || pages.isEmpty()) return
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = if (session == null) {
-                "还没有识别到页面"
-            } else {
-                "已扫 ${session.pages.size} 页 · ${session.rowCount} 行"
-            },
+            text = "已扫 ${pages.size} 页，${session.questionCount} 题",
             style = MaterialTheme.typography.bodySmall,
             color = ScanMutedText,
-            modifier = Modifier.weight(1f),
         )
-        ScanThumbnail(
-            image = demoSheet?.image,
-            count = session?.pages?.size ?: 0,
-        )
+        // reverseLayout 负责溢出时从右端开始滚动；Box 把不足一屏的列表整体贴到右侧。
+        // 页面列表按「旧 → 新」传入并反转为「新 → 旧」，最新扫描的页始终在最右，
+        // 新页从右侧压入并把旧页向左推。
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            LazyRow(
+                modifier = Modifier.height(56.dp),
+                reverseLayout = true,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items(pages.asReversed(), key = { it.pageId }) { page ->
+                    ScannedPageThumbnail(
+                        page = page,
+                        onOpen = { page.previewLocation?.let(onOpenPreview) },
+                        onRemove = { onRemovePage(page.pageId) },
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ScanThumbnail(image: ImageBitmap?, count: Int) {
-    Box {
+private fun ScannedPageThumbnail(
+    page: ScannedPageSummary,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val image = rememberPreviewImage(page.previewLocation, THUMBNAIL_MAX_EDGE_PX)
+    Box(modifier = Modifier.size(56.dp)) {
         Surface(
-            modifier = Modifier.size(54.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(enabled = page.previewLocation != null, onClick = onOpen),
             shape = RoundedCornerShape(8.dp),
             color = Color(0xFFEDE7D8),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
@@ -442,43 +458,107 @@ private fun ScanThumbnail(image: ImageBitmap?, count: Int) {
             if (image != null) {
                 Image(
                     bitmap = image,
-                    contentDescription = null,
+                    contentDescription = "扫描页 ${page.pageId}",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
-                    val lineColor = Color(0xFF8C8B7E)
-                    val heights = listOf(0.2f, 0.38f, 0.56f, 0.74f)
-                    heights.forEach { y ->
-                        drawLine(
-                            color = lineColor.copy(alpha = 0.5f),
-                            start = Offset(0f, size.height * y),
-                            end = Offset(size.width, size.height * y),
-                            strokeWidth = 1.dp.toPx(),
-                        )
-                    }
-                }
+                PlaceholderPageLines()
             }
         }
-        if (count > 0) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 6.dp, y = (-6).dp)
-                    .size(20.dp)
-                    .background(ScanAccent, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = OnScanAccent,
+        // 原页数徽标的位置：红底圆边框叉叉，删除该页。
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(18.dp)
+                .background(ScanDanger, CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
+                .clickable(onClick = onRemove),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_close),
+                contentDescription = "删除该页",
+                tint = Color.White,
+                modifier = Modifier.size(11.dp),
+            )
+        }
+    }
+}
+
+/** 手动补录或恢复会话时没有缩略图，用横线纸页占位。 */
+@Composable
+private fun PlaceholderPageLines() {
+    Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+        val lineColor = Color(0xFF8C8B7E)
+        listOf(0.2f, 0.38f, 0.56f, 0.74f).forEach { y ->
+            drawLine(
+                color = lineColor.copy(alpha = 0.5f),
+                start = Offset(0f, size.height * y),
+                end = Offset(size.width, size.height * y),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+    }
+}
+
+/** 缩略图上显示的小型悬浮窗：显示图片，点击任意位置关闭。 */
+@Composable
+private fun ScanPreviewDialog(location: String, onDismiss: () -> Unit) {
+    val image = rememberPreviewImage(location, PREVIEW_MAX_EDGE_PX)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.78f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (image != null) {
+                Image(
+                    bitmap = image,
+                    contentDescription = "扫描页预览",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth(0.78f)
+                        .aspectRatio(image.width.toFloat() / image.height.toFloat())
+                        .clip(RoundedCornerShape(10.dp)),
                 )
+            } else {
+                CircularProgressIndicator(color = ScanAccent)
             }
         }
     }
 }
+
+/** 从缓存缩略图解码；[maxEdgePx] 控制解码尺寸，列表用小图、预览用大图。 */
+@Composable
+private fun rememberPreviewImage(location: String?, maxEdgePx: Int): ImageBitmap? {
+    val image by produceState<ImageBitmap?>(initialValue = null, location, maxEdgePx) {
+        value = location?.let { path ->
+            withContext(Dispatchers.IO) { decodeScaledPreview(path, maxEdgePx) }
+        }
+    }
+    return image
+}
+
+private fun decodeScaledPreview(path: String, maxEdgePx: Int): ImageBitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxEdgePx) {
+        sample *= 2
+    }
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    BitmapFactory.decodeFile(path, options)?.asImageBitmap()
+}.getOrNull()
+
+private const val THUMBNAIL_MAX_EDGE_PX = 256
+private const val PREVIEW_MAX_EDGE_PX = 1280
 
 /** 底部相机操作栏：相册 / 快门 / 完成。 */
 @Composable
@@ -487,6 +567,7 @@ private fun CameraControls(
     busy: Boolean,
     galleryBusy: Boolean,
     onCapture: () -> Unit,
+    onCaptureBounds: (Rect) -> Unit = {},
     onPickFromGallery: () -> Unit,
     doneEnabled: Boolean,
     onDone: () -> Unit,
@@ -500,27 +581,22 @@ private fun CameraControls(
             onClick = onPickFromGallery,
             modifier = Modifier.align(Alignment.CenterStart),
         )
-        // 快门：外圈白色描边，内圈主色；识别期间禁用。
+        // 快门：2026-11-28 用户要求去掉外圈圆圈，只保留主色圆角方块按钮。
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(72.dp)
+                .size(64.dp)
                 .clickable(enabled = ready && !busy, onClick = onCapture),
             contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Transparent, CircleShape)
-                    .border(3.dp, if (ready && !busy) Color.White else Color.White.copy(alpha = 0.4f), CircleShape),
-            )
             Box(
                 modifier = Modifier
                     .size(56.dp)
                     .background(
                         if (ready && !busy) ScanAccent else ScanAccent.copy(alpha = 0.45f),
                         RoundedCornerShape(16.dp),
-                    ),
+                    )
+                    .onGloballyPositioned { onCaptureBounds(it.boundsInRoot()) },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

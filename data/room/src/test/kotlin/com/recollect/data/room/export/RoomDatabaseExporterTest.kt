@@ -85,6 +85,8 @@ class RoomDatabaseExporterTest {
                     createdAt = Instant.parse("2026-11-18T00:00:00Z"),
                     coverTone = 2,
                     coverIcon = "book",
+                    // 首页卡片的拖拽顺序也必须随备份导出。
+                    sortOrder = 3,
                 ),
             ),
             knowledgePoints = listOf(
@@ -241,7 +243,7 @@ class RoomDatabaseExporterTest {
         // v15：分类封面按可选字段导出；旧分类为 null 时不写这两个键。
         assertContains(document.json, "\"coverTone\": 2")
         assertContains(document.json, "\"coverIcon\": \"book\"")
-        assertContains(document.json, "\"sortOrder\": 0")
+        assertContains(document.json, "\"sortOrder\": 3")
         // v14：题目与知识点都导出用户修改时间。
         assertContains(document.json, "\"updatedAt\": \"2026-11-20T10:00:00Z\"")
         assertContains(document.json, "\"updatedAt\": \"2026-11-20T10:00:01Z\"")

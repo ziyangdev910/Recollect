@@ -89,6 +89,12 @@ class RoomDatabaseImporterTest {
         assertIs<ImportResult.Success>(result)
         assertTrue(dao.cleared)
         assertEquals(2, dao.knowledgeCategories.size)
+        // 首页卡片的名称、封面底色/图标与拖拽顺序原样恢复。
+        val math = dao.knowledgeCategories.first { it.id == "cat-math" }
+        assertEquals("数学", math.name)
+        assertEquals(4, math.coverTone)
+        assertEquals("calculator", math.coverIcon)
+        assertEquals(2, math.sortOrder)
         assertEquals("cat-chinese", dao.knowledgePoints.single().categoryId)
         assertEquals(1, dao.knowledgePoints.size)
         assertEquals(1, dao.questions.size)
@@ -187,7 +193,8 @@ class RoomDatabaseImporterTest {
             """
             [
               { "id": "cat-chinese", "name": "语文", "createdAt": "2026-11-01T00:00:00Z" },
-              { "id": "cat-math", "name": "数学", "createdAt": "2026-11-01T00:00:01Z" }
+              { "id": "cat-math", "name": "数学", "createdAt": "2026-11-01T00:00:01Z",
+                "coverTone": 4, "coverIcon": "calculator", "sortOrder": 2 }
             ]
             """
         } else {
